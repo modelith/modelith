@@ -1,0 +1,51 @@
+{
+  "case": "syntax-errors",
+  "entries": [
+    {
+      "$entry": 0
+    },
+    {
+      "$entry": 1
+    },
+    {
+      "$entry": 2
+    }
+  ],
+  "rels": [],
+  "errors": [
+    {
+      "pos": 61,
+      "msg": "対応する「{」がない「}」があります"
+    }
+  ],
+  "layout": {},
+  "model": {
+    "nodes": [
+      {
+        "key": "A",
+        "name": "A",
+        "short": "",
+        "kind": "part def",
+        "isDef": true,
+        "entry": 1,
+        "fam": "part",
+        "trans": [],
+        "ports": [],
+        "phase": null,
+        "phaseOwn": false
+      }
+    ],
+    "edges": [],
+    "problems": [
+      {
+        "pos": 42,
+        "msg": "型「B」が見つかりません（b）"
+      },
+      {
+        "pos": 61,
+        "msg": "対応する「{」がない「}」があります"
+      }
+    ],
+    "phases": null
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "case": "requirements",
+  "entries": [
+    {
+      "$entry": 0
+    },
+    {
+      "$entry": 1
+    },
+    {
+      "$entry": 2
+    },
+    {
+      "$entry": 3
+    },
+    {
+      "$entry": 4
+    }
+  ],
+  "rels": [
+    {
+      "rel": "satisfy",
+      "req": "SpeedReq",
+      "by": "Controller",
+      "start": 165,
+      "end": 207,
+      "parent": 0,
+      "usage": null
+    },
+    {
+      "rel": "verify",
+      "req": "SpeedReq",
+      "start": 250,
+      "end": 277,
+      "parent": 4,
+      "usage": null
+    }
+  ],
+  "errors": [],
+  "layout": {},
+  "model": {
+    "nodes": [
+      {
+        "key": "SpeedReq",
+        "name": "SpeedReq",
+        "short": "R1",
+        "kind": "requirement def",
+        "isDef": true,
+        "entry": 1,
+        "fam": "req",
+        "trans": [],
+        "ports": [],
+        "phase": null,
+        "phaseOwn": false
+      },
+      {
+        "key": "Controller",
+        "name": "Controller",
+        "short": "",
+        "kind": "part def",
+        "isDef": true,
+        "entry": 3,
+        "fam": "part",
+        "trans": [],
+        "ports": [],
+        "phase": null,
+        "phaseOwn": false
+      },
+      {
+        "key": "SpeedTest",
+        "name": "SpeedTest",
+        "short": "",
+        "kind": "verification def",
+        "isDef": true,
+        "entry": 4,
+        "fam": "ver",
+        "trans": [],
+        "ports": [],
+        "phase": null,
+        "phaseOwn": false
+      }
+    ],
+    "edges": [
+      {
+        "id": "satisfy|Controller|SpeedReq|«satisfy»#1",
+        "kind": "satisfy",
+        "from": "Controller",
+        "to": "SpeedReq",
+        "label": "«satisfy»",
+        "src": {
+          "start": 165,
+          "end": 208
+        }
+      },
+      {
+        "id": "verify|SpeedTest|SpeedReq|«verify»#1",
+        "kind": "verify",
+        "from": "SpeedTest",
+        "to": "SpeedReq",
+        "label": "«verify»",
+        "src": {
+          "start": 250,
+          "end": 278
+        }
+      }
+    ],
+    "problems": [],
+    "phases": null
+  }
+}

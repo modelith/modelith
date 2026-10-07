@@ -54,8 +54,25 @@ git push -u origin feat/kerml-parser
 ```
 
 - `type`: `feat` `fix` `refactor` `perf` `test` `docs` `build` `ci` `chore` `revert`
-- `scope` 例: `parser`, `kerml`, `sysml`, `diagram`, `editor`, `sync`, `harness`
+- `scope`（リポジトリ内の場所に対応させる）:
+
+  | scope | 対象 |
+  | --- | --- |
+  | `core` / `parser` / `model` | `crates/modelith-core` |
+  | `wasm` | `crates/modelith-wasm` |
+  | `cli` | `crates/modelith-cli` |
+  | `lsp` / `server` | 将来のクレート |
+  | `web` | `web/` |
+  | `plugin-host` | プラグインのホスト側実装（plugin-sdk との契約に関わる） |
+  | `reference` | `reference/`（ゴールデンケースの追加など） |
+  | `adr` | `docs/adr/` |
+  | `harness` | `scripts/`・`.claude/`・CI・`CLAUDE.md` |
 - 破壊的変更は `feat(parser)!: ...` のように `!` を付け、本文に `BREAKING CHANGE:` を書く。
+
+## 関連リポジトリとの関係
+
+`modelith/plugin-sdk` などの関連リポジトリも同じブランチ戦略・コミット規約に従う（将来 org の `.github` に共通化する）。
+plugin-sdk の契約を変える場合は、plugin-sdk 側を先にリリースしてから本体の依存を上げる。
 
 ## リリース
 
@@ -70,6 +87,7 @@ Settings → Rules → Rulesets で `main` に以下を設定する。
 - [x] Restrict deletions / Block force pushes
 - [x] Require a pull request before merging（承認 1 以上、新しい push で承認を取り消し）
 - [x] Require status checks to pass: `check`, `conventions`
+- [x] Require review from Code Owners（`.github/CODEOWNERS`：ライセンス・ADR・ハーネス・プラグインホスト）
 - [x] Require branches to be up to date before merging
 - [x] Require conversation resolution before merging
 

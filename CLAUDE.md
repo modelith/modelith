@@ -1,0 +1,60 @@
+# modelith — エージェント向け作業ガイド
+
+SysML v2 / KerML のテキストとダイアグラムを同期編集するモデリングエディタ（Rust）。
+このファイルは Claude Code などの AI エージェントが最初に読む「ハーネス」の入口である。
+
+## 完了の定義（Definition of Done）
+
+作業完了を宣言する前に、必ず以下を満たすこと。
+
+1. `scripts/check.sh` がグリーン（fmt / clippy `-D warnings` / test）
+2. 振る舞いの変更にはテストを追加・更新している
+3. トピックブランチ上でコミットし、Conventional Commits 形式のメッセージを付けている
+
+`scripts/check.sh` が唯一の判定基準。CI も同じスクリプトを実行する。
+独自のコマンド列で「たぶん通る」と判断しないこと。
+
+## ブランチとコミット
+
+詳細は [docs/development/branching-strategy.md](docs/development/branching-strategy.md)。要点のみ:
+
+- `main` へ直接 commit / push しない（フックでブロックされる）
+- ブランチ名: `<type>/<topic>`（type: feat|fix|refactor|docs|test|perf|ci|chore|claude）
+- コミット / PR タイトル: `<type>(<scope>): <summary>`（Conventional Commits）
+- 1 ブランチ 1 目的。依頼範囲外のリファクタや整形を混ぜない
+- force-push 禁止。他人のブランチの履歴を書き換えない
+
+## コマンド
+
+| 目的 | コマンド |
+| --- | --- |
+| フルチェック（完了前に必須） | `scripts/check.sh` |
+| 高速チェック | `scripts/check.sh --fast` |
+| 単体テスト絞り込み | `cargo test -p <crate> <name>` |
+| ブランチ名検証 | `scripts/check-branch-name.sh` |
+| PR タイトル検証 | `scripts/check-pr-title.sh "<title>"` |
+
+## ハーネス（自動で動くもの）
+
+`.claude/settings.json` に定義。
+
+| タイミング | フック | 役割 |
+| --- | --- | --- |
+| セッション開始 | `session-start.sh` | rustfmt/clippy を用意し、現在ブランチを通知 |
+| Bash 実行前 | `guard-git.sh` | main への push・main 上の commit・force-push をブロック |
+| ファイル編集後 | `format-rust.sh` | 編集した `.rs` を rustfmt で整形 |
+| 停止前 | `verify-on-stop.sh` | Rust 変更があれば `check.sh --fast` を実行し、失敗なら差し戻し |
+
+フックにブロックされたら、回避策を探さず、メッセージに従って手順を正すこと。
+
+## コーディング規約
+
+- Rust edition 2024 / stable ツールチェーン（`rust-toolchain.toml`）
+- `unwrap()` / `expect()` はテストとプロトタイプ以外で避け、エラー型で返す
+- 公開 API には doc コメントを書く
+- 周辺コードの命名・コメント密度・イディオムに合わせる
+
+## ハーネスの改善
+
+エージェントが同じ種類のミスを繰り返したら、それは指示ではなくハーネスで防ぐべきサイン。
+このファイル・`scripts/`・`.claude/hooks/`・CI のいずれかに再発防止策を追加する PR（`chore(harness): ...`）を作ること。

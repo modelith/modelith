@@ -1,18 +1,27 @@
 # modelith — エージェント向け作業ガイド
 
-SysML v2 / KerML のテキストとダイアグラムを同期編集するモデリングエディタ（Rust）。
+SysML v2 / KerML のテキストとダイアグラムを同期編集する、プラグインで拡張可能なモデリングエディタ。
+Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全体像は [docs/architecture.md](docs/architecture.md)、設計判断は [docs/adr/](docs/adr/)。
 このファイルは Claude Code などの AI エージェントが最初に読む「ハーネス」の入口である。
 
 ## 完了の定義（Definition of Done）
 
 作業完了を宣言する前に、必ず以下を満たすこと。
 
-1. `scripts/check.sh` がグリーン（fmt / clippy `-D warnings` / test）
+1. `scripts/check.sh` がグリーン（Rust の fmt / clippy `-D warnings` / test、wasm ビルド、ゴールデン、web の型検査とテスト）
 2. 振る舞いの変更にはテストを追加・更新している
 3. トピックブランチ上でコミットし、Conventional Commits 形式のメッセージを付けている
 
 `scripts/check.sh` が唯一の判定基準。CI も同じスクリプトを実行する。
 独自のコマンド列で「たぶん通る」と判断しないこと。
+
+## 守るべき設計原則
+
+- **テキストが唯一の正本**（ADR-0001）。図やプラグインからの変更も `TextEdit` として表現する。
+- **仕様の基準はモック**（ADR-0002）。`reference/mock/` と `reference/golden/*.json` は編集しない（フックでブロックされる）。
+  挙動を変えるときはケースを `reference/golden/cases/` に足し、`node reference/tools/gen-golden.mjs` で再生成する。
+- **プラグインとの契約は plugin-sdk に置く**（ADR-0004）。本リポジトリでプラグイン向けの型を独自に定義しない。
+- ADR に反する変更が必要なら、実装より先に ADR を追加・更新する PR を出す。
 
 ## ブランチとコミット
 
@@ -31,6 +40,8 @@ SysML v2 / KerML のテキストとダイアグラムを同期編集するモデ
 | フルチェック（完了前に必須） | `scripts/check.sh` |
 | 高速チェック | `scripts/check.sh --fast` |
 | 単体テスト絞り込み | `cargo test -p <crate> <name>` |
+| web のテスト | `npm test --prefix web` |
+| ゴールデン再生成 | `node reference/tools/gen-golden.mjs` |
 | ブランチ名検証 | `scripts/check-branch-name.sh` |
 | PR タイトル検証 | `scripts/check-pr-title.sh "<title>"` |
 
@@ -40,16 +51,18 @@ SysML v2 / KerML のテキストとダイアグラムを同期編集するモデ
 
 | タイミング | フック | 役割 |
 | --- | --- | --- |
-| セッション開始 | `session-start.sh` | rustfmt/clippy を用意し、現在ブランチを通知 |
+| セッション開始 | `session-start.sh` | rustfmt/clippy・wasm ターゲット・web の依存を用意し、現在ブランチを通知 |
 | Bash 実行前 | `guard-git.sh` | main への push・main 上の commit・force-push をブロック |
+| ファイル編集前 | `protect-files.sh` | 凍結・生成ファイル（モック、ゴールデン JSON、lock ファイル）の直接編集をブロック |
 | ファイル編集後 | `format-rust.sh` | 編集した `.rs` を rustfmt で整形 |
-| 停止前 | `verify-on-stop.sh` | Rust 変更があれば `check.sh --fast` を実行し、失敗なら差し戻し |
+| 停止前 | `verify-on-stop.sh` | コード変更があれば `check.sh --fast` を実行し、失敗なら差し戻し |
 
 フックにブロックされたら、回避策を探さず、メッセージに従って手順を正すこと。
 
 ## コーディング規約
 
-- Rust edition 2024 / stable ツールチェーン（`rust-toolchain.toml`）
+- Rust edition 2024 / stable ツールチェーン（`rust-toolchain.toml`）、`unsafe` 禁止
+- TypeScript は `strict` + `noUncheckedIndexedAccess`
 - `unwrap()` / `expect()` はテストとプロトタイプ以外で避け、エラー型で返す
 - 公開 API には doc コメントを書く
 - 周辺コードの命名・コメント密度・イディオムに合わせる

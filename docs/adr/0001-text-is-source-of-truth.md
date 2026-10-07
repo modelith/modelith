@@ -5,7 +5,7 @@
 
 ## 背景
 
-SysML v2 はテキスト記法を持つ。モック（`reference/mock/Modelith.html`）は図の操作をすべてテキストへの
+SysML v2 はテキスト記法を持つ。モック（非公開。ADR-0002）は図の操作をすべてテキストへの
 書き換え（`insertInto` / `removeRange`）として実装しており、図とテキストの不整合が原理的に起きない。
 
 ## 決定

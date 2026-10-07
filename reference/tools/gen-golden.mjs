@@ -1,5 +1,7 @@
 // モック（reference/mock/Modelith.html）のパーサとモデル構築を Node で実行し、
 // reference/golden/<case>.json に出力する。Rust コアはこの出力と一致させる（ADR-0002）。
+// モックは非公開のためリポジトリに含めない。手元に置いた人だけが生成・検証できる。
+// 置き場所は既定で reference/mock/Modelith.html（.gitignore 済み）、環境変数 MODELITH_MOCK で変更可。
 //   node reference/tools/gen-golden.mjs           生成
 //   node reference/tools/gen-golden.mjs --check   生成結果が最新かを検証（CI 用）
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
@@ -8,17 +10,21 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const html = readFileSync(join(root, "mock/Modelith.html"), "utf8");
+const mockPath = process.env.MODELITH_MOCK ?? join(root, "mock/Modelith.html");
+if (!existsSync(mockPath)) {
+  console.log(`mock not found (${mockPath}); skipped`);
+  process.exit(0);
+}
+const html = readFileSync(mockPath, "utf8");
 
-// UI に依存しない「1. パーサ」〜「2. モデル」区間と SAMPLE だけを取り出す
+// UI に依存しない「1. パーサ」〜「2. モデル」区間だけを取り出す
 const script = html.slice(html.indexOf("<script>") + "<script>".length);
 const start = script.indexOf("/* ================= 1. パーサ");
 const end = script.indexOf("/* ================= 3. ビュー");
-const sampleLine = script.slice(0, start).match(/^const SAMPLE = .*$/m);
-if (start < 0 || end < 0 || !sampleLine) throw new Error("mock の区切りが見つかりません");
+if (start < 0 || end < 0) throw new Error("mock の区切りが見つかりません");
 const ctx = vm.createContext({});
-vm.runInContext(`"use strict";${sampleLine[0]}\n${script.slice(start, end)}\n;this.api = {parse, build, SAMPLE};`, ctx);
-const { parse, build, SAMPLE } = ctx.api;
+vm.runInContext(`"use strict";${script.slice(start, end)}\n;this.api = {parse, build};`, ctx);
+const { parse, build } = ctx.api;
 
 // 循環参照（owner / pe / entry）をエントリ番号に置き換えて JSON 化できる形にする
 const ref = (e) => (e && typeof e.idx === "number" ? e.idx : null);
@@ -48,7 +54,8 @@ function simplify(v, seen = new Set()) {
   return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, simplify(x, seen)]));
 }
 
-const cases = [["sample", SAMPLE]];
+// モック内蔵の SAMPLE は非公開のため使わない。公開してよい入力だけを cases/ に置く
+const cases = [];
 const caseDir = join(root, "golden/cases");
 for (const f of readdirSync(caseDir).filter((f) => f.endsWith(".sysml")).sort())
   cases.push([basename(f, ".sysml"), readFileSync(join(caseDir, f), "utf8")]);

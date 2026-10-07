@@ -19,6 +19,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 
 - **テキストが唯一の正本**（ADR-0001）。図やプラグインからの変更も `TextEdit` として表現する。
 - **仕様の基準はモック**（ADR-0002）。`reference/mock/` と `reference/golden/*.json` は編集しない（フックでブロックされる）。
+  モックは非公開。`reference/mock/` の中身をコミットしたり、内容（モック内蔵のサンプルモデルを含む）をケースやドキュメントに転記したりしない。
   挙動を変えるときはケースを `reference/golden/cases/` に足し、`node reference/tools/gen-golden.mjs` で再生成する。
 - **プラグインとの契約は plugin-sdk に置く**（ADR-0004）。本リポジトリでプラグイン向けの型を独自に定義しない。
 - ADR に反する変更が必要なら、実装より先に ADR を追加・更新する PR を出す。

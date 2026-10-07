@@ -4,8 +4,8 @@ Rust 実装の「動く仕様書」（ADR-0002）。
 
 | パス | 内容 |
 | --- | --- |
-| `mock/Modelith.html` | 凍結した JS モック。**編集しない**（修正が必要なら ADR を追加） |
-| `golden/cases/*.sysml` | ゴールデンの入力ケース（モック内の SAMPLE も `sample` として自動で含まれる） |
+| `mock/Modelith.html` | 凍結した JS モック。**非公開のためコミットしない**（`.gitignore` 済み）。メンテナが手元に置く |
+| `golden/cases/*.sysml` | ゴールデンの入力ケース。公開してよい内容だけを置く |
 | `golden/*.json` | モックのパーサ・モデル構築の出力。生成物なので手で編集しない |
 | `tools/gen-golden.mjs` | ゴールデンの生成・検証スクリプト |
 
@@ -14,4 +14,5 @@ node reference/tools/gen-golden.mjs          # 再生成
 node reference/tools/gen-golden.mjs --check  # 最新か検証（scripts/check.sh が実行）
 ```
 
-ケースを追加したら再生成してコミットする。
+モックが手元に無い環境（CI や外部の貢献者）では生成・検証はスキップされ、コミット済みのゴールデン JSON だけが仕様になる。
+ケースを追加・モックを更新したら、モックを持つメンテナが再生成してコミットする。

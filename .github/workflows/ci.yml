@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]  # edited: タイトル・向け先の変更でも再検証
+  push:
+    branches: [main, dev]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  conventions:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Branch name
+        run: scripts/check-branch-name.sh "$HEAD_REF"
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+      - name: PR base (feature branches target dev)
+        run: scripts/check-pr-base.sh "$BASE_REF" "$HEAD_REF"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+      - name: PR title (Conventional Commits)
+        run: scripts/check-pr-title.sh "$PR_TITLE"
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Harness check
+        run: scripts/check.sh

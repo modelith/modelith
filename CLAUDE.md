@@ -8,12 +8,24 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 
 作業完了を宣言する前に、必ず以下を満たすこと。
 
-1. `scripts/check.sh` がグリーン（Rust の fmt / clippy `-D warnings` / test、wasm ビルド、ゴールデン、web の型検査とテスト）
-2. 振る舞いの変更にはテストを追加・更新している
+1. `scripts/check.sh` がグリーン（静的検査 → 単体 → 結合 → 統合の順に実行し、失敗した段階で止まる）
+2. 振る舞いの変更にはテストを追加・更新している（テスト原則に従う）
 3. トピックブランチ上でコミットし、Conventional Commits 形式のメッセージを付けている
 
 `scripts/check.sh` が唯一の判定基準。CI も同じスクリプトを実行する。
 独自のコマンド列で「たぶん通る」と判断しないこと。
+
+## 原則（スキル）
+
+コード・スクリプト・フック・テストを書く／変える／レビューするときは、必ず次のスキルに従う。いずれも**厳守**。
+
+| スキル | 内容 |
+| --- | --- |
+| [programming-principles](.claude/skills/programming-principles/SKILL.md) | SOLID、テスト可能なコード（判断と I/O の分離・依存の注入）、YAGNI、可読性 |
+| [testing-principles](.claude/skills/testing-principles/SKILL.md) | ISTQB の 7 原則、単体 → 結合 → 統合、同値分割・境界値・正常系／異常系、AAA パターン |
+
+機械で検査できる項目（テストの有無・AAA・関数とファイルの長さ・ShellCheck・clippy）は `scripts/check-principles.sh` と clippy が強制する。
+機械で検査できない項目（O/L/I/D・YAGNI・テスト設計）は、各スキルのチェックリストで自己レビューし PR テンプレートで答える。
 
 ## 守るべき設計原則
 
@@ -45,6 +57,9 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 | フルチェック（完了前に必須） | `scripts/check.sh` |
 | 高速チェック | `scripts/check.sh --fast` |
 | 単体テスト絞り込み | `cargo test -p <crate> <name>` |
+| ハーネスのテスト | `tests/harness/node_modules/.bin/bats tests/harness/{unit,integration,system}` |
+| 原則の検査 | `scripts/check-principles.sh` |
+| 共有ファイルの照合 | `scripts/check-shared-sync.sh [ref]`（plugin-sdk と同一か） |
 | web のテスト | `npm test --prefix web` |
 | ゴールデン再生成 | `node reference/tools/gen-golden.mjs` |
 | ブランチ名検証 | `scripts/check-branch-name.sh` |
@@ -53,11 +68,15 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 
 ## ハーネス（自動で動くもの）
 
+構成: 判断は `scripts/lib/policy.sh`（純粋関数）、入出力は `scripts/lib/hook-io.sh`、リポジトリ固有の値は `scripts/harness.conf`。
+フックと `scripts/check-*.sh` は「入力を集める → policy で判断 → 結果を返す」だけの薄いアダプタ。
+`scripts/lib/shared-files.txt` に挙げたファイルは plugin-sdk と同一に保つ（固有の値を書かない）。
+
 `.claude/settings.json` に定義。
 
 | タイミング | フック | 役割 |
 | --- | --- | --- |
-| セッション開始 | `session-start.sh` | rustfmt/clippy・wasm ターゲット・web の依存を用意し、現在ブランチを通知 |
+| セッション開始 | `session-start.sh` | rustfmt/clippy・wasm ターゲット・npm 依存・shellcheck を用意し、現在ブランチと作業ルールを通知 |
 | Bash 実行前 | `guard-git.sh` | main / dev への push・その上での commit・force-push・一括ステージ・禁止ファイルのコミットをブロック |
 | マージ操作前 | `guard-merge.sh` | dev 向けの Squash は許可、main 向けは毎回ユーザーの承認を求め、方式の誤りは拒否 |
 | ファイル編集前 | `protect-files.sh` | 凍結・生成ファイル（モック、ゴールデン JSON、lock ファイル）の直接編集をブロック |

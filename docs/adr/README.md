@@ -12,3 +12,4 @@
 | [0005](0005-diagram-layout-storage.md) | 図の表示対象と配置情報の保存先 | 採用 |
 | [0006](0006-licensing.md) | ライセンス：AGPL＋プラグイン例外＋CLA | 採用 |
 | [0007](0007-dev-integration-branch.md) | dev 統合ブランチとマイルストーン単位のリリース | 採用 |
+| [0008](0008-principles-as-harness.md) | プログラミング原則・テスト原則のスキル化とハーネスでの強制 | 採用 |

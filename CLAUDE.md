@@ -18,7 +18,7 @@ SysML v2 / KerML のテキストとダイアグラムを同期編集するモデ
 
 詳細は [docs/development/branching-strategy.md](docs/development/branching-strategy.md)。要点のみ:
 
-- 作業ブランチは `dev` から作り、PR は `dev` に向ける。`main` / `dev` へ直接 commit / push しない（フックでブロックされる）
+- 作業ブランチは `dev` から作り、PR は `dev` に向ける（GitHub の既定ブランチは `main` なので、PR 作成時に base を `dev` と明示する）。`main` / `dev` へ直接 commit / push しない（フックでブロックされる）
 - ブランチ名: `<type>/<topic>`（type: feat|fix|refactor|docs|test|perf|ci|chore|claude）
 - コミット / PR タイトル: `<type>(<scope>): <summary>`（Conventional Commits）
 - 1 ブランチ 1 目的。依頼範囲外のリファクタや整形を混ぜない
@@ -37,6 +37,7 @@ SysML v2 / KerML のテキストとダイアグラムを同期編集するモデ
 | 単体テスト絞り込み | `cargo test -p <crate> <name>` |
 | ブランチ名検証 | `scripts/check-branch-name.sh` |
 | PR タイトル検証 | `scripts/check-pr-title.sh "<title>"` |
+| PR 向け先検証 | `scripts/check-pr-base.sh <base> <head>` |
 
 ## ハーネス（自動で動くもの）
 

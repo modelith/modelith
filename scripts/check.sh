@@ -1,53 +1,70 @@
 #!/usr/bin/env bash
 # ハーネスの単一エントリポイント。人間・AI エージェント・CI すべてがこれを実行する。
-#   scripts/check.sh          フルチェック
-#   scripts/check.sh --fast   高速チェック（Stop フック用）
+# テスト原則（.claude/skills/testing-principles/）に従い、静的検査 → 単体 → 結合 → 統合 の順に実行し、
+# 失敗した段階で止まる。
+#   scripts/check.sh          全段階
+#   scripts/check.sh --fast   静的検査（軽量）と単体テストのみ（Stop フック用）
 set -euo pipefail
-
 cd "$(git rev-parse --show-toplevel)"
 
-mode="full"
-[[ "${1:-}" == "--fast" ]] && mode="fast"
+MODE=full
+[[ ${1:-} == --fast ]] && MODE=fast
+BATS=tests/harness/node_modules/.bin/bats
 
 step() { printf '\n==> %s\n' "$*"; }
 
-step "branch name"
-scripts/check-branch-name.sh
+ensure_dependencies() {
+  [[ -d web/node_modules ]] || npm ci --prefix web --no-audit --no-fund
+  [[ -d tests/harness/node_modules ]] || npm ci --prefix tests/harness --no-audit --no-fund
+  command -v shellcheck >/dev/null || { echo "ERROR: shellcheck が必要です（pip install shellcheck-py など）" >&2; exit 1; }
+}
 
-# 非公開のモック・依存物・ビルド成果物が Git 管理下に入っていないか（guard-git.sh と同じパターン）
-step "forbidden files"
-FORBIDDEN='(^|/)node_modules/|^reference/mock/|^target/'
-if tracked="$(git ls-files | grep -E "$FORBIDDEN")"; then
-  echo "ERROR: コミットしてはいけないファイルが Git 管理下にあります:" >&2
-  echo "$tracked" | head -20 >&2
-  exit 1
-fi
+stage_static() {
+  step "[static] ブランチ名・禁止ファイル・原則"
+  scripts/check-branch-name.sh
+  scripts/check-forbidden-files.sh
+  scripts/check-principles.sh
+  step "[static] rust: fmt / $([[ $MODE == fast ]] && echo check || echo clippy)"
+  cargo fmt --all -- --check
+  if [[ $MODE == fast ]]; then
+    cargo check --workspace --all-targets --quiet
+  else
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
+  fi
+  step "[static] web: typecheck"
+  npm run --prefix web -s typecheck
+}
 
-step "rust: fmt"
-cargo fmt --all -- --check
-
-if [[ "$mode" == "fast" ]]; then
-  step "rust: check"
-  cargo check --workspace --all-targets --quiet
-else
-  step "rust: clippy"
-  cargo clippy --workspace --all-targets --all-features -- -D warnings
-  step "rust: test"
-  cargo test --workspace --all-features
-  step "wasm: build (wasm32-unknown-unknown)"
-  cargo build -p modelith-wasm --target wasm32-unknown-unknown --quiet
-fi
-
-step "golden: モックの出力と reference/golden が一致するか"
-node reference/tools/gen-golden.mjs --check
-
-step "web: typecheck"
-[[ -d web/node_modules ]] || npm ci --prefix web --no-audit --no-fund
-npm run --prefix web -s typecheck
-
-if [[ "$mode" == "full" ]]; then
-  step "web: test"
+stage_unit() {
+  step "[unit] harness"
+  "$BATS" tests/harness/unit
+  step "[unit] rust"
+  cargo test --workspace --lib --bins --quiet
+  step "[unit] web"
   npm run --prefix web -s test
-fi
+}
 
-step "OK ($mode)"
+stage_integration() {
+  step "[integration] harness"
+  "$BATS" tests/harness/integration
+  step "[integration] rust（crates/*/tests）"
+  if compgen -G 'crates/*/tests/*.rs' >/dev/null; then cargo test --workspace --test '*' --quiet; else echo "なし"; fi
+}
+
+stage_system() {
+  step "[system] harness"
+  "$BATS" tests/harness/system
+  step "[system] wasm build"
+  cargo build -p modelith-wasm --target wasm32-unknown-unknown --quiet
+  step "[system] golden（モックとの一致。モックが手元に無ければスキップ）"
+  node reference/tools/gen-golden.mjs --check
+}
+
+ensure_dependencies
+stage_static
+stage_unit
+if [[ $MODE == full ]]; then
+  stage_integration
+  stage_system
+fi
+step "OK ($MODE)"

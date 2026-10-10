@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# Stop: エージェントが作業完了を宣言する前に高速チェックを走らせる。
-# 失敗したら exit 2 で停止を差し戻し、エラー内容を修正させる。
+# Stop: 作業完了の前に高速チェックを走らせ、失敗なら停止を差し戻す（終了コード 2）。
+# 対象となる変更は scripts/harness.conf の HARNESS_VERIFY_TRIGGER、判断は scripts/lib/policy.sh。
 set -uo pipefail
+# shellcheck source=../../scripts/lib/load.sh
+source "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}/scripts/lib/load.sh"
+harness_load hook-io
+hook_read_input
 
-input="$(cat)"
 # 差し戻し後の再停止では無限ループを避けるため通す
-[[ "$(jq -r '.stop_hook_active // false' <<<"$input")" == "true" ]] && exit 0
+[[ "$(hook_field .stop_hook_active)" == "true" ]] && exit 0
 
-cd "${CLAUDE_PROJECT_DIR:-.}"
-
-# コード・ハーネス関連の変更が無ければ何もしない
+cd "$HARNESS_ROOT" || exit 0
 changed="$( { git diff --name-only HEAD; git ls-files --others --exclude-standard; } 2>/dev/null)"
-grep -qE '(\.(rs|ts|mjs)$|Cargo\.(toml|lock)$|package(-lock)?\.json$|^(scripts|reference)/)' <<<"$changed" || exit 0
+policy_needs_verify <<<"$changed" || exit 0
 
 if ! out="$(scripts/check.sh --fast 2>&1)"; then
   echo "scripts/check.sh --fast が失敗しました。修正してから完了してください。" >&2

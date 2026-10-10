@@ -27,4 +27,17 @@ if [[ "$branch" == "main" && "$cmd" =~ git[[:space:]]+(commit|merge|rebase|reset
   deny "main 上での commit/merge/rebase/reset は禁止です。先に 'git switch -c <type>/<topic>' してください。"
 fi
 
+# 一括ステージは非公開ファイルや依存物を巻き込む事故の元なので、パスを明示させる
+add_all='git[[:space:]]+add[[:space:]]+([^;&|]*[[:space:]])?(-A|--all|\.|:/)([[:space:];&|]|$)'
+if [[ "$cmd" =~ $add_all ]]; then
+  deny "git add -A / --all / . は禁止です。追加するファイルやディレクトリを明示してください。"
+fi
+
+# コミット対象に禁止パス（scripts/check.sh の FORBIDDEN と同じ）が含まれていたら止める
+if [[ "$cmd" =~ git[[:space:]]+commit ]]; then
+  staged="$(git diff --cached --name-only 2>/dev/null | grep -E '(^|/)node_modules/|^reference/mock/|^target/' || true)"
+  [[ -z "$staged" ]] || deny "コミット禁止のファイルがステージされています（'git restore --staged <path>' で外してください）:
+$staged"
+fi
+
 exit 0

@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened, edited]  # edited: タイトル・向け先の変更でも再検証
   push:
     branches: [main, dev]
 
@@ -25,6 +25,11 @@ jobs:
       - name: Branch name
         run: scripts/check-branch-name.sh "$HEAD_REF"
         env:
+          HEAD_REF: ${{ github.head_ref }}
+      - name: PR base (feature branches target dev)
+        run: scripts/check-pr-base.sh "$BASE_REF" "$HEAD_REF"
+        env:
+          BASE_REF: ${{ github.base_ref }}
           HEAD_REF: ${{ github.head_ref }}
       - name: PR title (Conventional Commits)
         run: scripts/check-pr-title.sh "$PR_TITLE"

@@ -22,7 +22,7 @@ dev                      ──(マージコミット, マイルストーンご�
 | ブランチ | 用途 | 寿命 | 作成元 → マージ先 |
 | --- | --- | --- | --- |
 | `main` | リリース済みの状態。タグはここに打つ | 永続 | — |
-| `dev` | 統合ブランチ。次のリリースに向けた変更が集まる。**GitHub の既定ブランチ** | 永続 | `main` から作成 → `main` |
+| `dev` | 統合ブランチ。次のリリースに向けた変更が集まる | 永続 | `main` から作成 → `main` |
 | `feat/<topic>` | 機能追加 | 短命 | `dev` → `dev` |
 | `fix/<topic>` | バグ修正 | 短命 | `dev` → `dev`（緊急修正は後述） |
 | `refactor/<topic>` | 振る舞いを変えない構造改善 | 短命 | `dev` → `dev` |
@@ -46,7 +46,7 @@ git switch -c feat/kerml-parser
 scripts/check.sh            # ローカルでハーネスを通す
 git commit -m "feat(parser): add KerML lexer"
 git push -u origin feat/kerml-parser
-# → dev 向けに PR 作成。CI グリーンで Squash merge。ブランチは自動削除。
+# → 向け先に dev を明示して PR 作成（GitHub の既定ブランチは main のため）。CI グリーンで Squash merge。ブランチは自動削除。
 ```
 
 `dev` が先に進んだ場合は **rebase ではなく `dev` をマージ** して追従してよい（Squash merge なので履歴は汚れない）。
@@ -71,6 +71,7 @@ git push -u origin feat/kerml-parser
 | 指示 | `CLAUDE.md` に明記 |
 | エージェント | `guard-merge.sh`（PreToolUse）が PR のマージ先とマージ元を確認し、`dev` 向けの Squash（と `main` → `dev` の同期）は許可、`main` 向けは毎回ユーザーの承認を求め、方式の誤り（トピック → `dev` のマージコミット、`main` への Squash 等）は拒否する。マージ先を確認できないときも承認を求める |
 | Git 操作 | `guard-git.sh` が `main` / `dev` への直接 push と、その上での commit / merge をブロック |
+| CI | `scripts/check-pr-base.sh` が PR の向け先を検証する。`main` 向けは `dev`（リリース）と `fix/*`（緊急修正）からのみ |
 | GitHub | `main` / `dev` のルールセットで PR・CI・マージ方式を強制する（後述） |
 
 エージェントは GitHub 上ではメンテナ本人のアカウント権限で動くことがあるため、GitHub 側の設定だけでは
@@ -124,7 +125,8 @@ plugin-sdk の契約を変える場合は、plugin-sdk 側を先にリリース�
 
 **Settings → General**
 
-- Default branch: **`dev`**（PR の既定の向き先になる）
+- Default branch: **`main`** のまま（トップページはリリース済みの状態を見せる）。
+  そのため PR を作るときは向け先に `dev` を明示する。向け先の誤りは CI（`conventions`）が検出する
 - Pull Requests: Allow merge commits と Allow squash merging を有効、Allow rebase merging は無効
   - Squash の Default commit message: **Pull request title**
 - Automatically delete head branches: 有効

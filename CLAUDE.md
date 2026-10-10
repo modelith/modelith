@@ -28,13 +28,14 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 
 詳細は [docs/development/branching-strategy.md](docs/development/branching-strategy.md)。要点のみ:
 
-- `main` へ直接 commit / push しない（フックでブロックされる）
+- 作業ブランチは `dev` から作り、PR は `dev` に向ける。`main` / `dev` へ直接 commit / push しない（フックでブロックされる）
 - ブランチ名: `<type>/<topic>`（type: feat|fix|refactor|docs|test|perf|ci|chore|claude）
 - コミット / PR タイトル: `<type>(<scope>): <summary>`（Conventional Commits）
 - 1 ブランチ 1 目的。依頼範囲外のリファクタや整形を混ぜない
 - force-push 禁止。他人のブランチの履歴を書き換えない
+- **トピック → `dev` は許可なしでマージしてよい。** 条件は CI（`check` / `conventions`）がグリーンで、未解決のレビューコメントがないこと。方式は Squash
 - **`main` へのマージ（PR のマージ、auto-merge の有効化を含む）はメンテナの明示的な許可を得てから行う。**
-  許可は PR ごとに取る。過去の許可や他の PR への許可を流用しない。CI がグリーンでも、レビューが済んでいても同じ
+  `dev` → `main` はマイルストーン（リリース）ごと、方式はマージコミット。許可は PR ごとに取り、過去の許可や他の PR への許可を流用しない
 - ステージはパスを明示する（`git add -A` / `.` はフックでブロックされる）。非公開のモック・`node_modules`・`target` はコミットしない
 
 ## コマンド
@@ -56,8 +57,8 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 | タイミング | フック | 役割 |
 | --- | --- | --- |
 | セッション開始 | `session-start.sh` | rustfmt/clippy・wasm ターゲット・web の依存を用意し、現在ブランチを通知 |
-| Bash 実行前 | `guard-git.sh` | main への push・main 上の commit・force-push・一括ステージ・禁止ファイルのコミットをブロック |
-| マージ操作前 | `permissions.ask` | PR のマージ・auto-merge の有効化は毎回ユーザーの承認を求める |
+| Bash 実行前 | `guard-git.sh` | main / dev への push・その上での commit・force-push・一括ステージ・禁止ファイルのコミットをブロック |
+| マージ操作前 | `guard-merge.sh` | dev 向けの Squash は許可、main 向けは毎回ユーザーの承認を求め、方式の誤りは拒否 |
 | ファイル編集前 | `protect-files.sh` | 凍結・生成ファイル（モック、ゴールデン JSON、lock ファイル）の直接編集をブロック |
 | ファイル編集後 | `format-rust.sh` | 編集した `.rs` を rustfmt で整形 |
 | 停止前 | `verify-on-stop.sh` | コード変更があれば `check.sh --fast` を実行し、失敗なら差し戻し |

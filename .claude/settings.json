@@ -16,7 +16,11 @@
       "Bash(git switch:*)",
       "Bash(npm test:*)",
       "Bash(npm run:*)",
-      "Bash(node reference/tools/gen-golden.mjs:*)"
+      "Bash(node reference/tools/gen-golden.mjs:*)",
+      "Bash(tests/harness/node_modules/.bin/bats:*)",
+      "Bash(scripts/check-principles.sh:*)",
+      "Bash(scripts/check-forbidden-files.sh:*)",
+      "Bash(scripts/check-shared-sync.sh:*)"
     ],
     "ask": [
       "Bash(gh pr merge:*)"

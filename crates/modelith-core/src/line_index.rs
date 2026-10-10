@@ -64,30 +64,136 @@ impl LineIndex {
 mod tests {
     use super::*;
 
+    // 1 行目: ASCII、2 行目: 3 バイト文字（UTF-16 で 1 単位）、3 行目: 末尾に改行なし
     const TEXT: &str = "part def A;\n// 日本語\npart b : A;";
 
+    // --- line_col: 正常系（同値クラス: 行頭・行中・行末・テキスト末尾） ---
+
     #[test]
-    fn roundtrip_ascii_and_multibyte() {
+    fn line_col_at_text_start_is_origin() {
+        // Arrange
         let idx = LineIndex::new(TEXT);
-        for (offset, _) in TEXT.char_indices().chain([(TEXT.len(), ' ')]) {
-            let lc = idx.line_col(offset).unwrap();
-            assert_eq!(idx.offset(lc), Some(offset), "offset {offset} -> {lc:?}");
-        }
+        // Act
+        let pos = idx.line_col(0);
+        // Assert
+        assert_eq!(pos, Some(LineCol { line: 0, col: 0 }));
     }
 
     #[test]
-    fn columns_are_utf16() {
+    fn line_col_just_after_newline_starts_next_line() {
+        // Arrange（境界値: 改行の直後）
         let idx = LineIndex::new(TEXT);
-        let after_kanji = TEXT.find("語").unwrap() + "語".len();
-        assert_eq!(idx.line_col(after_kanji), Some(LineCol { line: 1, col: 6 }));
+        let after_newline = TEXT.find('\n').unwrap() + 1;
+        // Act
+        let pos = idx.line_col(after_newline);
+        // Assert
+        assert_eq!(pos, Some(LineCol { line: 1, col: 0 }));
     }
 
     #[test]
-    fn rejects_out_of_range() {
+    fn line_col_counts_columns_in_utf16_units() {
+        // Arrange（同値クラス: マルチバイト文字の後ろ）
         let idx = LineIndex::new(TEXT);
-        assert_eq!(idx.line_col(TEXT.len() + 1), None);
-        assert_eq!(idx.line_col(TEXT.find("語").unwrap() + 1), None);
-        assert_eq!(idx.offset(LineCol { line: 9, col: 0 }), None);
-        assert_eq!(idx.offset(LineCol { line: 0, col: 99 }), None);
+        let after_kanji = TEXT.find('語').unwrap() + '語'.len_utf8();
+        // Act
+        let pos = idx.line_col(after_kanji);
+        // Assert
+        assert_eq!(pos, Some(LineCol { line: 1, col: 6 }));
+    }
+
+    #[test]
+    fn line_col_at_text_end_is_last_position() {
+        // Arrange（境界値: テキスト末尾 = len）
+        let idx = LineIndex::new(TEXT);
+        // Act
+        let pos = idx.line_col(TEXT.len());
+        // Assert
+        assert_eq!(pos, Some(LineCol { line: 2, col: 11 }));
+    }
+
+    // --- line_col: 異常系 ---
+
+    #[test]
+    fn line_col_rejects_offset_past_end() {
+        // Arrange（境界値: len + 1）
+        let idx = LineIndex::new(TEXT);
+        // Act
+        let pos = idx.line_col(TEXT.len() + 1);
+        // Assert
+        assert_eq!(pos, None);
+    }
+
+    #[test]
+    fn line_col_rejects_offset_inside_multibyte_char() {
+        // Arrange（同値クラス: 文字境界でない位置）
+        let idx = LineIndex::new(TEXT);
+        let inside = TEXT.find('語').unwrap() + 1;
+        // Act
+        let pos = idx.line_col(inside);
+        // Assert
+        assert_eq!(pos, None);
+    }
+
+    // --- offset: 正常系・異常系 ---
+
+    #[test]
+    fn offset_is_inverse_of_line_col_for_every_char_boundary() {
+        // Arrange
+        let idx = LineIndex::new(TEXT);
+        let boundaries: Vec<usize> = TEXT
+            .char_indices()
+            .map(|(i, _)| i)
+            .chain([TEXT.len()])
+            .collect();
+        // Act
+        let roundtrips: Vec<Option<usize>> = boundaries
+            .iter()
+            .map(|&o| idx.offset(idx.line_col(o).unwrap()))
+            .collect();
+        // Assert
+        assert_eq!(
+            roundtrips,
+            boundaries.into_iter().map(Some).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn offset_accepts_column_at_line_end() {
+        // Arrange（境界値: 行末の列 = 行の長さ）
+        let idx = LineIndex::new(TEXT);
+        // Act
+        let offset = idx.offset(LineCol { line: 0, col: 11 });
+        // Assert
+        assert_eq!(offset, Some(TEXT.find('\n').unwrap()));
+    }
+
+    #[test]
+    fn offset_rejects_column_past_line_end() {
+        // Arrange（境界値: 行の長さ + 1）
+        let idx = LineIndex::new(TEXT);
+        // Act
+        let offset = idx.offset(LineCol { line: 0, col: 12 });
+        // Assert
+        assert_eq!(offset, None);
+    }
+
+    #[test]
+    fn offset_rejects_line_past_last() {
+        // Arrange（境界値: 最終行 + 1）
+        let idx = LineIndex::new(TEXT);
+        // Act
+        let offset = idx.offset(LineCol { line: 3, col: 0 });
+        // Assert
+        assert_eq!(offset, None);
+    }
+
+    #[test]
+    fn empty_text_has_single_empty_line() {
+        // Arrange（境界値: 空テキスト）
+        let idx = LineIndex::new("");
+        // Act
+        let (pos, offset) = (idx.line_col(0), idx.offset(LineCol { line: 0, col: 0 }));
+        // Assert
+        assert_eq!((pos, offset), (Some(LineCol { line: 0, col: 0 }), Some(0)));
     }
 }

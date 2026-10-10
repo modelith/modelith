@@ -1,20 +1,15 @@
 #!/usr/bin/env bash
-# ブランチ名が docs/development/branching-strategy.md の規約に従っているか検証する。
-#   scripts/check-branch-name.sh [branch]
+# ブランチ名がブランチ戦略の規約に従っているか検証する。判断は scripts/lib/policy.sh。
+#   scripts/check-branch-name.sh [branch]   省略時は GITHUB_HEAD_REF か現在のブランチ
 set -euo pipefail
+# shellcheck source=lib/load.sh
+source "$(dirname "$0")/lib/load.sh"
+harness_load
 
 branch="${1:-${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD)}}"
-pattern='^(feat|fix|refactor|docs|test|perf|ci|chore|claude)/[a-z0-9][a-z0-9._-]*$'
-
-case "$branch" in
-  main | dev | HEAD) exit 0 ;; # 長期ブランチ自体・detached HEAD (CI) は対象外
-esac
-
-if [[ "$branch" =~ $pattern ]]; then
+if reason="$(policy_branch_name "$branch")"; then
   echo "branch '$branch' OK"
 else
-  echo "ERROR: branch '$branch' は命名規則に違反しています。" >&2
-  echo "  期待する形式: <type>/<topic>  (type: feat|fix|refactor|docs|test|perf|ci|chore|claude)" >&2
-  echo "  詳細: docs/development/branching-strategy.md" >&2
+  echo "ERROR: $reason" >&2
   exit 1
 fi

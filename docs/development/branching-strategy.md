@@ -45,6 +45,21 @@ git push -u origin feat/kerml-parser
 `main` が先に進んだ場合は **rebase ではなく `main` をマージ** して追従してよい（Squash merge なので履歴は汚れない）。
 他人（他エージェント）のブランチを force-push で書き換えてはならない。
 
+## `main` へのマージ
+
+**`main` へのマージはメンテナが許可したときだけ行う。** AI エージェントは PR の作成・修正・CI 対応までを担い、
+マージ（auto-merge の有効化を含む）はメンテナの明示的な許可を PR ごとに得てから実行する。
+
+| 層 | 仕組み |
+| --- | --- |
+| 指示 | `CLAUDE.md` に明記 |
+| エージェント | `.claude/settings.json` の `permissions.ask` で、マージ系の操作（GitHub MCP の `merge_pull_request` / `enable_pr_auto_merge`、`gh pr merge`）を実行する前に必ず承認を求める |
+| Git 操作 | `guard-git.sh` が `main` への直接 push・`main` 上での commit / merge をブロック |
+| GitHub | `main` のルールセットで PR・CI・CODEOWNERS レビューを必須にする（後述） |
+
+エージェントは GitHub 上ではメンテナ本人のアカウント権限で動くことがあるため、GitHub 側の設定だけでは
+「メンテナ本人の操作」と「エージェントの操作」を区別できない。エージェント側の承認（`permissions.ask`）が最終的な関門になる。
+
 ## コミット / PR タイトル規約
 
 [Conventional Commits](https://www.conventionalcommits.org/ja/v1.0.0/) に従う。PR タイトルは CI で検証される。

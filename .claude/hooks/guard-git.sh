@@ -14,17 +14,20 @@ deny() {
   exit 2
 }
 
+# main（リリース済み）と dev（統合ブランチ）は PR 経由でのみ更新する
+protected='^(main|dev)$'
+
 if [[ "$cmd" =~ git[[:space:]]+push ]]; then
-  [[ "$cmd" =~ (^|[[:space:]:])(refs/heads/)?main([[:space:]]|$) ]] &&
-    deny "main への直接 push は禁止です。トピックブランチから PR を作成してください。"
-  [[ "$branch" == "main" && ! "$cmd" =~ [[:space:]][a-z]+/ ]] &&
-    deny "main ブランチ上での push は禁止です。"
+  [[ "$cmd" =~ (^|[[:space:]:])(refs/heads/)?(main|dev)([[:space:]]|$) ]] &&
+    deny "main / dev への直接 push は禁止です。トピックブランチから dev 向けの PR を作成してください。"
+  [[ "$branch" =~ $protected && ! "$cmd" =~ [[:space:]][a-z]+/ ]] &&
+    deny "$branch ブランチ上での push は禁止です。"
   [[ "$cmd" =~ (--force([[:space:]]|$)|[[:space:]]-f([[:space:]]|$)) ]] &&
     deny "--force は禁止です。必要なら自分のブランチに限り --force-with-lease を使ってください。"
 fi
 
-if [[ "$branch" == "main" && "$cmd" =~ git[[:space:]]+(commit|merge|rebase|reset) ]]; then
-  deny "main 上での commit/merge/rebase/reset は禁止です。先に 'git switch -c <type>/<topic>' してください。"
+if [[ "$branch" =~ $protected && "$cmd" =~ git[[:space:]]+(commit|merge|rebase|reset) ]]; then
+  deny "$branch 上での commit/merge/rebase/reset は禁止です。先に 'git switch -c <type>/<topic>' してください。"
 fi
 
 # 一括ステージは非公開ファイルや依存物を巻き込む事故の元なので、パスを明示させる

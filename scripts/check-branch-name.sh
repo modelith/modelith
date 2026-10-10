@@ -7,7 +7,7 @@ branch="${1:-${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD)}}"
 pattern='^(feat|fix|refactor|docs|test|perf|ci|chore|claude)/[a-z0-9][a-z0-9._-]*$'
 
 case "$branch" in
-  main | HEAD) exit 0 ;; # main 自体・detached HEAD (CI) は対象外
+  main | dev | HEAD) exit 0 ;; # 長期ブランチ自体・detached HEAD (CI) は対象外
 esac
 
 if [[ "$branch" =~ $pattern ]]; then

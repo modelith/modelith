@@ -1,0 +1,105 @@
+{
+  "case": "basic-parts",
+  "entries": [
+    {
+      "$entry": 0
+    },
+    {
+      "$entry": 1
+    },
+    {
+      "$entry": 2
+    },
+    {
+      "$entry": 3
+    },
+    {
+      "$entry": 4
+    },
+    {
+      "$entry": 5
+    }
+  ],
+  "rels": [],
+  "errors": [],
+  "layout": {},
+  "model": {
+    "nodes": [
+      {
+        "key": "Engine",
+        "name": "Engine",
+        "short": "",
+        "kind": "part def",
+        "isDef": true,
+        "entry": 1,
+        "fam": "part",
+        "trans": [],
+        "ports": [
+          {
+            "name": "fuelIn",
+            "type": "FuelPort",
+            "conj": false,
+            "dir": "inout",
+            "entry": {
+              "$entry": 2
+            }
+          }
+        ],
+        "phase": null,
+        "phaseOwn": false
+      },
+      {
+        "key": "FuelPort",
+        "name": "FuelPort",
+        "short": "",
+        "kind": "port def",
+        "isDef": true,
+        "entry": 3,
+        "fam": "other",
+        "trans": [],
+        "ports": [],
+        "phase": null,
+        "phaseOwn": false
+      },
+      {
+        "key": "Car",
+        "name": "Car",
+        "short": "",
+        "kind": "part def",
+        "isDef": true,
+        "entry": 4,
+        "fam": "part",
+        "trans": [],
+        "ports": [],
+        "phase": null,
+        "phaseOwn": false
+      }
+    ],
+    "edges": [
+      {
+        "id": "comp|Engine|FuelPort|fuelIn#1",
+        "kind": "comp",
+        "from": "Engine",
+        "to": "FuelPort",
+        "label": "fuelIn",
+        "src": {
+          "start": 48,
+          "end": 71
+        }
+      },
+      {
+        "id": "comp|Car|Engine|engine#1",
+        "kind": "comp",
+        "from": "Car",
+        "to": "Engine",
+        "label": "engine",
+        "src": {
+          "start": 150,
+          "end": 171
+        }
+      }
+    ],
+    "problems": [],
+    "phases": null
+  }
+}

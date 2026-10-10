@@ -23,8 +23,9 @@ rustc-ice-*.txt
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# Node
+# Node / web
 node_modules/
+web/dist/
 
 # 非公開のモック（ADR-0002）。各自のローカルにだけ置き、コミットしない
 reference/mock/

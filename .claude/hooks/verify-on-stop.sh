@@ -9,9 +9,9 @@ input="$(cat)"
 
 cd "${CLAUDE_PROJECT_DIR:-.}"
 
-# Rust / ハーネス関連の変更が無ければ何もしない
+# コード・ハーネス関連の変更が無ければ何もしない
 changed="$( { git diff --name-only HEAD; git ls-files --others --exclude-standard; } 2>/dev/null)"
-grep -qE '(\.rs$|Cargo\.(toml|lock)$|^scripts/)' <<<"$changed" || exit 0
+grep -qE '(\.(rs|ts|mjs)$|Cargo\.(toml|lock)$|package(-lock)?\.json$|^(scripts|reference)/)' <<<"$changed" || exit 0
 
 if ! out="$(scripts/check.sh --fast 2>&1)"; then
   echo "scripts/check.sh --fast が失敗しました。修正してから完了してください。" >&2

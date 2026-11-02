@@ -14,7 +14,8 @@
   <a href="https://modelith.github.io/">ユーザーマニュアル</a> &nbsp;|&nbsp;
   <a href="https://github.com/modelith/modelith/releases">リリース</a> &nbsp;|&nbsp;
   <a href="https://modelith.github.io/modelith/reports/requirements.html">テスト結果</a> &nbsp;|&nbsp;
-  <a href="https://github.com/modelith/modelith/issues/new/choose">フィードバック</a>
+  <a href="https://github.com/modelith/modelith/issues/new/choose">フィードバック</a> &nbsp;|&nbsp;
+  <a href="https://github.com/sponsors/modelith">支援する</a>
 </p>
 
 <p align="center">
@@ -130,6 +131,13 @@ SysML v2 のテキストの書き方のうち、よく使う部分から対応�
 | [modelith](https://github.com/modelith/modelith) | エディタ本体（Rust コア・Web アプリ・CLI） | AGPL-3.0 + [Plugin Exception](PLUGIN-EXCEPTION.md) |
 | [plugin-sdk](https://github.com/modelith/plugin-sdk) | プラグイン向けのインタフェース・型定義 | MIT |
 | [modelith.github.io](https://github.com/modelith/modelith.github.io) | ユーザーマニュアル | MIT |
+
+## 支援する
+
+Modelith の開発を続けるための支援を、[GitHub Sponsors](https://github.com/sponsors/modelith) で受け付けています。
+GitHub のアカウントがあれば、毎月または 1 回だけの支援を選べます。
+
+<a href="https://github.com/sponsors/modelith"><img src="https://img.shields.io/badge/sponsor-modelith-ea4aaa?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors で支援する"></a>
 
 ## License
 

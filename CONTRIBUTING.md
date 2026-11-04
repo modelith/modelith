@@ -15,11 +15,11 @@
 ## 必要なツール
 
 - Rust stable（`rust-toolchain.toml` で wasm32 ターゲットごと自動導入）
-- Node.js 22 の最新（`.nvmrc`。CI は毎回最新の 22.x を使う）
+- Node.js 26 の最新（`.nvmrc`。CI は毎回最新の 26.x を使う）
 
 ## 手元で動かす
 
-必要なもの：Rust（stable。`rust-toolchain.toml` が wasm32 ターゲットごと入れる）、Node.js 22、UI テストを動かすなら Docker。
+必要なもの：Rust（stable。`rust-toolchain.toml` が wasm32 ターゲットごと入れる）、Node.js 26、UI テストを動かすなら Docker。
 
 ```bash
 git clone https://github.com/modelith/modelith.git

@@ -55,6 +55,8 @@ test("F-FILE-15: ほかのファイルを編集すると、表示に戻ったと
   // Arrange
   await openApp2(page);
   await page.locator('#explorer [data-file][title="parts.sysml"]').click();
+  // ファイルを開くのは非同期。表示を待たずに打つと、まだ表示中の app.sysml の入力になる
+  await expect(page.locator("#docName")).toHaveText("parts.sysml");
   // Act（Car の名前をテキストで変える）
   await page.locator("#ed").fill(PARTS.replace("Car", "Truck"));
   await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ

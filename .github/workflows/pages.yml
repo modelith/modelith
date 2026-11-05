@@ -51,6 +51,26 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release list --limit 200 --json tagName,isDraft | node web/tools/channels-cli.ts | tee -a "$GITHUB_OUTPUT"
+      # 版ごとに、そのタグの .nvmrc の Node.js を入れておく（scripts/pages-build.sh が版ごとに使い分ける）。
+      # 古い版のテストの道具は、新しい Node.js で動かないことがあるため（v0.1.0-rc.1 の Playwright 1.56 と Node.js 26 など）
+      - name: Read the Node.js version of each channel
+        id: node
+        env:
+          STABLE: ${{ steps.pick.outputs.stable }}
+          PREVIEW: ${{ steps.pick.outputs.preview }}
+        run: |
+          if [[ -n $STABLE ]]; then echo "stable=$(git show "$STABLE:.nvmrc" | tr -d '[:space:]v')" >> "$GITHUB_OUTPUT"; fi
+          if [[ -n $PREVIEW ]]; then echo "preview=$(git show "$PREVIEW:.nvmrc" | tr -d '[:space:]v')" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.node.outputs.stable != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ steps.node.outputs.stable }}
+          check-latest: true
+      - if: steps.node.outputs.preview != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ steps.node.outputs.preview }}
+          check-latest: true
       # 版ごとに、そのタグの中身で e2e・UI テストを流してからビルドする（失敗したら公開しない）。
       # ブラウザは Playwright の公式イメージ（Docker）の中で動かす（scripts/e2e.sh）
       - name: Test and build both channels

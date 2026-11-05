@@ -15,6 +15,26 @@ out=${3:?出力先を渡してください}
 base=${4:?base（/modelith/ など）を渡してください}
 failed_results="$PWD/pages-test-results"
 
+# 今の作業ツリー（版のタグ）の .nvmrc にある Node.js を、PATH の先頭に置く。版ごとに、その版を出したときと同じ
+# Node.js でテストして組み立てる（古い版のテストの道具が、新しい Node.js では動かないことがあるため）。
+# CI では、ワークフローが setup-node で入れておいた版を RUNNER_TOOL_CACHE から探し、無ければ止める。
+# 手元（RUNNER_TOOL_CACHE が無い）では今の node のまま使い、版が違えば知らせる
+use_node_of_tag() {
+  local want bin
+  want=$(tr -d '[:space:]v' < .nvmrc)
+  if [[ -n ${RUNNER_TOOL_CACHE:-} ]]; then
+    bin=$(printf '%s\n' "$RUNNER_TOOL_CACHE"/node/"$want".*/x64/bin | grep -v '\*' | sort -V | tail -n 1)
+    if [[ -z $bin ]]; then
+      echo "ERROR: Node.js $want が入っていません（ワークフローで setup-node してください）" >&2
+      exit 1
+    fi
+    PATH="$bin:$PATH"
+  elif [[ $(node -p 'process.versions.node.split(".")[0]') != "$want" ]]; then
+    echo "注意: この版は Node.js $want で作られていますが、今の Node.js は $(node -v) です" >&2
+  fi
+  echo "Node.js $(node -v) で確かめます"
+}
+
 # 1 つの版を、そのタグの作業ツリーでテストしてビルドし、出力先の dest に写す。
 # 5 番目からの引数は、そのままテスト（Playwright）に渡す
 build_one() {
@@ -24,6 +44,7 @@ build_one() {
   git worktree add --detach "$dir" "$tag"
   (
     cd "$dir"
+    use_node_of_tag
     npm ci --prefix web --ignore-scripts --no-audit --no-fund
     if ! scripts/e2e.sh "$@"; then
       mkdir -p "$failed_results/$channel"

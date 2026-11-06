@@ -1,63 +1,168 @@
 name: Pages
 
-# GitHub のリリースを公開すると、そのタグの Web アプリを GitHub Pages に公開する（docs/development/releasing.md）。
-# リリースの下書きは release-draft.yml が作り、公開（Publish）はメンテナが画面で行う。公開したときにタグも作られる。
+# Web アプリを GitHub Pages に公開する（ADR-0022、docs/development/releasing.md）。
+# 安定版を /modelith/、リリース候補版を /modelith/rc/、プレビュー版を /modelith/preview/ に置く。
+#
+# 公開は、必ず dev のこのファイルの定義で行う。リリースの公開で動いたとき（この定義はタグのコミットのもの）は、
+# dev の定義を起動するだけにする。github-pages の公開先は dev だけに絞ってあるので、古いタグの定義が動いても公開できない。
+#
+# 版ごとのアプリは、系列ごとに 1 回だけテストして組み立て、そのリリースに添付する（modelith-web-<系列>.tar.gz）。
+# 公開のたびに作り直さず、添付したものを並べるだけにする。添付が無い版だけ、その場で作って添付する。
 on:
   release:
     types: [published]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+permissions: {}
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  # リリースの公開を受けたら、dev の定義で公開し直す（タグの定義では公開しない）
+  dispatch:
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      actions: write  # dev の pages.yml を起動する
+    steps:
+      - name: Start the publish workflow on dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref dev
+
+  # 公開済みのリリースから、系列ごとの版を選ぶ（判断は web/tools/channels.ts）
+  pick:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # リリースの一覧を読む
+    outputs:
+      stable: ${{ steps.pick.outputs.stable }}
+      rc: ${{ steps.pick.outputs.rc }}
+      preview: ${{ steps.pick.outputs.preview }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # GitHub の実行環境の rustup は古いことがある。古い rustup はツールチェーンを取るときの TLS の確かめが甘い
-      # （RUSTSEC-2026-0382）ので、ツールチェーンを入れる前に rustup 自身を更新し、1.29.2 以上であることを確かめる
-      - name: Update rustup itself
-        run: |
-          rustup self update
-          scripts/check-rustup.sh
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable (2026-10)
-        with:
-          toolchain: stable
-          targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-          check-latest: true  # 毎回その時点の最新の 22.x を使う（セキュリティリリースをすぐ取り込む）
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci --prefix web --ignore-scripts --no-audit --no-fund
-      # 公開する版で e2e・UI テストを流し、そのレポートも一緒に公開する（失敗したら公開しない）
-      # ブラウザは Playwright の公式イメージ（Docker）の中で動かす（scripts/e2e.sh）
-      - name: e2e and UI tests
-        run: scripts/e2e.sh
-      - name: Build
-        run: npm run build --prefix web
+          check-latest: true  # 毎回その時点の、.nvmrc の版の最新（26.x）を使う（セキュリティリリースをすぐ取り込む）
+      - name: Pick the versions to publish
+        id: pick
         env:
-          MODELITH_BASE: /${{ github.event.repository.name }}/
-      - name: Add test reports
-        run: cp -r web/reports web/dist/reports
-      # reports/e2e/ の画面は Playwright（Apache-2.0）の配布物なので、LICENSE と NOTICE を添える（C-5）
-      - name: Add licenses of the test report viewer
-        run: cp web/node_modules/playwright-core/{LICENSE,NOTICE,ThirdPartyNotices.txt} web/dist/reports/e2e/
+          GH_TOKEN: ${{ github.token }}
+        run: gh release list --limit 200 --json tagName,isDraft | node web/tools/channels-cli.ts | tee -a "$GITHUB_OUTPUT"
+
+  # 系列ごとに、その版のアプリがリリースに添付されているか確かめ、無ければテストして組み立てて添付する
+  build:
+    needs: pick
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 組み立てたアプリをリリースに添付する
+    strategy:
+      matrix:
+        channel: [stable, rc, preview]
+    env:
+      TAG: ${{ needs.pick.outputs[matrix.channel] }}
+      CHANNEL: ${{ matrix.channel }}
+      ASSET: modelith-web-${{ matrix.channel }}.tar.gz
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check whether the release already has this channel's app
+        id: have
+        run: |
+          if [[ -z $TAG ]]; then
+            echo "$CHANNEL に置く版はありません"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          elif gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qxF "$ASSET"; then
+            echo "$TAG には $ASSET が添付済みです（作り直しません）"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.have.outputs.build == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # 版のタグを作業ツリーに取り出すため
+      # GitHub の実行環境の rustup は古いことがある。古い rustup はツールチェーンを取るときの TLS の確かめが甘い
+      # （RUSTSEC-2026-0382）ので、ツールチェーンを入れる前に rustup 自身を更新し、1.29.2 以上であることを確かめる
+      - name: Update rustup itself
+        if: steps.have.outputs.build == 'true'
+        run: |
+          rustup self update
+          scripts/check-rustup.sh
+      - if: steps.have.outputs.build == 'true'
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable (2026-10)
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - if: steps.have.outputs.build == 'true'
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # その版のタグの .nvmrc の Node.js を入れる（scripts/pages-build-one.sh がその版で動かす）。
+      # 古い版のテストの道具は、新しい Node.js で動かないことがあるため（v0.1.0-rc.1 の Playwright 1.56 と Node.js 26 など）
+      - name: Read the Node.js version of the tag
+        if: steps.have.outputs.build == 'true'
+        id: node
+        run: echo "version=$(git show "$TAG:.nvmrc" | tr -d '[:space:]v')" >> "$GITHUB_OUTPUT"
+      - if: steps.have.outputs.build == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ steps.node.outputs.version }}
+          check-latest: true
+      # その版のタグの中身で e2e・UI テストを流してから組み立てる（失敗したら添付も公開もしない）。
+      # ブラウザは Playwright の公式イメージ（Docker）の中で動かす（scripts/e2e.sh）
+      - name: Test and build the app for this channel
+        if: steps.have.outputs.build == 'true'
+        run: scripts/pages-build-one.sh "$TAG" "$CHANNEL" "/${{ github.event.repository.name }}/$([[ $CHANNEL == stable ]] || echo "$CHANNEL/")" "$ASSET"
+      - name: Attach the app to the release
+        if: steps.have.outputs.build == 'true'
+        run: gh release upload "$TAG" "$ASSET" --repo "$GITHUB_REPOSITORY"
+      # テストが落ちて添付しなかったときは、失敗時の画面・差分画像・トレースを残し、原因を追えるようにする
+      - name: Upload test results of the failed channel
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pages-test-results-${{ matrix.channel }}
+          path: pages-test-results/
+          if-no-files-found: ignore
+
+  # 添付されたアプリを並べて公開する（作り直しもテストもしない）
+  deploy:
+    needs: [pick, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # リリースの添付を取ってくる
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      STABLE: ${{ needs.pick.outputs.stable }}
+      RC: ${{ needs.pick.outputs.rc }}
+      PREVIEW: ${{ needs.pick.outputs.preview }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download the app of each channel
+        run: |
+          mkdir -p dl
+          for pair in "stable:$STABLE" "rc:$RC" "preview:$PREVIEW"; do
+            channel=${pair%%:*} tag=${pair#*:}
+            if [[ -n $tag ]]; then
+              gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "modelith-web-$channel.tar.gz" --dir dl
+            fi
+          done
+      - name: Assemble the site
+        run: |
+          scripts/pages-assemble.sh site \
+            "dl/modelith-web-stable.tar.gz" \
+            "$([[ -n $RC ]] && echo dl/modelith-web-rc.tar.gz)" \
+            "$([[ -n $PREVIEW ]] && echo dl/modelith-web-preview.tar.gz)"
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: web/dist
+          path: site
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

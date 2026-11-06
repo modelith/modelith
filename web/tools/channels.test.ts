@@ -1,4 +1,4 @@
-// 公開する版を系列ごとに選ぶ（ADR-0020）。
+// 公開する版を系列ごとに選ぶ（ADR-0020・ADR-0022）。
 import { describe, expect, it } from "vitest";
 import { parseTag, pickChannels, type Release } from "./channels";
 
@@ -11,23 +11,37 @@ import { parseTag, pickChannels, type Release } from "./channels";
 const published = (...tags: string[]): Release[] => tags.map((tagName) => ({ tagName, isDraft: false }));
 
 describe("pickChannels（系列ごとに公開する版）", () => {
-  it("正式版が無ければ、安定版は最新の rc、プレリリース版は最も新しい版", () => {
+  it("正式版が無ければ、安定版とリリース候補版は最新の rc、プレビュー版は最も新しい版", () => {
     // Arrange
     const releases = published("v0.1.0-beta.6", "v0.1.0-rc.1", "v0.2.0-alpha.2", "v0.1.0-alpha.3");
     // Act / Assert
-    expect(pickChannels(releases)).toEqual({ stable: "v0.1.0-rc.1", preview: "v0.2.0-alpha.2" });
+    expect(pickChannels(releases)).toEqual({ stable: "v0.1.0-rc.1", rc: "v0.1.0-rc.1", preview: "v0.2.0-alpha.2" });
   });
 
   it("正式版があれば、安定版は最新の正式版（後の rc は安定版にしない）", () => {
     // Arrange
     const releases = published("v0.1.0-rc.1", "v0.1.0", "v0.2.0-rc.1", "v0.1.1");
     // Act / Assert
-    expect(pickChannels(releases)).toEqual({ stable: "v0.1.1", preview: "v0.2.0-rc.1" });
+    expect(pickChannels(releases)).toEqual({ stable: "v0.1.1", rc: "v0.2.0-rc.1", preview: "v0.2.0-rc.1" });
   });
 
-  it("最も新しい版が正式版なら、プレリリース版も同じ版", () => {
+  it("最も新しい版が正式版なら、プレビュー版も同じ版。正式版が出た rc は候補にしない", () => {
     // Act / Assert
-    expect(pickChannels(published("v0.1.0-rc.1", "v0.1.0"))).toEqual({ stable: "v0.1.0", preview: "v0.1.0" });
+    expect(pickChannels(published("v0.1.0-rc.1", "v0.1.0"))).toEqual({ stable: "v0.1.0", rc: null, preview: "v0.1.0" });
+  });
+
+  it("リリース候補版は、次の版の alpha が出ても、正式版が出るまで同じ rc のまま", () => {
+    // Arrange
+    const releases = published("v0.1.0", "v0.2.0-rc.1", "v0.2.0-rc.2", "v0.3.0-alpha.1");
+    // Act / Assert
+    expect(pickChannels(releases)).toEqual({ stable: "v0.1.0", rc: "v0.2.0-rc.2", preview: "v0.3.0-alpha.1" });
+  });
+
+  it("番号の違うパッチの正式版は、候補を取り下げない（境界値）", () => {
+    // Arrange：0.1.1 が出ても、0.2.0-rc.1 の正式版はまだ無い
+    const releases = published("v0.1.0", "v0.2.0-rc.1", "v0.1.1");
+    // Act / Assert
+    expect(pickChannels(releases).rc).toBe("v0.2.0-rc.1");
   });
 
   it("番号は数として比べる（alpha.10 は alpha.9 の後）", () => {
@@ -39,17 +53,17 @@ describe("pickChannels（系列ごとに公開する版）", () => {
     // Arrange
     const releases: Release[] = [{ tagName: "v0.2.0-alpha.1", isDraft: true }, ...published("nightly", "v0.1.0-rc.1")];
     // Act / Assert
-    expect(pickChannels(releases)).toEqual({ stable: "v0.1.0-rc.1", preview: "v0.1.0-rc.1" });
+    expect(pickChannels(releases)).toEqual({ stable: "v0.1.0-rc.1", rc: "v0.1.0-rc.1", preview: "v0.1.0-rc.1" });
   });
 
   it("alpha・beta しか無ければ、安定版は無い（境界値）", () => {
     // Act / Assert
-    expect(pickChannels(published("v0.1.0-alpha.1", "v0.1.0-beta.1"))).toEqual({ stable: null, preview: "v0.1.0-beta.1" });
+    expect(pickChannels(published("v0.1.0-alpha.1", "v0.1.0-beta.1"))).toEqual({ stable: null, rc: null, preview: "v0.1.0-beta.1" });
   });
 
   it("リリースが無ければ、どちらも無い（境界値）", () => {
     // Act / Assert
-    expect(pickChannels([])).toEqual({ stable: null, preview: null });
+    expect(pickChannels([])).toEqual({ stable: null, rc: null, preview: null });
   });
 });
 

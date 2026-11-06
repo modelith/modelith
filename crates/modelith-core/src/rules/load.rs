@@ -296,7 +296,7 @@ struct ManifestFiles {
 /// # 戻り値
 ///
 /// 読むべきファイル（プラグインのフォルダからの相対パスを `/` 区切りに整えたもの）と、問題の一覧。
-/// JSON の誤り・対応しない `apiVersion`・使えない `runtime`（`wasm-component`）・ID の食い違いがあれば、ファイルは空。
+/// JSON の誤り・対応しない `apiVersion`・この本体の版を含まない（または書き方の誤った）`engines.modelith`・使えない `runtime`（`wasm-component`）・ID の食い違いがあれば、ファイルは空。
 /// `browser` のプラグインは、`main` が無い・フォルダの外を指すと問題にする。
 ///
 /// # 例
@@ -305,6 +305,7 @@ struct ManifestFiles {
 /// read_manifest("jp.x", p, r#"{"id":"jp.x",…,"runtime":"rules","contributes":{"rules":["rules.yaml"]}}"#) → ({ rules: ["rules.yaml"] }, [])
 /// read_manifest("jp.x", p, r#"{"id":"jp.x",…,"runtime":"browser","main":"./main.js"}"#)             → ({ main: Some("main.js") }, [])
 /// read_manifest("jp.x", p, r#"{… "apiVersion": "1" …}"#) → ({}, [「対応していないバージョン（apiVersion「1」）です…」])
+/// read_manifest("jp.x", p, r#"{… "engines": { "modelith": ">=9.0.0" } …}"#) → ({}, [「このプラグインが動く Modelith の版は「>=9.0.0」です…」])
 /// read_manifest("jp.x", p, "{") → ({}, [誤り 1:2「書式にエラーがあるため読み込めません（JSON：…）」])
 /// ```
 fn read_manifest(id: &str, path: &str, text: &str) -> (ManifestFiles, Vec<LoadProblem>) {
@@ -332,6 +333,25 @@ fn read_manifest(id: &str, path: &str, text: &str) -> (ManifestFiles, Vec<LoadPr
                 manifest.api_version
             ),
         ));
+    }
+    if let Some(engines) = &manifest.engines {
+        let place = key_place(text, "engines");
+        match super::engines::range_allows(
+            &engines.modelith,
+            super::engines::host_ver(super::engines::HOST_VERSION),
+        ) {
+            Ok(true) => {}
+            Ok(false) => problems.push(problem(
+                path,
+                place,
+                format!(
+                    "このプラグインが動く Modelith の版は「{}」です。この Modelith（{}）では動かしません",
+                    engines.modelith,
+                    super::engines::HOST_VERSION
+                ),
+            )),
+            Err(message) => problems.push(problem(path, place, message)),
+        }
     }
     if manifest.runtime == Runtime::WasmComponent {
         problems.push(problem(

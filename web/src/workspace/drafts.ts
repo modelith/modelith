@@ -36,6 +36,8 @@ const isDraft = (v: unknown): v is Draft =>
  * kvDraftStore({ get: () => "{not json", set }).load() // → { drafts: [], closedAll: false }（壊れた下書きは読まない）
  */
 export function kvDraftStore(kv: KeyValue): DraftStore {
+  // 下書きの一覧にあった、この版の知らない形の記録（新しい版が書いたものなど）。使わないが、置き直すときに消さない（ADR-0023 §4）
+  let unknown: unknown[] = [];
   return {
     /**
      * 置いてある下書きと、すべて閉じて終えたかを読む。
@@ -47,10 +49,12 @@ export function kvDraftStore(kv: KeyValue): DraftStore {
      * load() // → { drafts: [], closedAll: false }（JSON が壊れている）
      */
     load() {
-      return { drafts: readDrafts(kv), closedAll: kv.get(CLOSED_ALL_KEY) === "1" };
+      const all = readAll(kv);
+      unknown = all.filter((v) => !isDraft(v) && !!v && typeof v === "object");
+      return { drafts: all.filter(isDraft), closedAll: kv.get(CLOSED_ALL_KEY) === "1" };
     },
     /**
-     * 下書きの一覧と、すべて閉じて終えたかを、まとめて置き換える。
+     * 下書きの一覧と、すべて閉じて終えたかを、まとめて置き換える。読んだときにあった知らない形の記録は、後ろに残す。
      *
      * @param state 置く下書きの一覧（空なら空の一覧を置く）と、すべて閉じて終えたか
      * @returns 下書きを置けたら true。保存先に書けなかった（保存領域がいっぱい）なら false
@@ -59,7 +63,7 @@ export function kvDraftStore(kv: KeyValue): DraftStore {
      * save({ drafts: [huge], closedAll: false })                                       // → false（保存領域がいっぱい）
      */
     save(state) {
-      const saved = kv.set(KEY, JSON.stringify(state.drafts));
+      const saved = kv.set(KEY, JSON.stringify([...state.drafts, ...unknown]));
       kv.set(CLOSED_ALL_KEY, state.closedAll ? "1" : "0");
       return saved;
     },
@@ -67,18 +71,18 @@ export function kvDraftStore(kv: KeyValue): DraftStore {
 }
 
 /**
- * 保存先から下書きの一覧を読む。
+ * 保存先から、下書きの一覧の記録をそのまま読む（形はまだ確かめない）。
  *
  * @param kv キーと値の保存先
- * @returns 下書きの一覧。無い・JSON が壊れている・配列でないときは空。下書きの形でない項目は除く
+ * @returns 記録の配列。無い・JSON が壊れている・配列でないときは空
  * @example
- * readDrafts(kv) // → [{ name: "無題.sysml", text: "package P;" }]
- * readDrafts(kv) // → []（JSON が壊れている）
+ * readAll(kv) // → [{ name: "無題.sysml", text: "package P;" }, { title: "新しい版の形" }]
+ * readAll(kv) // → []（JSON が壊れている）
  */
-function readDrafts(kv: KeyValue): Draft[] {
+function readAll(kv: KeyValue): unknown[] {
   try {
     const v: unknown = JSON.parse(kv.get(KEY) ?? "[]");
-    return Array.isArray(v) ? v.filter(isDraft) : [];
+    return Array.isArray(v) ? v : [];
   } catch {
     return []; // 壊れた下書きは読まない
   }

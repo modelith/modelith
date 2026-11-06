@@ -1,5 +1,5 @@
 // plugin-sdk の packages/typescript/src/generated/protocol.ts のコピー。編集しないこと。
-// 取得元: git+https://github.com/modelith/plugin-sdk?rev=89d1f326bb692ccbdf7f89c42497e5a838c460ae#89d1f326bb692ccbdf7f89c42497e5a838c460ae
+// 取得元: git+https://github.com/modelith/plugin-sdk?rev=3401b4ac78351eb874a9d7304f6f6ed791fd89b9#3401b4ac78351eb874a9d7304f6f6ed791fd89b9
 // 更新: Cargo.toml の plugin-sdk の rev を変えてから node web/tools/plugin-protocol-cli.ts sync（scripts/check.sh が古さを検出する）
 
 // 生成物。編集しないこと。定義元: crates/modelith-plugin-protocol
@@ -61,6 +61,13 @@ export type Contributes = {
  */
 rules?: Array<string>, importers?: Array<Importer>, exporters?: Array<Exporter>, views?: Array<View>, palette?: Array<PaletteItem>, commands?: Array<Command>, };
 
+export type Engines = { 
+/**
+ * Modelith の版の範囲。比べる記号と版をカンマで区切って並べる（Cargo の版の指定と同じ書き方。例: `">=0.1.0, <0.3.0"`・`"^0.2"`）。
+ * 本体は、自分の版からプレリリースの印（`-beta.1` など）を外して比べる（`0.2.0-beta.1` の本体は `0.2.0` として扱う）。
+ */
+modelith: string, };
+
 export type PluginManifest = { id: PluginId, 
 /**
  * 表示名。
@@ -82,6 +89,10 @@ author?: string,
  * SPDX ライセンス式。
  */
 license: string, 
+/**
+ * 動く本体の版の範囲。書かなければ、どの版の本体でも動かす。
+ */
+engines?: Engines, 
 /**
  * エントリポイント。`rules` では不要。
  * - `browser`: 1 つのファイルにまとめた従来型のスクリプト（例: ESM を IIFE にまとめたもの）。

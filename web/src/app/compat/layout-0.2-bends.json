@@ -1,0 +1,16 @@
+{
+  "modelith": "layout",
+  "format": 1,
+  "views": {
+    "trace": {
+      "@anchors": {
+        "e|A|B": [["r",0.5],null]
+      },
+      "@bends": {
+        "e|A|B": [[50,10],[50,40]]
+      },
+      "A": [0,0],
+      "B": [100,40]
+    }
+  }
+}

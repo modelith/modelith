@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isEmptyLayout, parseLayoutFile, serializeLayout } from "./layout-file";
+import { isEmptyLayout, keepExtras, layoutExtras, NO_EXTRAS, parseLayoutFile, serializeLayout, writeLock } from "./layout-file";
 import type { Layout } from "./layout";
 
 const L: Layout = {
@@ -80,5 +81,138 @@ describe("isEmptyLayout", () => {
     expect(isEmptyLayout({})).toBe(true);
     expect(isEmptyLayout({ v: { pos: {}, pins: {}, ends: {} } })).toBe(true);
     expect(isEmptyLayout(L)).toBe(false);
+  });
+});
+
+/**
+ * 新しい版が書く配置ファイルの見本を読む（ADR-0023 §6、web/src/app/compat/）。
+ *
+ * @param name 見本のファイル名
+ * @returns 見本の中身
+ */
+const sample = (name: string): string => readFileSync(new URL(`./compat/${name}`, import.meta.url), "utf8");
+
+describe("serializeLayout の知らない項目（ADR-0023）", () => {
+  it("外側の知らない項目は views の後に、ビューの知らない項目はそのビューに書き戻す", () => {
+    // Arrange
+    const layout: Layout = { trace: { pos: { A: [0, 0] }, pins: {}, ends: {} } };
+    // Act
+    const text = serializeLayout(layout, { top: { writer: "0.3.0" }, views: { trace: { "@future": { e: [[1, 2]] } } } });
+    // Assert
+    expect(text).toBe(`{
+  "modelith": "layout",
+  "format": 1,
+  "views": {
+    "trace": {
+      "@future": {"e":[[1,2]]},
+      "A": [0,0]
+    }
+  },
+  "writer": "0.3.0"
+}
+`);
+  });
+
+  it("知らない項目だけのビューも消さない（境界値）", () => {
+    // Act
+    const text = serializeLayout({}, { top: {}, views: { ibd: { "@future": 1 } } });
+    // Assert
+    expect(JSON.parse(text).views).toEqual({ ibd: { "@future": 1 } });
+  });
+});
+
+describe("layoutExtras（ADR-0023）", () => {
+  it("知らない外側の項目と、ビューの中の知らない @ の項目を取り出す（知っている項目と要素の座標は取り出さない）", () => {
+    // Arrange（0.2 は線の調整 @bends・@anchors を知っている）
+    const text =
+      '{"modelith":"layout","format":1,"views":{"trace":{"A":[0,0],"@pins":{},"@bends":{"e":[[1,2]]},"@future":{"x":1}}},"requires":["edge-shapes"],"writer":"0.3.0"}';
+    // Act
+    const extras = layoutExtras(text);
+    // Assert
+    expect(extras).toEqual({ top: { requires: ["edge-shapes"], writer: "0.3.0" }, views: { trace: { "@future": { x: 1 } } } });
+  });
+
+  it.each(["", "{ broken", sample("layout-format-2.json")])("空・読めないファイルからは何も取り出さない（境界値・異常系）", (text) => {
+    // Act / Assert
+    expect(layoutExtras(text)).toBe(NO_EXTRAS);
+  });
+});
+
+describe("writeLock（ADR-0023）", () => {
+  it("空のファイルと、この版の読めるファイルは保存してよい", () => {
+    // Act / Assert
+    expect([writeLock(""), writeLock(serializeLayout(L)), writeLock(sample("layout-0.2-bends.json"))]).toEqual([null, null, null]);
+  });
+
+  it("中身の無いオブジェクト（{}）は、失うものが無いので保存してよい（境界値）", () => {
+    // Act / Assert
+    expect([writeLock("{}"), writeLock("  {}\n")]).toEqual([null, null]);
+  });
+
+  it("requires が空なら保存してよい（境界値）", () => {
+    // Arrange
+    const text = '{"modelith":"layout","format":1,"views":{},"requires":[]}';
+    // Act / Assert
+    expect(writeLock(text)).toBeNull();
+  });
+
+  it("この版の知らない機能が requires にあれば、その名前を添えて保存しない", () => {
+    // Act
+    const reason = writeLock(sample("layout-requires.json"));
+    // Assert
+    expect(reason).toBe("配置ファイルに、新しい版の Modelith で使った機能（edge-shapes）が入っています。ファイルを守るため、この版では図の配置を保存しません");
+  });
+
+  it.each([
+    ["{ broken", "配置ファイルを読めません（JSON の形が壊れています）"],
+    ['{"views":{}}', "配置ファイルの形が違います"],
+    [sample("layout-format-2.json"), "配置ファイルの形式（2）に対応していません"],
+  ])("読めないファイル（%s）は、空の配置で上書きしないよう保存しない（異常系）", (text, error) => {
+    // Act / Assert
+    expect(writeLock(text)).toBe(`${error}。ファイルを守るため、この版では図の配置を保存しません`);
+  });
+});
+
+describe("keepExtras（ADR-0023 §6 の往復）", () => {
+  it("0.2 の線の調整を含む配置ファイルを読み、要素を動かして保存しても、線の調整を消さない", () => {
+    // Arrange
+    const base = sample("layout-0.2-bends.json");
+    const layout = parseLayoutFile(base).layout;
+    layout["trace"]!.pos["A"] = [10, 10];
+    // Act
+    const saved = JSON.parse(keepExtras(serializeLayout(layout), base));
+    // Assert
+    expect(saved.views.trace["@bends"]).toEqual({ "e|A|B": [[50, 10], [50, 40]] });
+    expect(saved.views.trace["@anchors"]).toEqual({ "e|A|B": [["r", 0.5], null] });
+    expect(saved.views.trace.A).toEqual([10, 10]);
+  });
+
+  it("線の調整は知っている項目なので、調整し直して保存すると、ファイルの古い形で上書きしない", () => {
+    // Arrange
+    const base = sample("layout-0.2-bends.json");
+    const layout = parseLayoutFile(base).layout;
+    layout["trace"]!.bends = { "e|A|B": [[70, 20]] };
+    // Act
+    const saved = JSON.parse(keepExtras(serializeLayout(layout), base));
+    // Assert
+    expect(saved.views.trace["@bends"]).toEqual({ "e|A|B": [[70, 20]] });
+  });
+
+  it("読んだときのファイルに知らない項目が無ければ、書いたものをそのまま返す（境界値）", () => {
+    // Arrange
+    const text = serializeLayout(L);
+    // Act / Assert
+    expect([keepExtras(text, ""), keepExtras(text, serializeLayout({}))]).toEqual([text, text]);
+  });
+
+  it("保存し直したものを読み直すと、知らない項目がまた取り出せる（往復しても変わらない）", () => {
+    // Arrange
+    const base = sample("layout-requires.json");
+    // Act
+    const once = keepExtras(serializeLayout(parseLayoutFile(base).layout), base);
+    const twice = keepExtras(serializeLayout(parseLayoutFile(once).layout), once);
+    // Assert
+    expect(layoutExtras(once)).toEqual(layoutExtras(base));
+    expect(twice).toBe(once);
   });
 });

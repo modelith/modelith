@@ -334,7 +334,7 @@ package ModelithRequirements {
                    プロジェクトのフォルダの外を読まないよう、modelith.json とプラグインのファイルのシンボリックリンクはたどらず、読めないファイルとして知らせる */
         }
         requirement def <'F-PLUG-3'> PluginErrorReq {
-            doc /* 読めないマニフェストやルール（未知の項目・対応しない apiVersion・正規表現の誤り）を黙って無視せず、どのファイルの何が悪いかを示す */
+            doc /* 読めないマニフェストやルール（未知の項目・対応しない apiVersion・この本体の版を含まない engines.modelith・正規表現の誤り）を黙って無視せず、どのファイルの何が悪いかを示す */
         }
         requirement def <'F-PLUG-4'> ScriptPluginReq {
             doc /* TypeScript のプラグインが足したコマンド・インポート・エクスポートを、画面から使える。インポートした結果は新しいファイルとして開き、既存のファイルを黙って書き換えない。
@@ -466,6 +466,12 @@ package ModelithRequirements {
             doc /* 配信する画面に Content-Security-Policy を付け、配信元以外との通信・外から読み込むスクリプト・インラインのスクリプトを、
                    ブラウザの仕組みで止める。エスケープの漏れが 1 つあっても、それだけでは任意のスクリプトが動かないようにする（C-2 の機械的な裏付け） */
         }
+        requirement def <'C-11'> CrossVersionFileReq {
+            doc /* 同じフォルダを新しい版の Modelith でも開くので、新しい版が書いた配置ファイルを黙って壊さない（ADR-0023）。
+                   この版の知らない項目は、保存するときにそのまま書き戻す。読めない配置ファイルと、この版の知らない機能（requires）を含む配置ファイルは、
+                   開いたときにそのことを知らせ、要素を動かしても保存しない。中身の無い配置ファイル（空・{}）は、失うものが無いので保存してよい。
+                   ブラウザに置く下書きの一覧にある、この版の知らない形の記録も、使わないが消さない */
+        }
         requirement def <'C-6'> NoSilentWriteReq {
             doc /* 利用者の SysML ファイルには、利用者が操作したときにだけ書き込む。配置など Modelith 独自の情報は、テキストに書かない（ADR-0005）。
                    古い形式の配置（テキスト内の @layout コメント）は黙って消さず、配置ファイルに移してコメントを消すかを、ファイルを開いたときに一度だけ尋ねる */
@@ -557,6 +563,7 @@ package ModelithRequirements {
         #derivation dependency from TextIsSourceReq to EditBothWaysNeed;
         #derivation dependency from PrivacyReq to SafetyNeed;
         #derivation dependency from NoSilentWriteReq to SafetyNeed;
+        #derivation dependency from CrossVersionFileReq to SafetyNeed;
         #derivation dependency from TrademarkReq to OpenSourceNeed;
         #derivation dependency from SourceOfferReq to OpenSourceNeed;
         #derivation dependency from StaticHostingReq to AnywhereNeed;
@@ -662,6 +669,7 @@ package ModelithRequirements {
         satisfy PackageFrameReq by DiagramUI;
         satisfy SequenceReq by DiagramUI;
         satisfy NoSilentWriteReq by Workspace;
+        satisfy CrossVersionFileReq by Workspace;
         satisfy TrademarkReq by AppShell;
         satisfy CanvasReq by DiagramUI;
         satisfy EdgeShapeReq by DiagramUI;
@@ -1172,6 +1180,15 @@ package ModelithRequirements {
                 verify DrawioExportReq;
             }
         }
+        verification def CrossVersionFileTest {
+            doc /* web/src/app/layout-file.test.ts：新しい版が書く配置ファイルの見本（web/src/app/compat/）を使い、知らない項目を取り出して書き戻す・往復しても変わらない・
+                   保存しない理由（読めない・形式の番号が大きい・知らない requires）と、保存してよい場合（空・{}・空の requires）。
+                   web/e2e/files.spec.ts：0.2 の線の調整を含む配置ファイルで要素を動かして保存しても線の調整が残る、知らない機能を含む配置ファイルは開いたときに知らせ、保存しても書き換えない（OPFS で）。
+                   web/src/workspace/workspace.test.ts：下書きの一覧の知らない形の記録を、使わずに置き直しても残す */
+            objective {
+                verify CrossVersionFileReq;
+            }
+        }
         verification def LayoutTest {
             doc /* web/src/app/layout.test.ts・layout-file.test.ts：配置情報の読み書きと、配置ファイルの書式（キー順の固定・要素ごとに 1 行・壊れたファイル） */
             objective {
@@ -1193,7 +1210,7 @@ package ModelithRequirements {
             }
         }
         verification def RuleEngineTest {
-            doc /* crates/modelith-core/src/rules：v0 の検査ルール（YAML）の読み込みと検査。読み込み：マニフェスト（JSON の誤り・知らない項目・対応しない apiVersion・runtime が rules でない・ID の食い違い・入っていないプラグイン）とルールのファイル（YAML の誤り・知らない項目・欠けた項目・知らない重さ・ルールの ID の形と重複・正規表現の誤り・ポートの数の下限と上限・空の種類・知らない要素や関係の種類・プラグインのフォルダの外を指すパス）を、ファイルと行・列つきで知らせ、誤りの無いルールは使う。検査：要素の種類・工程・名前で当て、受ける関係・出す関係・名前・工程・ポートの数・否定（not）・空の条件を確かめ、満たさない要素ごとに、プラグインとルールの ID・重さ・名前と種類を差し込んだ文・行と列（UTF-16）を返す */
+            doc /* crates/modelith-core/src/rules：v0 の検査ルール（YAML）の読み込みと検査。読み込み：マニフェスト（JSON の誤り・知らない項目・対応しない apiVersion・動く本体の版の範囲 engines.modelith（記号ごとの範囲と境界・カンマで並べた範囲・プレリリースの印を外した本体の版・書き方の誤り・範囲の外では読まない）・runtime が rules でない・ID の食い違い・入っていないプラグイン）とルールのファイル（YAML の誤り・知らない項目・欠けた項目・知らない重さ・ルールの ID の形と重複・正規表現の誤り・ポートの数の下限と上限・空の種類・知らない要素や関係の種類・プラグインのフォルダの外を指すパス）を、ファイルと行・列つきで知らせ、誤りの無いルールは使う。検査：要素の種類・工程・名前で当て、受ける関係・出す関係・名前・工程・ポートの数・否定（not）・空の条件を確かめ、満たさない要素ごとに、プラグインとルールの ID・重さ・名前と種類を差し込んだ文・行と列（UTF-16）を返す */
             objective {
                 verify RuleCheckReq;
                 verify PluginErrorReq;

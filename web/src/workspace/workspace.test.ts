@@ -536,6 +536,18 @@ describe("kvDraftStore", () => {
     expect(state.drafts).toEqual([{ name: "a", text: "x" }]);
   });
 
+  it("知らない形の記録は使わないが、置き直しても消さない（ADR-0023 §4：新しい版が書いた記録）", () => {
+    // Arrange
+    const kv = new Map<string, string>([["modelith-drafts-v1", JSON.stringify([{ name: "a", text: "x" }, { title: "新しい形" }, 3, null])]]);
+    const store = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => !!kv.set(k, v) });
+    // Act
+    const state = store.load();
+    store.save({ drafts: [{ name: "b", text: "y" }], closedAll: false });
+    // Assert（オブジェクトでない値は記録ではないので残さない）
+    expect(state.drafts).toEqual([{ name: "a", text: "x" }]);
+    expect(JSON.parse(kv.get("modelith-drafts-v1") ?? "")).toEqual([{ name: "b", text: "y" }, { title: "新しい形" }]);
+  });
+
   it("まだ何も置いていなければ、下書きは無く、すべて閉じて終えたことにもならない（境界）", () => {
     // Arrange
     const store = kvDraftStore({ get: () => null, set: () => true });

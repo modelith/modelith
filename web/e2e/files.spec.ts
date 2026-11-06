@@ -190,14 +190,14 @@ async function moveAlphaAndSave(page: Page): Promise<void> {
   await page.keyboard.press("Control+s");
 }
 
-test("C-11: 新しい版の線の調整を含む配置ファイルでも、要素を動かして保存すると、線の調整と知らない項目を残す", async ({ page }) => {
-  // Arrange（0.2 が書く形の配置ファイル。この版は @bends・@anchors と writer を知らない）
+test("C-11: 新しい版の知らない項目を含む配置ファイルでも、要素を動かして保存すると、知らない項目を残す", async ({ page }) => {
+  // Arrange（新しい版が書く形の配置ファイル。この版は @future と writer を知らない。0.2 は @bends・@anchors を知っている）
   const layout = `{
   "modelith": "layout",
   "format": 1,
   "views": {
     "all": {
-      "@bends": {"e|Alpha|Beta": [[50,10]]},
+      "@future": {"e|Alpha|Beta": [[50,10]]},
       "Alpha": [0,0]
     }
   },
@@ -210,7 +210,7 @@ test("C-11: 新しい版の線の調整を含む配置ファイルでも、要�
   // Assert（自分の配置は書き、知らない項目はそのまま残す）
   await expect.poll(() => readFile(page, "a.layout.json")).not.toBe(layout);
   const saved = JSON.parse((await readFile(page, "a.layout.json")) ?? "");
-  expect(saved.views.all["@bends"]).toEqual({ "e|Alpha|Beta": [[50, 10]] });
+  expect(saved.views.all["@future"]).toEqual({ "e|Alpha|Beta": [[50, 10]] });
   expect(saved.views.all.Alpha).not.toEqual([0, 0]);
   expect(saved.writer).toBe("0.2.0");
 });

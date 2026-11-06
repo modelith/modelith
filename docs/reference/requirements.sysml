@@ -1181,9 +1181,9 @@ package ModelithRequirements {
             }
         }
         verification def CrossVersionFileTest {
-            doc /* web/src/app/layout-file.test.ts：新しい版が書く配置ファイルの見本（web/src/app/compat/）を使い、知らない項目を取り出して書き戻す・往復しても変わらない・
+            doc /* web/src/app/layout-file.test.ts：新しい版が書く配置ファイルの見本（web/src/app/compat/）を使い、知らない項目を取り出して書き戻す・往復しても変わらない・知っている項目（0.2 の線の調整）はファイルの古い形で上書きしない・
                    保存しない理由（読めない・形式の番号が大きい・知らない requires）と、保存してよい場合（空・{}・空の requires）。
-                   web/e2e/files.spec.ts：0.2 の線の調整を含む配置ファイルで要素を動かして保存しても線の調整が残る、知らない機能を含む配置ファイルは開いたときに知らせ、保存しても書き換えない（OPFS で）。
+                   web/e2e/files.spec.ts：新しい版の知らない項目を含む配置ファイルで要素を動かして保存しても知らない項目が残る、知らない機能を含む配置ファイルは開いたときに知らせ、保存しても書き換えない（OPFS で）。
                    web/src/workspace/workspace.test.ts：下書きの一覧の知らない形の記録を、使わずに置き直しても残す */
             objective {
                 verify CrossVersionFileReq;

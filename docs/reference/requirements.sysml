@@ -349,7 +349,8 @@ package ModelithRequirements {
         requirement def <'C-11'> CrossVersionFileReq {
             doc /* 同じフォルダを新しい版の Modelith でも開くので、新しい版が書いた配置ファイルを黙って壊さない（ADR-0023）。
                    この版の知らない項目は、保存するときにそのまま書き戻す。読めない配置ファイルと、この版の知らない機能（requires）を含む配置ファイルは、
-                   開いたときにそのことを知らせ、要素を動かしても保存しない。中身の無い配置ファイル（空・{}）は、失うものが無いので保存してよい */
+                   開いたときにそのことを知らせ、要素を動かしても保存しない。中身の無い配置ファイル（空・{}）は、失うものが無いので保存してよい。
+                   ブラウザに置く下書きの一覧にある、この版の知らない形の記録も、使わないが消さない */
         }
         requirement def <'C-6'> NoSilentWriteReq {
             doc /* 利用者の SysML ファイルには、利用者が操作したときにだけ書き込む。配置など Modelith 独自の情報は、テキストに書かない（ADR-0005）。
@@ -960,7 +961,8 @@ package ModelithRequirements {
         verification def CrossVersionFileTest {
             doc /* web/src/app/layout-file.test.ts：新しい版が書く配置ファイルの見本（web/src/app/compat/）を使い、知らない項目を取り出して書き戻す・往復しても変わらない・
                    保存しない理由（読めない・形式の番号が大きい・知らない requires）と、保存してよい場合（空・{}・空の requires）。
-                   web/e2e/files.spec.ts：0.2 の線の調整を含む配置ファイルで要素を動かして保存しても線の調整が残る、知らない機能を含む配置ファイルは開いたときに知らせ、保存しても書き換えない（OPFS で） */
+                   web/e2e/files.spec.ts：0.2 の線の調整を含む配置ファイルで要素を動かして保存しても線の調整が残る、知らない機能を含む配置ファイルは開いたときに知らせ、保存しても書き換えない（OPFS で）。
+                   web/src/workspace/workspace.test.ts：下書きの一覧の知らない形の記録を、使わずに置き直しても残す */
             objective {
                 verify CrossVersionFileReq;
             }

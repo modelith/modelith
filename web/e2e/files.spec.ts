@@ -160,6 +160,73 @@ test("F-FILE-7: 図の配置のファイルが他のアプリで変わってい�
   expect(await readFile(page, "a.sysml")).toBe(A);
 });
 
+/**
+ * 配置ファイルを置いたフォルダを開き、a.sysml の「すべて」の図を表示する（C-11）。
+ *
+ * @param page ページ
+ * @param layout a.layout.json の中身
+ */
+async function openAllView(page: Page, layout: string): Promise<void> {
+  await openApp(page);
+  await putFiles(page, { "a.sysml": A, "a.layout.json": layout });
+  await page.locator('[data-cmd="openFolder"]').click();
+  await page.locator('#explorer [data-file][title="a.sysml"]').click();
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="all"]').click();
+  await page.locator('#gNodes [data-key="Alpha"]').waitFor();
+}
+
+/**
+ * 表示中の図で Alpha を動かし、Ctrl+S で保存する（C-11）。
+ *
+ * @param page ページ
+ */
+async function moveAlphaAndSave(page: Page): Promise<void> {
+  const b = (await page.locator('#gNodes [data-key="Alpha"]').boundingBox())!;
+  await page.mouse.move(b.x + 20, b.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(b.x + 220, b.y + 90, { steps: 6 });
+  await page.mouse.up();
+  await page.keyboard.press("Control+s");
+}
+
+test("C-11: 新しい版の知らない項目を含む配置ファイルでも、要素を動かして保存すると、知らない項目を残す", async ({ page }) => {
+  // Arrange（新しい版が書く形の配置ファイル。この版は @future と writer を知らない。0.2 は @bends・@anchors を知っている）
+  const layout = `{
+  "modelith": "layout",
+  "format": 1,
+  "views": {
+    "all": {
+      "@future": {"e|Alpha|Beta": [[50,10]]},
+      "Alpha": [0,0]
+    }
+  },
+  "writer": "0.2.0"
+}
+`;
+  await openAllView(page, layout);
+  // Act
+  await moveAlphaAndSave(page);
+  // Assert（自分の配置は書き、知らない項目はそのまま残す）
+  await expect.poll(() => readFile(page, "a.layout.json")).not.toBe(layout);
+  const saved = JSON.parse((await readFile(page, "a.layout.json")) ?? "");
+  expect(saved.views.all["@future"]).toEqual({ "e|Alpha|Beta": [[50, 10]] });
+  expect(saved.views.all.Alpha).not.toEqual([0, 0]);
+  expect(saved.writer).toBe("0.2.0");
+});
+
+test("C-11: この版の知らない機能を含む配置ファイルは、開いたときに知らせ、要素を動かして保存しても書き換えない", async ({ page }) => {
+  // Arrange
+  const layout = '{"modelith":"layout","format":1,"views":{"all":{"Alpha":[0,0]}},"requires":["edge-shapes"]}\n';
+  // Act
+  await openAllView(page, layout);
+  await expect(page.locator("#toast")).toContainText("新しい版の Modelith で使った機能（edge-shapes）");
+  await moveAlphaAndSave(page);
+  // Assert（未保存の印（●）も付けず、配置ファイルは読んだときのまま）
+  await expect(page.locator("#docName")).toHaveText("a.sysml");
+  expect(await readFile(page, "a.layout.json")).toBe(layout);
+});
+
 test("F-FILE-8: 画面に戻ったとき、未編集のファイルは他のアプリでの変更を読み直す", async ({ page }) => {
   // Arrange
   await openProject(page);

@@ -34,6 +34,7 @@
 //! - 工程は、要素か、それを囲む要素に付けた `@Phase { stage = …; }` の値
 
 mod check;
+mod engines;
 mod load;
 
 #[cfg(test)]

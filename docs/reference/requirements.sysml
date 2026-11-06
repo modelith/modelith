@@ -346,6 +346,11 @@ package ModelithRequirements {
             doc /* 配信する画面に Content-Security-Policy を付け、配信元以外との通信・外から読み込むスクリプト・インラインのスクリプトを、
                    ブラウザの仕組みで止める。エスケープの漏れが 1 つあっても、それだけでは任意のスクリプトが動かないようにする（C-2 の機械的な裏付け） */
         }
+        requirement def <'C-11'> CrossVersionFileReq {
+            doc /* 同じフォルダを新しい版の Modelith でも開くので、新しい版が書いた配置ファイルを黙って壊さない（ADR-0023）。
+                   この版の知らない項目は、保存するときにそのまま書き戻す。読めない配置ファイルと、この版の知らない機能（requires）を含む配置ファイルは、
+                   開いたときにそのことを知らせ、要素を動かしても保存しない。中身の無い配置ファイル（空・{}）は、失うものが無いので保存してよい */
+        }
         requirement def <'C-6'> NoSilentWriteReq {
             doc /* 利用者の SysML ファイルには、利用者が操作したときにだけ書き込む。配置など Modelith 独自の情報は、テキストに書かない（ADR-0005）。
                    古い形式の配置（テキスト内の @layout コメント）は黙って消さず、配置ファイルに移してコメントを消すかを、ファイルを開いたときに一度だけ尋ねる */
@@ -417,6 +422,7 @@ package ModelithRequirements {
         #derivation dependency from TextIsSourceReq to EditBothWaysNeed;
         #derivation dependency from PrivacyReq to SafetyNeed;
         #derivation dependency from NoSilentWriteReq to SafetyNeed;
+        #derivation dependency from CrossVersionFileReq to SafetyNeed;
         #derivation dependency from TrademarkReq to OpenSourceNeed;
         #derivation dependency from SourceOfferReq to OpenSourceNeed;
         #derivation dependency from StaticHostingReq to AnywhereNeed;
@@ -512,6 +518,7 @@ package ModelithRequirements {
         satisfy PackageFrameReq by DiagramUI;
         satisfy SequenceReq by DiagramUI;
         satisfy NoSilentWriteReq by Workspace;
+        satisfy CrossVersionFileReq by Workspace;
         satisfy TrademarkReq by AppShell;
         satisfy CanvasReq by DiagramUI;
         satisfy TreeReq by DiagramUI;

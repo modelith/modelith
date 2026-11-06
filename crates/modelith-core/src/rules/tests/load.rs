@@ -236,6 +236,66 @@ fn unsupported_api_version_is_reported_at_the_key_and_rules_are_not_read() {
 }
 
 #[test]
+fn plugin_for_other_modelith_versions_is_reported_at_the_key_and_rules_are_not_read() {
+    // Arrange（ADR-0023 §5：この本体の版を含まない範囲）
+    let text = manifest(&["rules.yaml"]).replace(
+        "\"license\"",
+        "\"engines\": { \"modelith\": \">=9.0.0\" },\n  \"license\"",
+    );
+    let mut read_rules = false;
+    // Act
+    let plugin = load_plugin(ID, |path| {
+        if path.ends_with("modelith-plugin.json") {
+            Ok(text.clone())
+        } else {
+            read_rules = true;
+            Ok(String::new())
+        }
+    });
+    // Assert
+    assert!(!read_rules);
+    let all = problems(&plugin);
+    assert_eq!(all.len(), 1, "{all:?}");
+    assert!(
+        all[0].contains("このプラグインが動く Modelith の版は「>=9.0.0」です。この Modelith（"),
+        "{all:?}"
+    );
+}
+
+#[test]
+fn plugin_for_this_modelith_version_loads() {
+    // Arrange（正常系：この本体の版を含む範囲。プレリリースの印は外して比べる）
+    let text = manifest(&[]).replace(
+        "\"license\"",
+        "\"engines\": { \"modelith\": \">=0.1.0, <1.0.0\" },\n  \"license\"",
+    );
+    // Act
+    let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), &text)]);
+    // Assert
+    assert_eq!(problems(&plugin), Vec::<String>::new());
+}
+
+#[test]
+fn badly_written_modelith_range_is_reported() {
+    // Arrange（異常系：範囲の書き方の誤り）
+    let text = manifest(&[]).replace(
+        "\"license\"",
+        "\"engines\": { \"modelith\": \"latest\" },\n  \"license\"",
+    );
+    // Act
+    let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), &text)]);
+    // Assert
+    let all = problems(&plugin);
+    assert_eq!(all.len(), 1, "{all:?}");
+    assert!(
+        all[0].contains(
+            "動く Modelith の版の範囲（engines.modelith「latest」）の書き方が正しくありません"
+        ),
+        "{all:?}"
+    );
+}
+
+#[test]
 fn wasm_component_runtime_is_reported() {
     // Arrange（v2 の WebAssembly のプラグインには、まだ対応していない）
     let text = manifest(&[]).replace("\"runtime\": \"rules\"", "\"runtime\": \"wasm-component\"");

@@ -47,14 +47,15 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 詳細は [docs/development/branching-strategy.md](docs/development/branching-strategy.md)。要点のみ:
 
 - 作業ブランチは `dev` から作り、PR は `dev` に向ける（GitHub の既定ブランチは `dev`。PR 作成時も base を `dev` と明示する）。`main` / `dev` へ直接 commit / push しない（フックでブロックされる）
-- ブランチ名: `<type>/<topic>`（type: feat|fix|refactor|docs|test|perf|ci|chore|claude）
+- ブランチ名: `<type>/<topic>`（type: feat|fix|refactor|docs|test|perf|ci|chore|claude|sync）
 - コミット / PR タイトル: `<type>(<scope>): <summary>`（Conventional Commits）
 - 1 ブランチ 1 目的。依頼範囲外のリファクタや整形を混ぜない
 - PR の中は、1 つずつ読めるコミットに分ける（1 コミット 1 変更、層をまたぐ変更は下の層から順に、テストは同じコミットに、どのコミットでもテストが通る）。詳細は branching-strategy の「PR の中のコミットの分け方」
 - force-push 禁止。他人のブランチの履歴を書き換えない
 - **トピック → `dev` は許可なしでマージしてよい。** 条件は CI（`check` / `conventions`）がグリーンで、未解決のレビューコメントがないこと。方式は Squash
-- **`main` へのマージ（PR のマージ、auto-merge の有効化を含む）はメンテナの明示的な許可を得てから行う。**
-  `dev` → `main` はマイルストーン（リリース）ごと、方式はマージコミット。許可は PR ごとに取り、過去の許可や他の PR への許可を流用しない
+- **`main` へのマージ（PR のマージ、auto-merge の有効化を含む）はメンテナの明示的な許可を得てから行う。** 方式はマージコミット。許可は PR ごとに取り、過去の許可や他の PR への許可を流用しない
+  - `main` は候補（rc）と安定版の場所（ADR-0022）。`dev` → `main` は次の版の rc.1 のときだけ。rc の間の修正と版の書き換えは、`main` から `fix/*`・`chore/*` などを作って `main` に向ける。機能は `main` に入れない
+  - `main` に入れたものは、すぐに `main` → `dev`（マージコミット、許可不要）で戻す。食い違うときは `dev` から `sync/*` を作って直し、マージコミットで `dev` に入れる（許可不要）
 - ステージはパスを明示する（`git add -A` / `.` はフックでブロックされる）。非公開のモック・`node_modules`・`target` はコミットしない
 
 ## コマンド
@@ -84,7 +85,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 | --- | --- | --- |
 | セッション開始 | `session-start.sh` | ツールチェーン・npm 依存・shellcheck を用意し、現在ブランチと作業ルールを通知 |
 | Bash 実行前 | `guard-git.sh` | main / dev への push・その上での commit・force-push・一括ステージ・禁止ファイルのコミットをブロック |
-| マージ操作前 | `guard-merge.sh` | dev 向けの Squash は許可、main 向けは毎回ユーザーの承認を求め、方式の誤りは拒否 |
+| マージ操作前 | `guard-merge.sh` | dev 向けの Squash（と main・sync/* からのマージコミット）は許可、main 向けは毎回ユーザーの承認を求め、方式の誤りは拒否 |
 | 停止前 | `verify-on-stop.sh` | コード変更があれば `check.sh --fast` を実行し、失敗なら差し戻し |
 
 フックにブロックされたら、回避策を探さず、メッセージに従って手順を正すこと。

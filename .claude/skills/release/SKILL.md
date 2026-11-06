@@ -11,7 +11,7 @@ description: Modelith の版（alpha・beta・rc）を出す手順と、リリ�
 
 - **リリースを始める前に、メンテナに進めてよいか確かめる。** 許可は版ごとに取り、前の版の許可を流用しない。
 - エージェントにできるのは、下書きまで。タグの作成と公開は、メンテナが GitHub の画面で「Publish release」を押したときに行われる。
-- alpha・beta は `dev` で出し、`main` にはマージしない。rc から先は releasing.md に従い、`main` へのマージは毎回メンテナの許可を取る。
+- alpha・beta は `dev` で出し、`main` にはマージしない。rc から先は releasing.md に従う。rc.1 は `dev` → `main`、rc.2 以降・正式版・パッチは `main` から `chore/release-v<版>` を作って `main` に向ける。`main` へのマージは毎回メンテナの許可を取り（マージコミット）、マージした後は `main` を `dev` に戻す。
 
 ## 手順（alpha・beta）
 
@@ -25,7 +25,7 @@ description: Modelith の版（alpha・beta・rc）を出す手順と、リリ�
 7. 下書きのリンクをメンテナに渡し、「Publish release」を押してもらう。下書きの `releases/tag/untagged-…` のリンクは直接開けないことがあるので、
    リリースの一覧（`https://github.com/modelith/modelith/releases`）と、編集画面（`releases/edit/untagged-…`）のリンクを渡す。
 8. 公開されたら、Pages のワークフローが成功したことと、画面右上の「ヘルプ」に出る版を確かめる。
-   alpha・beta は `/modelith/preview/` に、正式版（無ければ最新の rc）は `/modelith/` に出る（ADR-0020）。公開した版が出るはずの URL で確かめる。リリース計画（release-plan.md）のその行に「（公開済み）」を足す PR を出す。
+   alpha・beta は `/modelith/preview/` に、rc は `/modelith/rc/` と `/modelith/preview/` に、正式版は `/modelith/` に出る（ADR-0022）。公開した版が出るはずの URL で確かめる。リリース計画（release-plan.md）のその行に「（公開済み）」を足す PR を出す。
 
 下書きが作られなかったときは、ワークフローのログの理由（ノートが無い・版が違う・ブランチが違う）を直す。
 手で作り直すときは、ワークフロー `release-draft.yml` を `ref: dev`、inputs `version`・`branch: dev` で起動する（`actions_run_trigger`）。

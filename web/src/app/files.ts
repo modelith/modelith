@@ -17,7 +17,7 @@ import { flushEdit } from "./editor";
 import { download } from "./export";
 import { dropHistory, recordHistory, useHistory } from "./history";
 import { layoutFromJson, type Layout } from "./layout";
-import { isEmptyLayout, parseLayoutFile, serializeLayout } from "./layout-file";
+import { isEmptyLayout, keepExtras, parseLayoutFile, serializeLayout, writeLock } from "./layout-file";
 import { clearSel, S } from "./state";
 import { addPlugin, initPlugins, openPlugins, pluginExplorerHtml, reloadPlugins, type PickedPluginFolder } from "./plugin-panel";
 import { pluginFolderPath } from "./plugins";
@@ -95,7 +95,7 @@ export const shownDocName = (): string => (shownKey ? ws.get(shownKey)?.name : u
 /**
  * 文書の配置を読む。配置ファイルが無ければ、古い形式（テキスト内の @layout コメント）から読む（ADR-0005 の移行）。
  * 古い形式から読んだ配置は、開いたときの状態として扱い、変更の印は付けない（ワークスペースの配置の初期値にする）。
- * 配置ファイルが読めなければ、理由をトーストで知らせる。
+ * 配置ファイルが読めない・この版の知らない機能を含むときは、この版では配置を保存しないことを、理由とともにトーストで知らせる（ADR-0023）。
  *
  * @param doc 文書
  * @returns 配置と、古い形式から読んだか（legacy）
@@ -107,9 +107,9 @@ export const shownDocName = (): string => (shownKey ? ws.get(shownKey)?.name : u
  */
 function layoutOf(doc: Doc): { layout: Layout; legacy: boolean } {
   if (doc.layout) {
-    const { layout, error } = parseLayoutFile(doc.layout);
-    if (error) toast(`${doc.name}：${error}`);
-    return { layout, legacy: false };
+    const lock = writeLock(doc.savedLayout);
+    if (lock) toast(`${doc.name}：${lock}`);
+    return { layout: parseLayoutFile(doc.layout).layout, legacy: false };
   }
   const layout = layoutFromJson(readLayout(doc.text, []));
   const legacy = !isEmptyLayout(layout);
@@ -1009,7 +1009,11 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
   });
   onLayoutChange((layout) => {
     if (!shownKey) return;
-    ws.setLayout(shownKey, layout);
+    const doc = ws.get(shownKey);
+    // 読めなかった・この版の知らない機能を含む配置ファイルは、ほかの版の内容を壊さないよう保存しない（開いたときに知らせてある。ADR-0023）
+    if (!doc || writeLock(doc.savedLayout)) return;
+    // 読んだときのファイルにあった、この版の知らない項目（新しい版の線の調整など）は消さずに書き戻す
+    ws.setLayout(shownKey, keepExtras(layout, doc.savedLayout));
     onEdited(shownKey);
   });
   // 設定ファイルの読み取りの状態を先に変えてから描く

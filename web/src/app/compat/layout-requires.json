@@ -1,0 +1,14 @@
+{
+  "modelith": "layout",
+  "format": 1,
+  "views": {
+    "trace": {
+      "@bends": {
+        "e|A|B": [[50,10]]
+      },
+      "A": [0,0]
+    }
+  },
+  "requires": ["edge-shapes"],
+  "writer": "0.3.0"
+}

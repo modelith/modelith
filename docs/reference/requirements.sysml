@@ -957,6 +957,14 @@ package ModelithRequirements {
                 verify DrawioExportReq;
             }
         }
+        verification def CrossVersionFileTest {
+            doc /* web/src/app/layout-file.test.ts：新しい版が書く配置ファイルの見本（web/src/app/compat/）を使い、知らない項目を取り出して書き戻す・往復しても変わらない・
+                   保存しない理由（読めない・形式の番号が大きい・知らない requires）と、保存してよい場合（空・{}・空の requires）。
+                   web/e2e/files.spec.ts：0.2 の線の調整を含む配置ファイルで要素を動かして保存しても線の調整が残る、知らない機能を含む配置ファイルは開いたときに知らせ、保存しても書き換えない（OPFS で） */
+            objective {
+                verify CrossVersionFileReq;
+            }
+        }
         verification def LayoutTest {
             doc /* web/src/app/layout.test.ts・layout-file.test.ts：配置情報の読み書きと、配置ファイルの書式（キー順の固定・要素ごとに 1 行・壊れたファイル） */
             objective {

@@ -30,14 +30,32 @@ setup() {
 
 # --- policy_pr_base ---
 
-@test "policy_pr_base: dev 向けは何でも、main 向けは dev と fix/* だけ許可する（正常系）" {
+@test "policy_pr_base: dev 向けは何でも、main 向けは dev と修正・文書・テスト・CI・版の書き換えだけ許可する（正常系）" {
   # Arrange
-  local pairs=("dev feat/x" "dev main" "main dev" "main fix/y" "docs/a chore/b")
+  local pairs=("dev feat/x" "dev main" "dev sync/main-into-dev" "main dev" "main fix/y" "main docs/y" "main test/y" "main ci/y" "main chore/release-v0.1.0-rc.2" "docs/a chore/b")
   # Act
   local results=() p
   for p in "${pairs[@]}"; do read -r base head <<<"$p"; results+=("$(status_of policy_pr_base "$base" "$head")"); done
   # Assert
-  [ "${results[*]}" = "0 0 0 0 0" ]
+  [ "${results[*]}" = "0 0 0 0 0 0 0 0 0 0" ]
+}
+
+@test "policy_pr_base: 機能・作り直し・戻しのブランチから main への PR は拒否する（異常系）" {
+  # Arrange
+  local heads=(feat/x refactor/x perf/x claude/x sync/main-into-dev)
+  # Act
+  local results=() h
+  for h in "${heads[@]}"; do results+=("$(status_of policy_pr_base main "$h")"); done
+  # Assert
+  [ "${results[*]}" = "1 1 1 1 1" ]
+}
+
+@test "policy_pr_base: 戻しのブランチ（sync/*）は dev 以外に向けられない（異常系）" {
+  # Act
+  run policy_pr_base feat/x sync/main-into-dev
+  # Assert
+  [ "$status" -eq 1 ]
+  [[ $output == *"dev に向けてください"* ]]
 }
 
 @test "policy_pr_base: トピックブランチから main への PR は拒否する（異常系）" {
@@ -57,7 +75,8 @@ setup() {
   local cases=(
     "dev feat/x squash:allow" "dev feat/x merge:deny" "dev feat/x :deny"
     "dev main merge:allow" "dev main squash:deny"
-    "main dev merge:ask" "main fix/y merge:ask" "main dev squash:deny"
+    "dev sync/x merge:allow" "dev sync/x squash:deny"
+    "main dev merge:ask" "main fix/y merge:ask" "main chore/r merge:ask" "main dev squash:deny" "main fix/y squash:deny"
     " feat/x squash:ask" "foo feat/x squash:ask"
   )
   # Act
@@ -68,7 +87,7 @@ setup() {
     got+=("$(policy_merge_decision "$base" "$head" "$method" | cut -f1)")
   done
   # Assert
-  [ "${got[*]}" = "allow deny deny allow deny ask ask deny ask ask" ]
+  [ "${got[*]}" = "allow deny deny allow deny allow deny ask ask ask deny deny ask ask" ]
 }
 
 # --- policy_git_command ---

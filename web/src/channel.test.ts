@@ -1,4 +1,4 @@
-// 公開の系列ごとの保存の名前（ADR-0020）。
+// 公開の系列ごとの保存の名前（ADR-0020・ADR-0022）。
 import { describe, expect, it } from "vitest";
 import { channelName } from "./channel";
 
@@ -8,9 +8,14 @@ describe("channelName（系列ごとの保存の名前）", () => {
     expect(channelName("modelith-ui-v1", "stable")).toBe("modelith-ui-v1");
   });
 
-  it("プレリリース版は @preview を付けて、安定版の保存と分ける", () => {
+  it("プレビュー版は @preview を付けて、安定版の保存と分ける", () => {
     // Act / Assert
     expect(channelName("modelith-ui-v1", "preview")).toBe("modelith-ui-v1@preview");
+  });
+
+  it("リリース候補版は @rc を付けて、安定版ともプレビュー版とも分ける", () => {
+    // Act / Assert
+    expect(channelName("modelith-ui-v1", "rc")).toBe("modelith-ui-v1@rc");
   });
 
   it("系列の無いビルド（手元・テスト）や知らない系列は、安定版と同じ（境界値・異常系）", () => {

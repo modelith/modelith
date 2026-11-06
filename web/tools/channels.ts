@@ -1,4 +1,4 @@
-// GitHub Pages に公開する版を、公開の系列ごとに選ぶ（ADR-0020）。判断だけを置き、リリースの一覧は呼ぶ側（channels-cli.ts）が渡す。
+// GitHub Pages に公開する版を、公開の系列ごとに選ぶ（ADR-0020・ADR-0022）。判断だけを置き、リリースの一覧は呼ぶ側（channels-cli.ts）が渡す。
 
 /** GitHub のリリース 1 つ（`gh release list --json tagName,isDraft` の 1 行）。 */
 export interface Release {
@@ -10,7 +10,9 @@ export interface Release {
 export interface Channels {
   /** 安定版（`/modelith/`）：最新の正式版。正式版が無ければ最新の rc。 */
   stable: string | null;
-  /** プレリリース版（`/modelith/preview/`）：段階によらず最も新しい版。 */
+  /** リリース候補版（`/modelith/rc/`）：正式版がまだ出ていない、最新の rc。無ければ null（ADR-0022）。 */
+  rc: string | null;
+  /** プレビュー版（`/modelith/preview/`）：段階によらず最も新しい版。 */
   preview: string | null;
 }
 
@@ -65,13 +67,15 @@ function compare(a: Parsed, b: Parsed): number {
  * 公開済みのリリースから、系列ごとに公開する版を選ぶ。下書きと、版のタグでないリリースは除く。
  *
  * @param releases リリースの一覧（順は問わない）
- * @returns 安定版とプレリリース版のタグ
+ * @returns 安定版・リリース候補版・プレビュー版のタグ
  * @example
  * pickChannels([{ tagName: "v0.1.0-rc.1", isDraft: false }, { tagName: "v0.2.0-alpha.1", isDraft: false }])
- * // → { stable: "v0.1.0-rc.1", preview: "v0.2.0-alpha.1" }（正式版が無いので、安定版は最新の rc）
+ * // → { stable: "v0.1.0-rc.1", rc: "v0.1.0-rc.1", preview: "v0.2.0-alpha.1" }（正式版が無いので、安定版も最新の rc）
  * pickChannels([{ tagName: "v0.1.0", isDraft: false }, { tagName: "v0.2.0-rc.1", isDraft: false }])
- * // → { stable: "v0.1.0", preview: "v0.2.0-rc.1" }（正式版があれば rc は安定版にしない）
- * pickChannels([]) // → { stable: null, preview: null }
+ * // → { stable: "v0.1.0", rc: "v0.2.0-rc.1", preview: "v0.2.0-rc.1" }（正式版があれば rc は安定版にしない）
+ * pickChannels([{ tagName: "v0.1.0-rc.2", isDraft: false }, { tagName: "v0.1.0", isDraft: false }])
+ * // → { stable: "v0.1.0", rc: null, preview: "v0.1.0" }（正式版が出た rc は、候補にしない）
+ * pickChannels([]) // → { stable: null, rc: null, preview: null }
  */
 export function pickChannels(releases: readonly Release[]): Channels {
   const all = releases
@@ -80,8 +84,11 @@ export function pickChannels(releases: readonly Release[]): Channels {
     .sort(compare);
   const newest = (xs: Parsed[]): string | null => xs.at(-1)?.tag ?? null;
   const finals = all.filter((p) => p.stage === FINAL);
+  const rcs = all.filter((p) => p.stage === STAGES["rc"]);
+  const released = new Set(finals.map((p) => p.nums.join(".")));
   return {
-    stable: newest(finals.length ? finals : all.filter((p) => p.stage === STAGES["rc"])),
+    stable: newest(finals.length ? finals : rcs),
+    rc: newest(rcs.filter((p) => !released.has(p.nums.join(".")))),
     preview: newest(all),
   };
 }

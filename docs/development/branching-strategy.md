@@ -1,11 +1,13 @@
 # Git ブランチ戦略
 
-modelith は **`dev` を統合ブランチとし、マイルストーン（リリース）ごとに `main` へ反映する** 運用をとる（ADR-0007）。
-人間と AI エージェントが並行して作業しても、`dev` が常にグリーンであり、`main` が常にリリース済みの状態であることを最優先にする。
+modelith は **`dev` で次の版を作り、`main` で候補（rc）と安定版を仕上げる** 運用をとる（ADR-0007・ADR-0022）。
+人間と AI エージェントが並行して作業しても、`dev` が常にグリーンであり、`main` が常に候補か安定版として出せる状態であることを最優先にする。
 
 ```
-feat/* fix/* docs/* ...  ──(Squash, エージェントが許可なしでマージ可)──▶  dev
-dev                      ──(マージコミット, マイルストーンごと, メンテナの許可が必須)──▶  main ──▶ タグ vX.Y.Z
+feat/* fix/* docs/* ...           ──(Squash, エージェントが許可なしでマージ可)──▶  dev ──▶ タグ alpha・beta
+dev                               ──(マージコミット, 次の版の rc.1 のときだけ, メンテナの許可が必須)──▶  main ──▶ タグ rc・正式版・パッチ
+fix/* docs/* test/* ci/* chore/*  ──(マージコミット, メンテナの許可が必須)──▶  main
+main, sync/*                      ──(マージコミット, エージェントが許可なしでマージ可)──▶  dev（main に入れたものを戻す）
 ```
 
 ## 原則
@@ -21,15 +23,16 @@ dev                      ──(マージコミット, マイルストーンご�
 
 | ブランチ | 用途 | 寿命 | 作成元 → マージ先 |
 | --- | --- | --- | --- |
-| `main` | リリース済みの状態。タグはここに打つ | 永続 | — |
-| `dev` | 統合ブランチ。次のリリースに向けた変更が集まる | 永続 | `main` から作成 → `main` |
+| `main` | 候補（rc）と安定版。rc・正式版・パッチのタグはここに打つ | 永続 | — |
+| `dev` | 統合ブランチ。次の版に向けた変更が集まる。alpha・beta のタグはここに打つ | 永続 | `main` から作成 → `main`（rc.1 のとき） |
 | `feat/<topic>` | 機能追加 | 短命 | `dev` → `dev` |
-| `fix/<topic>` | バグ修正 | 短命 | `dev` → `dev`（緊急修正は後述） |
+| `fix/<topic>` | バグ修正 | 短命 | `dev` → `dev`（候補・安定版の修正は `main` → `main`。後述） |
 | `refactor/<topic>` | 振る舞いを変えない構造改善 | 短命 | `dev` → `dev` |
 | `docs/<topic>` | ドキュメントのみ | 短命 | `dev` → `dev` |
 | `test/<topic>` | テスト追加・改善 | 短命 | `dev` → `dev` |
 | `perf/<topic>` | 性能改善 | 短命 | `dev` → `dev` |
 | `ci/<topic>` / `chore/<topic>` | CI・ビルド・依存更新・ハーネス | 短命 | `dev` → `dev` |
+| `sync/<topic>` | `main` を `dev` に戻すとき、食い違いを直すためのブランチ | 短命 | `dev` → `dev`（マージコミット） |
 | `claude/<topic>` | AI エージェント（Claude Code 等）が自動作成する作業ブランチ | 短命 | `dev` → `dev` |
 
 - `<topic>` は英小文字・数字・`-` のみ（例: `feat/kerml-parser`, `fix/diagram-sync-crash`）。
@@ -59,18 +62,18 @@ git push -u origin feat/kerml-parser
 | マージ | 方式 | 誰が・いつ |
 | --- | --- | --- |
 | トピック → `dev` | Squash | **AI エージェントが許可なしでマージしてよい**。条件: CI（`check` / `conventions`）がグリーン、未解決のレビューコメントがない |
-| `dev` → `main` | マージコミット | **マイルストーン（リリース）ごとに、メンテナの明示的な許可を得てから**。許可は PR ごとに取り、過去の許可を流用しない |
-| `fix/*` → `main`（緊急修正） | マージコミット | メンテナの明示的な許可を得てから |
-| `main` → `dev`（緊急修正後の同期） | マージコミット | AI エージェントが許可なしでマージしてよい |
+| `dev` → `main` | マージコミット | **次の版の rc.1 を出すときだけ、メンテナの明示的な許可を得てから**。許可は PR ごとに取り、過去の許可を流用しない |
+| `fix/*`・`docs/*`・`test/*`・`ci/*`・`chore/*` → `main`（候補・安定版の修正と版の書き換え） | マージコミット | メンテナの明示的な許可を得てから |
+| `main` → `dev`、`sync/*` → `dev`（`main` に入れたものを戻す） | マージコミット | AI エージェントが許可なしでマージしてよい |
 
 この権限はハーネスで強制する。
 
 | 層 | 仕組み |
 | --- | --- |
 | 指示 | `CLAUDE.md` に明記 |
-| エージェント | `guard-merge.sh`（PreToolUse）が PR のマージ先とマージ元を確認し、`dev` 向けの Squash（と `main` → `dev` の同期）は許可、`main` 向けは毎回ユーザーの承認を求め、方式の誤り（トピック → `dev` のマージコミット、`main` への Squash 等）は拒否する。マージ先を確認できないときも承認を求める |
+| エージェント | `guard-merge.sh`（PreToolUse）が PR のマージ先とマージ元を確認し、`dev` 向けの Squash（と `main`・`sync/*` → `dev` のマージコミット）は許可、`main` 向けは毎回ユーザーの承認を求め、方式の誤り（トピック → `dev` のマージコミット、`main` への Squash、`sync/*` の Squash 等）は拒否する。マージ先を確認できないときも承認を求める |
 | Git 操作 | `guard-git.sh` が `main` / `dev` への直接 push と、その上での commit / merge をブロック |
-| CI | `scripts/check-pr-base.sh` が PR の向け先を検証する。`main` 向けは `dev`（リリース）と `fix/*`（緊急修正）からのみ |
+| CI | `scripts/check-pr-base.sh` が PR の向け先を検証する。`main` 向けは `dev`（rc.1）と `fix/*`・`docs/*`・`test/*`・`ci/*`・`chore/*` からのみ。`sync/*` は `dev` 向けのみ |
 | GitHub | `main` / `dev` のルールセットで PR・CI・マージ方式を強制する（後述） |
 
 エージェントは GitHub 上ではメンテナ本人のアカウント権限で動くことがあるため、GitHub 側の設定だけでは
@@ -99,7 +102,7 @@ git push -u origin feat/kerml-parser
   | `adr` | `docs/adr/` |
   | `harness` | `scripts/`・`.claude/`・CI・`CLAUDE.md` |
 - 破壊的変更は `feat(parser)!: ...` のように `!` を付け、本文に `BREAKING CHANGE:` を書く。
-- `dev` → `main` の PR タイトルは `chore(release): vX.Y.Z` とする。
+- `dev` → `main` と、版を書き換えて `main` に向ける PR のタイトルは `chore(release): vX.Y.Z` とする。`main` を `dev` に戻す PR は `chore(sync): merge main into dev` とする。
 
 ## PR の中のコミットの分け方
 
@@ -121,12 +124,18 @@ plugin-sdk の契約を変える場合は、plugin-sdk 側を先にリリース�
 ## リリース
 
 バージョンの付け方は [バージョン規則](../reference/versioning.md)、具体的な手順は [リリース手順](releasing.md) を参照。
-要点: alpha・beta は `dev` にタグを打ち、rc と正式版は `dev` → `main` をマージ（メンテナの許可が必要）してから `main` にタグを打つ。
+要点: alpha・beta は `dev` にタグを打つ。rc.1 は `dev` → `main` をマージ（メンテナの許可が必要）してから、rc.2 以降・正式版・パッチは `main` で版を書き換えてから、`main` にタグを打つ。
 
-### 緊急修正（hotfix）
+### 候補・安定版の修正
 
-リリース済みの `main` に急ぎの修正が必要な場合だけ、`fix/<topic>` を `main` から作り `main` 向けの PR を出す。
-マージにはメンテナの許可が必要。マージ後すぐに `main` → `dev` の PR を作ってマージコミットで同期する（この同期は許可不要）。
+候補（rc）と安定版の不具合は、`fix/<topic>` を `main` から作り、`main` 向けの PR を出す（マージにはメンテナの許可が必要）。
+次の版の機能（`feat/*`・`refactor/*` など）は `main` に入れない。修正を出すのは最新の系列だけで、古い正式版の系列には出さない（ADR-0022）。
+
+### `main` を `dev` に戻す
+
+`main` に入れたものは、すぐに `main` → `dev` の PR を作ってマージコミットで戻す（許可は要らない）。
+両方が同じ場所を変えていてそのまま戻せないときは、`dev` から `sync/<topic>` を作り、`main` を取り込んで食い違いを直し、`dev` に向けた PR をマージコミットで入れる（許可は要らない）。
+どちらも Squash にはしない（`main` が `dev` の祖先でなくなり、次の戻しで同じ箇所がまたぶつかるため）。
 
 ## GitHub 側の設定（リポジトリ管理者が手動で行う）
 

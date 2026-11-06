@@ -872,7 +872,7 @@ package ModelithRequirements {
         }
         verification def ReleaseChannelTest {
             doc /* web/tools/channels.test.ts：公開済みのリリースから、安定版（最新の正式版、無ければ最新の rc）とプレリリース版（最も新しい版）を選ぶ（番号は数として比べる・下書きと版でないタグは選ばない・正式版も rc も無い・リリースが無い）。
-                   web/src/channel.test.ts：保存の名前を系列ごとに分ける（安定版はそのまま・プレリリース版は @preview・系列の無いビルドは安定版と同じ） */
+                   web/src/channel.test.ts：保存の名前を系列ごとに分ける（安定版はそのまま・リリース候補版は @rc・プレビュー版は @preview・系列の無いビルドと知らない系列は安定版と同じ） */
             objective {
                 verify ReleaseChannelReq;
             }

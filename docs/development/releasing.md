@@ -31,24 +31,31 @@
 3. メンテナが下書きを公開する。
 4. 不具合が見つかったら `dev` で修正し、rc の番号を上げて 1 からやり直す。
 
-## 公開先（安定版とプレリリース版）
+## 公開先（安定版・リリース候補版・プレビュー版）
 
-[ADR-0020](../adr/0020-release-channels.md) に従い、1 つのサイトに 2 つの版を置く。どのリリースを公開しても、両方を選び直してビルドする。
+[ADR-0022](../adr/0022-three-release-channels.md) に従い、1 つのサイトに 3 つの系列を置く。
 
 | 系列 | URL | 置く版 |
 | --- | --- | --- |
 | 安定版 | `https://modelith.github.io/modelith/` | 最新の正式版。正式版が無ければ最新の rc |
-| プレリリース版 | `https://modelith.github.io/modelith/preview/` | 最も新しい版（alpha・beta・rc・正式版） |
+| リリース候補版 | `https://modelith.github.io/modelith/rc/` | 正式版がまだ出ていない、最新の rc。無いときは安定版への案内のページ |
+| プレビュー版 | `https://modelith.github.io/modelith/preview/` | 最も新しい版（alpha・beta・rc・正式版） |
 
-- 版の選び方は `web/tools/channels.ts`、ビルドは `scripts/pages-build.sh`。版ごとに、そのタグの中身で、そのタグの `.nvmrc` の Node.js を使って e2e・UI テストを流す（古い版のテストの道具が新しい Node.js で動かないことがあるため）。安定版だけは、落ちたテストを 1 回だけやり直す（ADR-0020）。
-- プレリリース版は、ブラウザの保存領域（前回の続き・下書き・設定・プラグインの許可）を安定版と分ける（`@preview` を付けた名前）。
-- 公開で動くワークフローは、タグのコミットにある `pages.yml`。この仕組みより前のコミットに付けた下書きは公開せず、作り直す。
-- 公開し直すときは、Actions の「Pages」を既定のブランチから手動で起動する。
+- 版の選び方は `web/tools/channels.ts`。人は選ばず、公開済みのリリースのタグから決まる。
+- 版ごとのアプリは、系列ごとに 1 回だけ、そのタグの中身をそのタグの `.nvmrc` の Node.js でテストして組み立て（`scripts/pages-build-one.sh`）、そのリリースに `modelith-web-<系列>.tar.gz` として添付する。
+  公開済みの版は後から直せないので、落ちたテストは 1 回だけやり直す。
+- 公開は、添付したアプリを並べるだけ（`scripts/pages-assemble.sh`）。古い版を作り直したり、テストし直したりしない。添付が無い版だけ、その場で作って添付する。
+- リリース候補版とプレビュー版は、ブラウザの保存領域（前回の続き・下書き・設定・プラグインの許可）を安定版と分ける（`@rc`・`@preview` を付けた名前）。
+- 公開は、必ず `dev` の `.github/workflows/pages.yml` の定義で行う。リリースを公開すると、タグのコミットの `pages.yml` が `dev` の定義を起動する。
+  `github-pages` の公開先は `dev` だけなので、この仕組みより前のタグの `pages.yml` が動いても、公開の段階で失敗し、サイトは変わらない。
+  そうしたタグ（`v0.2.0-beta.2` 以前）を公開したときは、Actions の「Pages」を `dev` から手動で起動する。
+- 公開し直すとき（添付の作り直しを含む）も、Actions の「Pages」を `dev` から手動で起動する。作り直したい版は、その添付を消してから起動する。
+- 正式版や候補を取り下げるときは、そのリリースを下書きに戻してから、「Pages」を起動する。選び直しで 1 つ前の版に戻る。
 
 ## GitHub Pages の初期設定（一度だけ）
 
 - Settings → Pages → Build and deployment の Source を **GitHub Actions** にする。
-- Settings → Environments → `github-pages` → Deployment branches and tags に、タグのルール `v*` を追加する（既定では既定ブランチからしか公開できないため）。
+- Settings → Environments → `github-pages` → Deployment branches and tags を **`dev` だけ** にする（タグ `v*` や `main` からは公開させない。ADR-0022）。
 
 ## 正式版を出す
 

@@ -217,10 +217,10 @@ test("C-11: 新しい版の知らない項目を含む配置ファイルでも�
 
 test("C-11: この版の知らない機能を含む配置ファイルは、開いたときに知らせ、要素を動かして保存しても書き換えない", async ({ page }) => {
   // Arrange
-  const layout = '{"modelith":"layout","format":1,"views":{"all":{"Alpha":[0,0]}},"requires":["edge-shapes"]}\n';
+  const layout = '{"modelith":"layout","format":1,"views":{"all":{"Alpha":[0,0]}},"requires":["shared-layers"]}\n';
   // Act
   await openAllView(page, layout);
-  await expect(page.locator("#toast")).toContainText("新しい版の Modelith で使った機能（edge-shapes）");
+  await expect(page.locator("#toast")).toContainText("新しい版の Modelith で使った機能（shared-layers）");
   await moveAlphaAndSave(page);
   // Assert（未保存の印（●）も付けず、配置ファイルは読んだときのまま）
   await expect(page.locator("#docName")).toHaveText("a.sysml");

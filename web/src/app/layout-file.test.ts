@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isEmptyLayout, keepExtras, layoutExtras, NO_EXTRAS, parseLayoutFile, serializeLayout, writeLock } from "./layout-file";
+import { isEmptyLayout, keepExtras, layoutExtras, NO_EXTRAS, parseLayoutFile, serializeLayout, usedFeatures, writeLock } from "./layout-file";
 import type { Layout } from "./layout";
 
 const L: Layout = {
@@ -157,10 +157,17 @@ describe("writeLock（ADR-0023）", () => {
   });
 
   it("この版の知らない機能が requires にあれば、その名前を添えて保存しない", () => {
+    // Arrange（0.2 は edge-shapes を知っているので、知らない名前を使う）
+    const text = '{"modelith":"layout","format":1,"views":{},"requires":["edge-shapes","shared-layers"]}';
     // Act
-    const reason = writeLock(sample("layout-requires.json"));
+    const reason = writeLock(text);
     // Assert
-    expect(reason).toBe("配置ファイルに、新しい版の Modelith で使った機能（edge-shapes）が入っています。ファイルを守るため、この版では図の配置を保存しません");
+    expect(reason).toBe("配置ファイルに、新しい版の Modelith で使った機能（shared-layers）が入っています。ファイルを守るため、この版では図の配置を保存しません");
+  });
+
+  it("この版の知っている機能（線の調整）だけが requires にあれば、保存してよい", () => {
+    // Act / Assert
+    expect(writeLock(sample("layout-requires.json"))).toBeNull();
   });
 
   it.each([
@@ -214,5 +221,44 @@ describe("keepExtras（ADR-0023 §6 の往復）", () => {
     // Assert
     expect(layoutExtras(once)).toEqual(layoutExtras(base));
     expect(twice).toBe(once);
+  });
+});
+
+describe("requires の線の調整（ADR-0023 §3・§7）", () => {
+  const shaped: Layout = { trace: { pos: { A: [0, 0] }, pins: {}, ends: {}, bends: { e: [[1, 2]] } } };
+  const plain: Layout = { trace: { pos: { A: [0, 0] }, pins: {}, ends: {} } };
+
+  it("線の調整（曲がり角・端の位置）を使っていれば、edge-shapes を使っていると判定する", () => {
+    // Arrange
+    const anchored: Layout = { trace: { pos: {}, pins: {}, ends: {}, anchors: { e: [["r", 0.5], null] } } };
+    // Act / Assert
+    expect([usedFeatures(shaped), usedFeatures(anchored), usedFeatures(plain), usedFeatures({})]).toEqual([["edge-shapes"], ["edge-shapes"], [], []]);
+  });
+
+  it("線の調整を使っていれば requires に edge-shapes を書き、0.1 が書き換えないようにする", () => {
+    // Act
+    const text = serializeLayout(shaped);
+    // Assert
+    expect(JSON.parse(text).requires).toEqual(["edge-shapes"]);
+    expect(text.endsWith('  },\n  "requires": ["edge-shapes"]\n}\n')).toBe(true);
+  });
+
+  it("線の調整を使わなくなったら、読んだときにあった edge-shapes も外す（境界値）", () => {
+    // Act
+    const text = serializeLayout(plain, { top: { requires: ["edge-shapes"] }, views: {} });
+    // Assert
+    expect(JSON.parse(text).requires).toBeUndefined();
+  });
+
+  it("読んだときにあった、この版の知らない機能の名前は残し、名前の順に並べる", () => {
+    // Act
+    const text = serializeLayout(shaped, { top: { requires: ["shared-layers", "edge-shapes"] }, views: {} });
+    // Assert
+    expect(JSON.parse(text).requires).toEqual(["edge-shapes", "shared-layers"]);
+  });
+
+  it("線の調整を使わない配置には requires を書かない（今までと同じ中身）", () => {
+    // Act / Assert
+    expect(serializeLayout(plain)).not.toContain("requires");
   });
 });

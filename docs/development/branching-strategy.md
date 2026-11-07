@@ -137,6 +137,9 @@ plugin-sdk の契約を変える場合は、plugin-sdk 側を先にリリース�
 両方が同じ場所を変えていてそのまま戻せないときは、`dev` から `sync/<topic>` を作り、`main` を取り込んで食い違いを直し、`dev` に向けた PR をマージコミットで入れる（許可は要らない）。
 どちらも Squash にはしない（`main` が `dev` の祖先でなくなり、次の戻しで同じ箇所がまたぶつかるため）。
 
+戻し忘れは仕組みで見つける。`main` が `dev` の祖先でないと、1 時間ごとの確認（`.github/workflows/sync-check.yml`）が Issue を開いて知らせ、戻ると閉じる。
+`dev` でリリースの下書き（alpha・beta）を作るときも、戻っていなければ止める（`scripts/check-main-in-dev.sh`）。
+
 ## GitHub 側の設定（リポジトリ管理者が手動で行う）
 
 **Settings → General**

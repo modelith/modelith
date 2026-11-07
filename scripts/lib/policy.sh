@@ -16,11 +16,18 @@ policy_pr_title() {
   return 1
 }
 
-# PR の向け先とマージ元の組み合わせが許されるか。main へは dev（リリース）と fix/*（緊急修正）のみ。
+# PR の向け先とマージ元の組み合わせが許されるか（modelith の ADR-0022）。
+# main へは dev（次の版の rc.1 の始まり）と、候補・安定版の修正と版の書き換え（fix/*・docs/*・test/*・ci/*・chore/*）のみ。
+# 機能（feat/*・refactor/* など）は main に入れない。sync/*（main を取り込んだ戻しのブランチ）は dev にだけ向ける。
 policy_pr_base() {
   local base=$1 head=$2
-  [[ $base != main || $head == dev || $head == fix/* ]] && return 0
-  echo "$head → main の PR は認められていません。通常の作業は dev に向けてください。"
+  if [[ $base == main ]]; then
+    [[ $head == dev || $head =~ ^(fix|docs|test|ci|chore)/ ]] && return 0
+    echo "$head → main の PR は認められていません。main に入れられるのは dev と、修正・文書・テスト・CI・版の書き換え（fix/・docs/・test/・ci/・chore/）だけです。通常の作業は dev に向けてください。"
+    return 1
+  fi
+  [[ $head != sync/* || $base == dev ]] && return 0
+  echo "$head は main を dev に戻すためのブランチです。dev に向けてください。"
   return 1
 }
 
@@ -30,6 +37,8 @@ policy_merge_decision() {
   case "$base:$head:$method" in
     dev:main:merge) printf 'allow\tmain → dev の同期（マージコミット）\n' ;;
     dev:main:*) printf 'deny\tmain → dev の同期はマージコミット（merge）のみです。\n' ;;
+    dev:sync/*:merge) printf 'allow\tmain を取り込んだ戻しのブランチ → dev（マージコミット）\n' ;;
+    dev:sync/*:*) printf 'deny\t戻しのブランチ（sync/*）は、main が dev の祖先になるよう、マージコミット（merge）で入れてください。\n' ;;
     dev:*:squash) printf 'allow\tトピック → dev の Squash merge\n' ;;
     dev:*:*) printf 'deny\tdev へのマージは Squash（squash）のみです。\n' ;;
     main:*:merge) printf 'ask\tmain へのマージにはメンテナの明示的な許可が必要です（PR ごと）。\n' ;;

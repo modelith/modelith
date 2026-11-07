@@ -93,14 +93,14 @@ dependencies = [
 
 [[package]]
 name = "modelith-cli"
-version = "0.2.0-beta.2"
+version = "0.2.0-beta.3"
 dependencies = [
  "modelith-core",
 ]
 
 [[package]]
 name = "modelith-core"
-version = "0.2.0-beta.2"
+version = "0.2.0-beta.3"
 dependencies = [
  "expect-test",
  "modelith-plugin-protocol",
@@ -122,7 +122,7 @@ dependencies = [
 
 [[package]]
 name = "modelith-wasm"
-version = "0.2.0-beta.2"
+version = "0.2.0-beta.3"
 dependencies = [
  "modelith-core",
  "serde",

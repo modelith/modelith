@@ -35,6 +35,7 @@ jobs:
         with:
           # 手で起動したときは選んだブランチ、push のときはそのコミット
           ref: ${{ inputs.branch || github.ref }}
+          fetch-depth: 0  # main が dev に戻っているか（祖先か）を確かめるため、すべての履歴と origin/main を取る
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc

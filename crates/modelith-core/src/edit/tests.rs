@@ -179,6 +179,32 @@ fn rename_usage_changes_declaration_and_paths_only() {
 }
 
 #[test]
+fn rename_state_changes_transition_sources_and_targets() {
+    // Arrange（遷移の元 `first a`・省略形の `then a`・`accept … then a` のどれも、状態 a を指す。#221）
+    let text = "package D {\n    attribute def E;\n    state def S {\n        entry; then a;\n        state a;\n        state c;\n        transition first a accept E then c;\n        transition t3 first c then a;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"s:a","name":"aa","ctx":"S"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package D {\n    attribute def E;\n    state def S {\n        entry; then aa;\n        state aa;\n        state c;\n        transition first aa accept E then c;\n        transition t3 first c then aa;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn rename_usage_changes_references_in_values_and_specializations() {
+    // Arrange（属性の値の式・`:>` の参照も変える。`k.a` の `.` の後ろは別の要素の特性なので変えない）
+    let text = "package P { part def D { attribute a : Real; attribute u : Real = a * 2; attribute f :> a; part k : D; attribute w = k.a; } }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"u:a","ctx":"D","name":"z"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def D { attribute z : Real; attribute u : Real = z * 2; attribute f :> z; part k : D; attribute w = k.a; } }"
+    );
+}
+
+#[test]
 fn rename_flash_follows_earlier_renamed_references() {
     // Arrange（境界値：宣言より前に参照がある。光らせる範囲が、ずれた後の宣言を指す）
     let text = "package P { part def C { part a : Long; } part def Long; }";

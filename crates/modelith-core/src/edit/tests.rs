@@ -473,6 +473,57 @@ fn connect_writes_each_relation_kind() {
 }
 
 #[test]
+fn connect_writes_quoted_names_as_quoted_names() {
+    // Arrange（同値分割：空白を含む名前・日本語の名前。どちらも引用名で書く（8.2.2.3）。#219）
+    let text = "package P {\n    part def 'P one';\n    part def '部品';\n    requirement def 'R one';\n    requirement def '要求';\n    concern def 'K one';\n    verification def 'V one';\n}\n";
+    let cases = [
+        (
+            r#"{"op":"connect","rel":"comp","from":"P one","to":"部品"}"#,
+            "part '部品' : '部品';",
+        ),
+        (
+            r#"{"op":"connect","rel":"satisfy","from":"P one","to":"R one"}"#,
+            "satisfy 'R one' by 'P one';",
+        ),
+        (
+            r#"{"op":"connect","rel":"verify","from":"V one","to":"要求"}"#,
+            "objective { verify '要求'; }",
+        ),
+        (
+            r#"{"op":"connect","rel":"frame","from":"R one","to":"K one"}"#,
+            "frame concern 'k one' : 'K one';",
+        ),
+        (
+            r#"{"op":"connect","rel":"derive","from":"R one","to":"要求"}"#,
+            "#derivation dependency from 'R one' to '要求';",
+        ),
+    ];
+    for (json, want) in cases {
+        // Act
+        let (after, _) = run(text, json);
+        // Assert
+        assert!(after.contains(want), "{json}\n{after}");
+    }
+}
+
+#[test]
+fn connect_flow_writes_quoted_part_and_port_names() {
+    // Arrange（境界値：部品とポートの名前が引用名。経路の各段を引用名で書く。#219）
+    let text = "package P { part def X { port 'p in'; } part def A { part 'x 1' : X; } part def B { port o; } \
+                part def C { part 'a 1' : A; part b : B; } }";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"connect","rel":"flow","from":"u:b","to":"u:a 1.x 1","fromPort":"o","toPort":"p in","ctx":"C"}"#,
+    );
+    // Assert
+    assert!(
+        after.contains("flow from b.o to 'a 1'.'x 1'.'p in';"),
+        "{after}"
+    );
+}
+
+#[test]
 fn connect_verify_adds_to_existing_objective() {
     // Arrange
     let text = "package P { requirement def R; requirement def S; verification def V { objective { verify R; } } }";

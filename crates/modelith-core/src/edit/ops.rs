@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 
+use super::more::sysml_name;
 use super::text::{Target, indent_at, insert_into, lower_first, remove_range};
 use super::{Change, Doc, Intent, Refusal, more};
 use crate::project::{RelKind, Span, text::is_basic_name};
@@ -978,6 +979,7 @@ fn delete_edge(d: &Doc<'_>, id: &str, ctx: Option<&str>) -> Result<Change, Refus
 /// `comp` は a の中に部品、`satisfy`・`derive` は同じ関係を最後に書いた場所（無ければ最初の package）に文、
 /// `verify` は a の `objective` の中（無ければ `objective { … }` を作る）、`frame` は a の中に関心事、
 /// `flow` は 2 つの部品を持つ定義（内部ブロック図なら対象）の中に流れを書く。
+/// 名前は `sysml_name` で書き、空白や日本語を含む名前は引用名（`'R one'`）にする（8.2.2.3）。
 ///
 /// # 引数
 ///
@@ -997,6 +999,8 @@ fn delete_edge(d: &Doc<'_>, id: &str, ctx: Option<&str>) -> Result<Change, Refus
 /// // d.text = "package P {\n    part def A;\n    part def B;\n    requirement def R;\n}\n" のとき
 /// connect(d, "comp", A, B, None, None, None)     → Ok(text に "part def A {\n        part b : B;\n    }")
 /// connect(d, "satisfy", A, R, None, None, None)  → Ok(text に "    satisfy R by A;\n}")
+/// // R・A の名前が 'R one'・'A 1' のとき
+/// connect(d, "satisfy", A, R, None, None, None)  → Ok(text に "    satisfy 'R one' by 'A 1';\n}")
 /// // d.text = "package P { part def E; part def F; }" のとき
 /// connect(d, "flow", E, F, None, None, None)     → Err("2 つの部品を両方持つ部品定義がないため、流れを書けません")
 /// connect(d, "bogus", E, F, None, None, None)    → Err("関係の種類「bogus」は扱えません")
@@ -1016,7 +1020,10 @@ fn connect(
         "comp" => {
             let kw = lookup(KW_FOR, &eb.kind).unwrap_or("part");
             let nm = d.unique_child(a.entry, &lower_first(&eb.name));
-            (d.target(a.entry), format!("{kw} {nm} : {};", eb.name))
+            (
+                d.target(a.entry),
+                format!("{kw} {} : {};", sysml_name(&nm), sysml_name(&eb.name)),
+            )
         }
         "satisfy" => {
             let host = last_rel(|k| matches!(k, RelKind::Satisfy { .. }))
@@ -1025,7 +1032,11 @@ fn connect(
             let host = host.ok_or_else(no_package)?;
             (
                 d.target(host),
-                format!("satisfy {} by {};", eb.name, ea.name),
+                format!(
+                    "satisfy {} by {};",
+                    sysml_name(&eb.name),
+                    sysml_name(&ea.name)
+                ),
             )
         }
         "verify" => {
@@ -1038,10 +1049,10 @@ fn connect(
                 .filter(|_| has_objective)
                 .and_then(|o| objective_block(d.text, d.b(o)));
             match objective {
-                Some(t) => (t, format!("verify {};", eb.name)),
+                Some(t) => (t, format!("verify {};", sysml_name(&eb.name))),
                 None => (
                     d.target(a.entry),
-                    format!("objective {{ verify {}; }}", eb.name),
+                    format!("objective {{ verify {}; }}", sysml_name(&eb.name)),
                 ),
             }
         }
@@ -1049,7 +1060,11 @@ fn connect(
             let nm = d.unique_child(a.entry, &lower_first(&eb.name));
             (
                 d.target(a.entry),
-                format!("frame concern {nm} : {};", eb.name),
+                format!(
+                    "frame concern {} : {};",
+                    sysml_name(&nm),
+                    sysml_name(&eb.name)
+                ),
             )
         }
         "derive" => {
@@ -1060,7 +1075,11 @@ fn connect(
             let host = host.ok_or_else(no_package)?;
             (
                 d.target(host),
-                format!("#derivation dependency from {} to {};", ea.name, eb.name),
+                format!(
+                    "#derivation dependency from {} to {};",
+                    sysml_name(&ea.name),
+                    sysml_name(&eb.name)
+                ),
             )
         }
         "flow" => {
@@ -1073,7 +1092,7 @@ fn connect(
             // 内部ブロック図の入れ子の部品は、対象の中から `a.b` で指す
             let end = |u: usize, p: Option<&str>| {
                 let path = super::ibd::path_of(d, parent, u);
-                p.map_or_else(|| path.clone(), |p| format!("{path}.{p}"))
+                p.map_or_else(|| path.clone(), |p| format!("{path}.{}", sysml_name(p)))
             };
             (
                 d.target(parent),

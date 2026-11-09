@@ -31,6 +31,36 @@ fn flashed(text: &str, out: &Outcome) -> String {
     String::from_utf16_lossy(&text.encode_utf16().collect::<Vec<_>>()[a..b])
 }
 
+// ---- 括弧が閉じていないテキスト ----
+
+#[test]
+fn edits_are_refused_while_braces_or_comments_are_open() {
+    // 同値分割：閉じ括弧が無い・閉じていないコメント・閉じが多い。どれも書く場所を取り違えるので断る（#222）
+    for text in [
+        "package G {\n    part def A;\n    requirement def R;\n",
+        "package G {\n    part def A;\n    /* note\n}\n",
+        "package G {\n    part def A;\n}\n}\n",
+    ] {
+        // Act
+        let why = refused(text, r#"{"op":"addNode","kind":"requirement def"}"#);
+        // Assert
+        assert_eq!(why, UNBALANCED, "{text}");
+    }
+}
+
+#[test]
+fn braces_inside_comments_and_strings_do_not_count() {
+    // Arrange（境界値：コメント・文字列の中の括弧は数えない）
+    let text = "package G {\n    /* { */\n    part def A { doc /* } */ }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"addNode","kind":"part def"}"#);
+    // Assert
+    assert!(
+        after.ends_with("    part def NewPart {\n    }\n}\n"),
+        "{after}"
+    );
+}
+
 // ---- 要素の追加 ----
 
 #[test]

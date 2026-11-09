@@ -710,21 +710,29 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
     // 使用の名前は、持ち主（部品定義など）の中でだけ参照される
     let owner =
         e.pe.map_or(0..d.text.len(), |p| d.b(d.e(p).start)..d.b(d.e(p).end));
+    // 定義の名前は、見える範囲の中で、同じ名前の別の宣言に隠されていないところだけを変える（#220）
+    let seen = def_reach(d, f.entry, old);
     let mut hits: Vec<(usize, usize)> = Vec::new(); // (位置, 消す長さ)
     for (i, &(kind, at, s)) in ts.iter().enumerate() {
-        if kind == SyntaxKind::QUOTED_NAME && e.is_def && s.len() > 2 && &s[1..s.len() - 1] == old {
+        if kind == SyntaxKind::QUOTED_NAME
+            && e.is_def
+            && s.len() > 2
+            && &s[1..s.len() - 1] == old
+            && seen(&ts, i)
+        {
             hits.push((at + 1, old.len()));
         }
         if kind != SyntaxKind::IDENT || s != old {
             continue;
         }
-        let hit = e.is_def || {
-            let in_owner = owner.contains(&at);
-            let after_dot = i > 0 && ts[i - 1].0 == SyntaxKind::DOT;
-            let dot_next = ts.get(i + 1).is_some_and(|t| t.0 == SyntaxKind::DOT);
-            let decl_next = significant(i, 1).is_some_and(|t| t.2.starts_with([':', ';', '{']));
-            in_owner && !after_dot && (dot_next || decl_next)
-        };
+        let hit = (e.is_def && seen(&ts, i))
+            || !e.is_def && {
+                let in_owner = owner.contains(&at);
+                let after_dot = i > 0 && ts[i - 1].0 == SyntaxKind::DOT;
+                let dot_next = ts.get(i + 1).is_some_and(|t| t.0 == SyntaxKind::DOT);
+                let decl_next = significant(i, 1).is_some_and(|t| t.2.starts_with([':', ';', '{']));
+                in_owner && !after_dot && (dot_next || decl_next)
+            };
         if hit {
             hits.push((at, old.len()));
         }
@@ -754,6 +762,64 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
         select: Some(nn.to_owned()),
         flash: Some(flash),
     })
+}
+
+/// 定義の名前の変更で、名前のトークンがその定義を指すかを確かめる関数を作る（#220）。
+/// 定義が見える範囲は、package（か一番上）に置いた定義ならテキスト全体、定義の中に置いた定義ならその持ち主の中。
+/// その中でも、同じ名前を宣言する別の要素が、もっと内側に見える範囲を持つなら、そこはその要素を指す（隠される）。
+/// `X::名前` の形は、修飾 `X` が定義の持ち主の名前のときだけ指す。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `i`：名前を変える定義の宣言の番号
+/// - `old`：今の名前
+///
+/// # 戻り値
+///
+/// （トークンの列, 名前のトークンの番号）を受け取り、その定義を指すなら true を返す関数。
+///
+/// # 例
+///
+/// ```text
+/// // "package P { part def B; part def K { part def B; part b : B; } part z : B; }" の外側の B のとき
+/// def_reach(d, 外側の B, "B")(ts, z の型の B)   → true
+/// def_reach(d, 外側の B, "B")(ts, K の中の B)   → false（K の中の B に隠される）
+/// def_reach(d, 外側の B, "B")(ts, "K::B" の B)  → false（修飾が持ち主の名前でない）
+/// ```
+fn def_reach<'a>(
+    d: &'a Doc<'_>,
+    i: usize,
+    old: &'a str,
+) -> impl Fn(&[(SyntaxKind, usize, &str)], usize) -> bool + 'a {
+    let reach = |j: usize| match d.e(j).pe {
+        Some(p) if d.e(p).kind != "package" => d.b(d.e(p).start)..d.b(d.e(p).end),
+        _ => 0..d.text.len(),
+    };
+    let mine = reach(i);
+    let hidden: Vec<std::ops::Range<usize>> = (0..d.p.entries.len())
+        .filter(|&j| j != i && d.e(j).name == old)
+        .map(reach)
+        .filter(|r| r != &mine && mine.start <= r.start && r.end <= mine.end)
+        .collect();
+    let owner = d.e(i).pe.map(|p| d.e(p).name.as_str());
+    move |ts, k| {
+        let prev = (0..k)
+            .rev()
+            .map(|j| &ts[j])
+            .find(|t| !t.0.is_trivia() && t.0 != SyntaxKind::REGULAR_COMMENT);
+        if prev.is_some_and(|t| t.0 == SyntaxKind::COLON2) {
+            let qual = (0..k)
+                .rev()
+                .map(|j| &ts[j])
+                .filter(|t| !t.0.is_trivia() && t.0 != SyntaxKind::REGULAR_COMMENT)
+                .nth(1);
+            let name = qual.map(|t| t.2.trim_matches('\''));
+            return owner.is_none_or(|o| name == Some(o));
+        }
+        let at = ts[k].1;
+        mine.contains(&at) && !hidden.iter().any(|r| r.contains(&at))
+    }
 }
 
 /// 要素を削除する。行全体を占めるなら行ごと消す。選んだ要素の中に選んだ要素があれば、外側だけを消す。

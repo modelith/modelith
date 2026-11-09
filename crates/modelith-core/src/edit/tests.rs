@@ -189,6 +189,37 @@ fn rename_flash_follows_earlier_renamed_references() {
 }
 
 #[test]
+fn rename_definition_leaves_a_nested_definition_of_the_same_name() {
+    // Arrange（K の中の B は外側の B を隠す。K の中の参照と K::B は内側の B を指す。#220）
+    let text = "package P {\n    part def B;\n    part def K {\n        part def B;\n        part b : B;\n    }\n    part z : B;\n    part y : K::B;\n    part x : P::B;\n}\n";
+    // Act
+    let (outer, _) = run(text, r#"{"op":"rename","key":"B","name":"Outer"}"#);
+    let (inner, _) = run(text, r#"{"op":"rename","key":"B@K","name":"Inner"}"#);
+    // Assert
+    assert_eq!(
+        outer,
+        "package P {\n    part def Outer;\n    part def K {\n        part def B;\n        part b : B;\n    }\n    part z : Outer;\n    part y : K::B;\n    part x : P::Outer;\n}\n"
+    );
+    assert_eq!(
+        inner,
+        "package P {\n    part def B;\n    part def K {\n        part def Inner;\n        part b : Inner;\n    }\n    part z : B;\n    part y : K::Inner;\n    part x : P::B;\n}\n"
+    );
+}
+
+#[test]
+fn rename_definition_in_a_package_still_renames_other_packages() {
+    // Arrange（境界値：package に置いた定義は、ほかの package からの参照（import した名前）も変える）
+    let text = "package P { part def B; }\npackage Q { import P::*; part q : B; }\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"B","name":"C"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def C; }\npackage Q { import P::*; part q : C; }\n"
+    );
+}
+
+#[test]
 fn rename_is_refused_for_bad_or_used_names_and_noop_for_same_name() {
     // 同値分割：使えない名前・既にある名前・同じ名前
     let text = "package P { part def A; part def B; }";

@@ -108,6 +108,30 @@ const isEnds = (v: unknown): v is Ends => Array.isArray(v) && v.length === 2 && 
 const isAnchors = (v: unknown): v is Anchors => Array.isArray(v) && v.length === 2 && v.every((a) => a === null || isPinPos(a));
 
 /**
+ * 配置ファイルの views が、この版の知っている項目の形どおりか（C-11、#244）。知らない `@` の項目は形を問わない。
+ * 形が違う項目を layoutFromJson が黙って読み飛ばし、保存で消してしまわないよう、読む前に確かめる。
+ *
+ * @param raw 配置ファイルの views（ビューのキー → 要素のキー → 座標と `@pins`・`@ends`・`@bends`・`@anchors`）
+ * @returns すべての項目が知っている形（または知らない `@` の項目）なら true
+ * @example
+ * isLayoutJson({ v: { A: [0, 0], "@ends": { e: ["a", null] }, "@note": 1 } }) // → true
+ * isLayoutJson({ v: [1, 2] })        // → false（ビューが配列）
+ * isLayoutJson({ v: { A: "bad" } })  // → false（座標が 2 つの数でない）
+ */
+export function isLayoutJson(raw: Record<string, unknown>): boolean {
+  const every = (x: unknown, ok: (v: unknown) => boolean): boolean => isObj(x) && Object.values(x).every(ok);
+  const bends = (b: unknown): boolean => Array.isArray(b) && b.length > 0 && b.every(isPos);
+  const item = ([k, x]: [string, unknown]): boolean => {
+    if (k === "@pins") return every(x, (pv) => every(pv, isPinPos));
+    if (k === "@ends") return every(x, isEnds);
+    if (k === "@bends") return every(x, bends);
+    if (k === "@anchors") return every(x, isAnchors);
+    return k.startsWith("@") || isPos(x);
+  };
+  return Object.values(raw).every((v) => isObj(v) && Object.entries(v).every(item));
+}
+
+/**
  * `@layout` の JSON（ビューのキー → 要素のキー → 座標、と `@pins`・`@ends`・`@bends`・`@anchors`）を読み取る。形の合わない値は捨てる。
  *
  * @param raw JSON から読んだオブジェクト（ビューのキー → その中身）

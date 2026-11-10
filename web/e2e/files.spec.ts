@@ -229,6 +229,18 @@ test("C-11: この版の知らない機能を含む配置ファイルは、開�
   expect(await readFile(page, "a.layout.json")).toBe(layout);
 });
 
+test("C-11: 知っている項目の形が違う配置ファイル（座標が文字列・ビューが配列）は、開いたときに知らせ、保存しても書き換えない（#244）", async ({ page }) => {
+  // Arrange
+  const layout = '{"modelith":"layout","format":1,"views":{"all":{"Alpha":"bad"},"trace":[1,2]}}\n';
+  // Act
+  await openAllView(page, layout);
+  await expect(page.locator("#toast")).toContainText("配置ファイルの形が違います");
+  await moveAlphaAndSave(page);
+  // Assert
+  await expect(page.locator("#docName")).toHaveText("a.sysml");
+  expect(await readFile(page, "a.layout.json")).toBe(layout);
+});
+
 test("C-11: 他のアプリが新しい版の機能を書いた配置ファイルは、「上書きする」を選んでも書き換えず、ファイルの配置を表示する（#226）", async ({ page }) => {
   // Arrange（開いた後に、新しい版が配置ファイルを書き換える）
   await openAllView(page, '{"modelith":"layout","format":1,"views":{"all":{"Alpha":[0,0]}}}\n');

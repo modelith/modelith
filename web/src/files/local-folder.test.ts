@@ -561,6 +561,24 @@ describe("LocalFolderProvider: フォルダを作る・動かす（F-FILE-19）"
     expect(root.entries.get("models")).toBeInstanceOf(FakeDir);
   });
 
+  it("フォルダの直下のすべての名前（一覧に出さないファイルも）を返す。無いフォルダなら空（#243）", async () => {
+    // Arrange
+    const { p, root } = setup();
+    root.put("a.sysml", "");
+    root.put("a.layout.json", "{}");
+    root.put("readme.md", "");
+    root.put("models/b.sysml", "");
+    const folder = await p.pickFolder();
+    // Act
+    const top = await p.namesInFolder(folder!, "");
+    const sub = await p.namesInFolder(folder!, "models");
+    const absent = await p.namesInFolder(folder!, "absent");
+    // Assert
+    expect(top.sort()).toEqual(["a.layout.json", "a.sysml", "models", "readme.md"]);
+    expect(sub).toEqual(["b.sysml"]);
+    expect(absent).toEqual([]);
+  });
+
   it("同じ名前のファイルかフォルダがあれば作らない（異常系）", async () => {
     // Arrange
     const { p, root } = setup();

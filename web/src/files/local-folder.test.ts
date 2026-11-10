@@ -672,6 +672,21 @@ describe("LocalFolderProvider: プロジェクトの一覧（F-PROJ-3）", () =>
     expect(folder && p.recentIdOf(folder)).toBe(first?.id);
   });
 
+  it("ほかのフォルダに切り替えて戻っても、前と同じ参照を使う（同じファイルを別の文書として開かないため。#227）", async () => {
+    // Arrange
+    const { api, p } = setup();
+    const before = await p.pickFolder();
+    const other = new FakeDir("other");
+    api.folder = other;
+    const switched = await p.pickFolder();
+    const [, first] = await p.recentFolders();
+    // Act
+    const back = await p.openRecent(first?.id ?? "");
+    // Assert
+    expect(back?.id).toBe(before?.id);
+    expect(switched?.id).not.toBe(before?.id);
+  });
+
   it("許可されない・一覧に無いフォルダは開かない（異常系）", async () => {
     // Arrange
     const { p, root } = setup();

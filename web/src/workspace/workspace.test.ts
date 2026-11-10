@@ -479,7 +479,7 @@ describe("kvDraftStore", () => {
     // Act
     const state = store.load();
     // Assert
-    expect(state).toEqual({ drafts: [], closedAll: false });
+    expect(state).toEqual({ drafts: [], closedAll: false, unused: 0, locked: false });
   });
 
   it("形の合わない項目は捨てる", () => {
@@ -491,16 +491,42 @@ describe("kvDraftStore", () => {
     expect(state.drafts).toEqual([{ name: "a", text: "x" }]);
   });
 
-  it("知らない形の記録は使わないが、置き直しても消さない（ADR-0023 §4：新しい版が書いた記録）", () => {
-    // Arrange
-    const kv = new Map<string, string>([["modelith-drafts-v1", JSON.stringify([{ name: "a", text: "x" }, { title: "新しい形" }, 3, null])]]);
+  it("知らない形の記録は使わないが、置き直しても消さず、その数を返す（C-11、ADR-0023 §4：新しい版が書いた記録。#228）", () => {
+    // Arrange（同値分割：知らない項目を足した下書き・名前の違うオブジェクト・数・文字列・null）
+    const unknown = [{ name: "c", text: "z", color: "red", meta: { a: 1 } }, { title: "新しい形" }, 3, "s", null];
+    const kv = new Map<string, string>([["modelith-drafts-v1", JSON.stringify([{ name: "a", text: "x" }, ...unknown])]]);
     const store = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => !!kv.set(k, v) });
     // Act
     const state = store.load();
     store.save({ drafts: [{ name: "b", text: "y" }], closedAll: false });
-    // Assert（オブジェクトでない値は記録ではないので残さない）
+    // Assert
     expect(state.drafts).toEqual([{ name: "a", text: "x" }]);
-    expect(JSON.parse(kv.get("modelith-drafts-v1") ?? "")).toEqual([{ name: "b", text: "y" }, { title: "新しい形" }]);
+    expect(state.unused).toBe(5);
+    expect(JSON.parse(kv.get("modelith-drafts-v1") ?? "")).toEqual([{ name: "b", text: "y" }, ...unknown]);
+  });
+
+  it("配置を持つ下書きは、この版の形として使う（境界値: layout は知っている項目）", () => {
+    // Arrange
+    const store = kvDraftStore({ get: (k) => (k === "modelith-drafts-v1" ? JSON.stringify([{ name: "a", text: "x", layout: "{}" }]) : null), set: () => true });
+    // Act
+    const state = store.load();
+    // Assert
+    expect(state.drafts).toEqual([{ name: "a", text: "x", layout: "{}" }]);
+    expect(state.unused).toBe(0);
+  });
+
+  it("一覧そのものが知らない形なら、使わずに書き換えず、そのことを返す（異常系。#228）", () => {
+    // Arrange（新しい版が一覧を包んだ形）
+    const wrapped = JSON.stringify({ version: 2, drafts: [{ name: "d1", text: "x" }] });
+    const kv = new Map<string, string>([["modelith-drafts-v1", wrapped]]);
+    const store = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => !!kv.set(k, v) });
+    // Act
+    const state = store.load();
+    const saved = store.save({ drafts: [{ name: "b", text: "y" }], closedAll: false });
+    // Assert
+    expect(state).toEqual({ drafts: [], closedAll: false, unused: 0, locked: true });
+    expect(saved).toBe(true);
+    expect(kv.get("modelith-drafts-v1")).toBe(wrapped);
   });
 
   it("まだ何も置いていなければ、下書きは無く、すべて閉じて終えたことにもならない（境界）", () => {
@@ -509,7 +535,7 @@ describe("kvDraftStore", () => {
     // Act
     const state = store.load();
     // Assert
-    expect(state).toEqual({ drafts: [], closedAll: false });
+    expect(state).toEqual({ drafts: [], closedAll: false, unused: 0, locked: false });
   });
 
   it("置いた下書きと、すべて閉じて終えたことを読み戻せる（F-FILE-14）", () => {
@@ -519,7 +545,7 @@ describe("kvDraftStore", () => {
     // Act
     store.save({ drafts: [], closedAll: true });
     // Assert
-    expect(store.load()).toEqual({ drafts: [], closedAll: true });
+    expect(store.load()).toEqual({ drafts: [], closedAll: true, unused: 0, locked: false });
   });
 
   it("下書きは以前の版と同じ形（配列）で置く", () => {

@@ -681,6 +681,28 @@ fn connect_flow_writes_quoted_part_and_port_names() {
 }
 
 #[test]
+fn connect_refuses_a_relation_that_is_already_written() {
+    // Arrange（同じ満たす・導出の関係を 2 回足さない。空白の違いは同じとみなす。#244）
+    let text = "package P {\n    part def A;\n    requirement def R;\n    requirement def S;\n    satisfy  R by A;\n    #derivation dependency from R to S;\n}\n";
+    // Act・Assert
+    for json in [
+        r#"{"op":"connect","rel":"satisfy","from":"A","to":"R"}"#,
+        r#"{"op":"connect","rel":"derive","from":"R","to":"S"}"#,
+    ] {
+        assert_eq!(refused(text, json), "同じ関係が既にあります", "{json}");
+    }
+    // 向きが逆の導出は別の関係
+    let (after, _) = run(
+        text,
+        r#"{"op":"connect","rel":"derive","from":"S","to":"R"}"#,
+    );
+    assert!(
+        after.contains("#derivation dependency from S to R;"),
+        "{after}"
+    );
+}
+
+#[test]
 fn connect_verify_adds_to_existing_objective() {
     // Arrange
     let text = "package P { requirement def R; requirement def S; verification def V { objective { verify R; } } }";

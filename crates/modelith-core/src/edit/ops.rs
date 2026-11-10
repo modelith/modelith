@@ -1245,12 +1245,38 @@ fn connect(
         }
         _ => return Err(format!("関係の種類「{rel}」は扱えません")),
     };
+    // package の直下に書く関係（満たす・導出）は、同じ文が既にあれば足さない（同じ関係が 2 行になるため。#244）
+    if matches!(rel, "satisfy" | "derive") && has_statement(d.text, &snippet) {
+        return Err("同じ関係が既にあります".to_owned());
+    }
     let (text, a, b) = insert_into(d.text, host, &snippet);
     Ok(Change {
         text,
         select: None,
         flash: Some((a, b)),
     })
+}
+
+/// テキストに、空白の違いを除いて同じ文があるか。コメントの中も数えるが、関係の重複を断るのに使うだけなので問題にならない。
+///
+/// # 引数
+///
+/// - `text`：テキスト
+/// - `stmt`：探す文（`satisfy R by A;` など）
+///
+/// # 戻り値
+///
+/// 空白をまとめた形で `stmt` が現れれば true。
+///
+/// # 例
+///
+/// ```text
+/// has_statement("package P {\n    satisfy  R by A;\n}", "satisfy R by A;") → true
+/// has_statement("package P { satisfy R by B; }", "satisfy R by A;")         → false
+/// ```
+fn has_statement(text: &str, stmt: &str) -> bool {
+    let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+    squash(text).contains(&squash(stmt))
 }
 
 /// 関係を書く package が無いときの理由の文を作る（画面にそのまま出す。ADR-0014）。

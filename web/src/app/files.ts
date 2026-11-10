@@ -526,12 +526,40 @@ async function resolveConflict(key: string): Promise<void> {
     { id: "overwrite", label: "自分の内容で上書きする", kind: "danger" },
   ]);
   if (r?.id === "overwrite") {
+    if (doc.layoutStale && !(await keepNewerLayout(key))) return;
     await ws.save(key, browser, { force: true });
     toast(`「${doc.name}」を上書きしました`);
   } else if (r?.id === "reload") {
     await ws.reload(key);
     if (shownKey === key) showDoc(key);
   }
+}
+
+/**
+ * 他のアプリで変わった配置ファイルに上書きする前に、今のファイルを読み直し、新しい版の内容を守る（C-11、ADR-0023 §3。#226）。
+ * この版では書けないファイル（読めない・知らない requires）なら、自分の配置を捨ててファイルの配置を表示し、理由を知らせる。
+ * 書けるファイルなら、ファイルにある知らない項目を自分の配置に書き戻す。
+ *
+ * @param key 文書のキー
+ * @returns 上書きを続けてよければ true。配置ファイルを守るため上書きをやめたら false
+ * @example
+ * await keepNewerLayout(key) // → true（他のアプリが "writer" を足しただけ。自分の配置に "writer" を書き戻して上書きする）
+ * await keepNewerLayout(key) // → false（他のアプリが "requires": ["shared-layers"] を書いた。ファイルの配置を表示し、理由を知らせる）
+ */
+async function keepNewerLayout(key: string): Promise<boolean> {
+  const doc = ws.get(key);
+  const disk = await ws.reloadSavedLayout(key);
+  if (!doc || disk === null) return true;
+  const lock = writeLock(disk);
+  if (lock) {
+    ws.setLayout(key, disk);
+    if (shownKey === key) showDoc(key);
+    toast(`${lock}。「${doc.name}」の図の配置は上書きせず、ファイルの配置を表示しました`);
+    if (doc.text !== doc.savedText) await ws.save(key, browser, { force: true });
+    return false;
+  }
+  ws.setLayout(key, keepExtras(doc.layout, disk));
+  return true;
 }
 
 /**

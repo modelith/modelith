@@ -321,7 +321,7 @@ export class LocalFolderProvider
     }
     const next = pushRecent(list, at, dir);
     await this.store.set(RECENT_LIST_KEY, next);
-    const ref = this.addFolder(dir);
+    const ref = await this.addFolder(dir);
     if (next[0]) this.recentIds.set(ref.id, next[0].id);
     return ref;
   }
@@ -553,7 +553,7 @@ export class LocalFolderProvider
    */
   async pickOtherFolder(): Promise<FolderRef | null> {
     try {
-      return this.addFolder(await this.api.showDirectoryPicker({ mode: "read", id: "modelith-plugin" }));
+      return await this.addFolder(await this.api.showDirectoryPicker({ mode: "read", id: "modelith-plugin" }));
     } catch (e) {
       if (isAbort(e)) return null;
       throw e;
@@ -709,15 +709,25 @@ export class LocalFolderProvider
   }
 
   /**
-   * フォルダのハンドルを覚え、参照を作る。
+   * フォルダのハンドルを覚え、参照を作る。前に開いたことのある同じフォルダなら、前と同じ id を使う。
+   * id が変わると、中のファイルの参照も変わり、開いたままの同じファイルを別の文書として開いてしまうため（#227）。
    *
    * @param dir フォルダのハンドル
-   * @returns 新しい参照（id は `dir:番号`）
+   * @returns 参照（id は `dir:番号`）
    * @example
-   * this.addFolder(project) // → { provider: "local", id: "dir:1", name: "project" }
+   * await this.addFolder(project) // → { provider: "local", id: "dir:1", name: "project" }
+   * await this.addFolder(other)   // → { provider: "local", id: "dir:2", name: "other" }
+   * await this.addFolder(project) // → { provider: "local", id: "dir:1", name: "project" }（同じフォルダは同じ id）
    */
-  private addFolder(dir: DirHandleLike): FolderRef {
-    const id = `dir:${++this.seq}`;
+  private async addFolder(dir: DirHandleLike): Promise<FolderRef> {
+    let id: string | undefined;
+    for (const [k, h] of this.folders) {
+      if (h === dir || (await h.isSameEntry?.(dir))) {
+        id = k;
+        break;
+      }
+    }
+    id ??= `dir:${++this.seq}`;
     this.folders.set(id, dir);
     return { provider: this.id, id, name: dir.name };
   }

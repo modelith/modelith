@@ -1410,6 +1410,23 @@ describe("Workspace: ファイルの一覧の名前の変更・削除・新し�
     expect(s.ws.isDirty(doc)).toBe(false);
   });
 
+  it("新しい名前の配置ファイルが既にあれば、何も動かさずに断る（異常系。#225）", async () => {
+    // Arrange（b.sysml は無いが、持ち主の無い b.layout.json がある）
+    const s = setup();
+    s.root.put("a.layout.json", '{"modelith":"layout","mine":"a"}');
+    s.root.put("b.layout.json", '{"modelith":"layout","mine":"b"}');
+    const { doc } = await openA(s);
+    // Act
+    const renamed = s.ws.renameEntry("a.sysml", "b.sysml");
+    // Assert
+    await expect(renamed).rejects.toThrow("図の配置のファイル「b.layout.json」が既にあるため、「b.sysml」にできません");
+    expect(s.root.entries.has("a.sysml")).toBe(true);
+    expect(s.root.entries.has("b.sysml")).toBe(false);
+    expect((s.root.entries.get("a.layout.json") as FakeFile).content).toContain('"mine":"a"');
+    expect((s.root.entries.get("b.layout.json") as FakeFile).content).toContain('"mine":"b"');
+    expect(doc.ref?.path).toBe("a.sysml");
+  });
+
   it("未保存の変更のある文書は、変更を残したまま付け替わり、新しいファイルへ上書き保存できる", async () => {
     // Arrange
     const s = setup();

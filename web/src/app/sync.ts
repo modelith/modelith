@@ -192,6 +192,7 @@ export function reparse(fromText: boolean): void {
  * @param fromText テキストの直接編集による変更なら true（前回から中身が変わった要素を S.pulse に入れて光らせる）
  */
 function refresh(fromText: boolean): void {
+  awaitingModel = false;
   syncModelViewKind();
   prunePins();
   const sig = new Map<string, string>();
@@ -219,9 +220,10 @@ function refresh(fromText: boolean): void {
  * n 項の接続の点は、つながる要素の重心に、メモは注釈する要素の近くに置く。幅の狭い要素（アクションの流れの図の記号）は列の中央に置き、
  * アクティビティ図に区画があれば、要素を受け持つ部品の列に置く。
  * 状態遷移の図は、状態の入れ子と遷移の向きで並べる（placeStates）。シーケンス図では何もしない。
+ * 文書を切り替えて、その文書の解析結果がまだ届いていない間も何もしない（今のモデルは前の文書のものなので。#224）。
  */
 export function ensureLayout(): void {
-  if (S.view === "seq") return;
+  if (S.view === "seq" || awaitingModel) return;
   const v = curView();
   if (S.view === "stm") {
     const c = viewContent(S.M, v);
@@ -264,14 +266,19 @@ export function committedLayout(): string {
 
 /**
  * 表示する文書の配置にする（文書を切り替えたとき・元に戻したとき）。S.layout を置き換え、確定した配置として記録する。
- * 描き直しは呼び出し側の setText に任せる。
+ * 描き直しは呼び出し側の setText に任せる。その文書の解析結果が届くまで、座標の無い要素を自動で並べない（ensureLayout）。
  *
  * @param layout 文書の配置（配置ファイルから読んだもの）
  */
 export function loadLayout(layout: Layout): void {
   S.layout = layout;
   committed = serializeLayout(layout);
+  awaitingModel = true;
 }
+
+// 配置を読み込んでから、その文書の解析結果が届くまで true。その間の S.M は前の文書のものなので、
+// 座標の無い要素を自動で並べない（前の文書の要素の位置を、この文書の配置に書き込まないため。#224）
+let awaitingModel = false;
 
 let layoutListener: (layout: string) => void = () => {};
 /**

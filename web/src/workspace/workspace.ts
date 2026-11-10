@@ -677,6 +677,26 @@ export class Workspace {
   }
 
   /**
+   * 配置ファイルだけを読み直し、保存した配置と版を今のファイルのものにする（今の配置は変えない）。
+   * 他のアプリで変わった配置ファイルに上書きする前に、そのファイルの知らない項目や、この版では書けない印を見るために使う（#226）。
+   * key の文書が無い・隣を扱えないなら何もしない。
+   *
+   * @param key 文書のキー
+   * @returns 読み直した配置ファイルの中身（無ければ ""）。読み直さなかったら null
+   * @example
+   * await ws.reloadSavedLayout(doc.key) // → '{"modelith":"layout",…,"requires":["shared-layers"]}'（doc.savedLayout も同じになり、layoutStale は消える）
+   * await ws.reloadSavedLayout("gone")  // → null
+   */
+  async reloadSavedLayout(key: string): Promise<string | null> {
+    const doc = this.get(key);
+    if (!doc?.ref || doc.layoutHome !== "sibling") return null;
+    const { savedLayout, layoutVersion } = await this.readLayout(doc.ref);
+    Object.assign(doc, { savedLayout, layoutVersion, layoutStale: false });
+    this.changed();
+    return savedLayout;
+  }
+
+  /**
    * 文書を閉じる。閉じたのが表示中なら隣の文書（後ろ、無ければ前）に切り替え、最後の 1 つなら表示中を無くす（新しい文書は作らない。F-FILE-14）。
    * 無題の文書なら下書きからも消す。最後の 1 つなら、すべて閉じたことを下書きの保存先に残す。key の文書が無ければ何もしない。
    *
@@ -967,9 +987,11 @@ export class Workspace {
    *
    * @param from 名前を変えるもののパス
    * @param to 新しいパス
-   * @returns 動かし終えたら解決する Promise。フォルダが開かれていない・動かせない・動かす先に何かあるときは例外（Error）で拒否する
+   * @returns 動かし終えたら解決する Promise。フォルダが開かれていない・動かせない・動かす先に何かあるとき
+   *   （モデルのファイルなら、新しい名前の配置ファイルが既にあるときも。何も動かさない）は例外（Error）で拒否する
    * @example
    * await ws.renameEntry("a.sysml", "b.sysml") // → b.sysml と b.layout.json になり、a.sysml の文書は b.sysml の文書になる
+   * await ws.renameEntry("a.sysml", "c.sysml") // → Error「図の配置のファイル「c.layout.json」が既にあるため、…」（c.sysml が無く c.layout.json だけあるとき）
    * await ws.renameEntry("models", "parts")    // → parts/… になり、中の文書も付け替わる
    */
   async renameEntry(from: string, to: string): Promise<void> {
@@ -979,12 +1001,15 @@ export class Workspace {
     if (!hasFolderEdits(source)) throw new Error("このフォルダでは名前を変えられません");
     const docs = this.docsIn(from);
     const isFile = modelFiles(f.entries).some((r) => r.path === from);
-    await source.moveInFolder(f.ref, from, to);
-    if (isFile && hasFolderFiles(source)) {
-      const layoutFrom = childPath(parentPath(from), layoutNameFor(from.slice(from.lastIndexOf("/") + 1)));
-      const layoutTo = childPath(parentPath(to), layoutNameFor(to.slice(to.lastIndexOf("/") + 1)));
-      if (layoutFrom !== layoutTo && (await source.readInFolder(f.ref, layoutFrom)) !== null) await source.moveInFolder(f.ref, layoutFrom, layoutTo);
+    const layoutFrom = childPath(parentPath(from), layoutNameFor(from.slice(from.lastIndexOf("/") + 1)));
+    const layoutTo = childPath(parentPath(to), layoutNameFor(to.slice(to.lastIndexOf("/") + 1)));
+    const files = isFile && layoutFrom !== layoutTo && hasFolderFiles(source) ? source : null;
+    // 新しい名前の配置ファイルが既にあれば、何も動かす前に断る（動かした後では、モデルだけが動いて別の配置と組になるため。#225）
+    if (files && (await files.readInFolder(f.ref, layoutTo)) !== null) {
+      throw new Error(`図の配置のファイル「${layoutTo}」が既にあるため、「${to}」にできません。別の名前にしてください`);
     }
+    await source.moveInFolder(f.ref, from, to);
+    if (files && (await files.readInFolder(f.ref, layoutFrom)) !== null) await source.moveInFolder(f.ref, layoutFrom, layoutTo);
     f.entries = await source.list(f.ref);
     await this.readModelFiles();
     const moved = modelFiles(f.entries);

@@ -8,6 +8,7 @@ import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
 import { emptyView, type Layout } from "./layout";
 import { serializeLayout } from "./layout-file";
+import { MAX_PROBLEM_ROWS, problemRows } from "./problem-rows";
 import { renderPalette, renderSub, renderTabs, renderTree } from "./panels";
 import { droppedDiagnosticsNote, MAX_DIAGNOSTICS } from "../plugins/limits";
 import { diagnosticText, findingText, SEVERITY_MARK } from "./plugins";
@@ -363,7 +364,8 @@ export function updateSync(): void {
 
 /**
  * 問題（構文エラー・参照切れ・チェックルールの結果・v1 のプラグインの診断・プラグインについての行・まだ扱えない構文・トレースの抜け）の一覧を描き直す（F-EDIT-5・F-PLUG-1・F-PLUG-3・F-PLUG-9）。
- * エラー → チェックルールの結果 → プラグインの診断（件数の上限を超えて捨てた分があれば、その知らせを先に）→ プラグインについての行 → まだ扱えない構文 → トレースの抜けの順に、先頭 40 件をボタンにする。
+ * エラー → チェックルールの結果 → プラグインの診断（件数の上限を超えて捨てた分があれば、その知らせを先に）→ プラグインについての行 → まだ扱えない構文 → トレースの抜けの順に、先頭 200 件をボタンにする。
+ * それを超えた分は、件数を示す行を最後に出す（problemRows。#236）。
  * テキストの中の位置があるもの（モデルの問題・チェックルールの結果・プラグインの診断）は行番号を付け、押すとその行に移る。
  * トレースの抜けの行には何件目の抜けか（data-gap）を付け、図が見えていれば図の要素へ移れるようにする。
  * 足りないプラグインの行は、押すと追加を始める（data-plugin-add）。
@@ -393,7 +395,7 @@ export function renderProblems(): void {
     ...notes,
     ...sorted.filter((p) => p.kind).map(model),
   ];
-  $("#problems").innerHTML = items.slice(0, 40).join("");
+  $("#problems").innerHTML = problemRows(items, MAX_PROBLEM_ROWS).join("");
 }
 
 /**

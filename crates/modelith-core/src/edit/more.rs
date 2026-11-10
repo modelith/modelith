@@ -1295,22 +1295,25 @@ const ATTR_STOP: &[char] = &[';', '{', '}', '\n', '\r'];
 ///
 /// - `head`：名前の前に書く語（`attribute`・`constant attribute` など）
 /// - `name`：属性の名前
+/// - `keep`：インスペクタで変えない部分（多重度と特殊化。`keep_parts` で作る）
 /// - `ty`：型（空なら書かない）
 /// - `op`：値の書き方（`=`・`:=`・`default` など）
 /// - `value`：値（空なら書かない）
 ///
 /// # 戻り値
 ///
-/// `attribute 名前 : 型 = 値;` の形の 1 行。
+/// `attribute 名前[多重度] : 型 :> 相手 = 値;` の形の 1 行。
 ///
 /// # 例
 ///
 /// ```text
-/// attribute_line("attribute", "mass", "Real", "=", "1500") → "attribute mass : Real = 1500;"
-/// attribute_line("attribute", "重さ", "", "=", "")         → "attribute '重さ';"
-/// attribute_line("attribute", "t", "Real", ":=", "0")      → "attribute t : Real := 0;"
+/// attribute_line("attribute", "mass", &Keep::default(), "Real", "=", "1500") → "attribute mass : Real = 1500;"
+/// attribute_line("attribute", "重さ", &Keep::default(), "", "=", "")         → "attribute '重さ';"
+/// attribute_line("attribute", "t", &Keep::default(), "Real", ":=", "0")      → "attribute t : Real := 0;"
+/// // keep = { mult: "[2]", specs: " :> a" }
+/// attribute_line("attribute", "g", &keep, "Real", "=", "7")                 → "attribute g[2] : Real :> a = 7;"
 /// ```
-fn attribute_line(head: &str, name: &str, ty: &str, op: &str, value: &str) -> String {
+fn attribute_line(head: &str, name: &str, keep: &Keep, ty: &str, op: &str, value: &str) -> String {
     let ty = if ty.is_empty() {
         String::new()
     } else {
@@ -1321,11 +1324,69 @@ fn attribute_line(head: &str, name: &str, ty: &str, op: &str, value: &str) -> St
     } else {
         format!(" {op} {value}")
     };
-    format!("{head} {}{ty}{value};", sysml_name(name))
+    format!(
+        "{head} {}{}{ty}{}{value};",
+        sysml_name(name),
+        keep.mult,
+        keep.specs
+    )
+}
+
+/// 属性をインスペクタで書き換えるときに、そのまま書き戻す部分（インスペクタに出さない多重度と特殊化。#223）。
+#[derive(Default)]
+struct Keep {
+    /// 名前のすぐ後ろに書く多重度（`[2]`・`[0..*] ordered`。無ければ空）。
+    mult: String,
+    /// 型の後ろに書く特殊化（` :> a`・` :>> b`。無ければ空）。
+    specs: String,
+}
+
+/// 宣言の多重度と特殊化を、書き戻す文字にする（8.2.2.6 の MultiplicityPart・FeatureSpecializationPart）。
+///
+/// # 引数
+///
+/// - `e`：属性の宣言
+///
+/// # 戻り値
+///
+/// 書き戻す多重度と特殊化。どちらも無ければ空。
+///
+/// # 例
+///
+/// ```text
+/// keep_parts(attribute g[2] : Real;)          → Keep { mult: "[2]", specs: "" }
+/// keep_parts(attribute f :> a;)               → Keep { mult: "", specs: " :> a" }
+/// keep_parts(attribute h[0..*] ordered :>> k;) → Keep { mult: "[0..*] ordered", specs: " :>> k" }
+/// ```
+fn keep_parts(e: &crate::project::Entry) -> Keep {
+    let mult = e.multiplicity.as_ref().map_or(String::new(), |m| {
+        let mut s = format!("[{}]", m.range);
+        if m.ordered {
+            s.push_str(" ordered");
+        }
+        if m.nonunique {
+            s.push_str(" nonunique");
+        }
+        s
+    });
+    let specs = e
+        .specs
+        .iter()
+        .map(|sp| {
+            let sym = match sp.op {
+                "redefines" => ":>>",
+                "references" => "::>",
+                "crosses" => "=>",
+                _ => ":>",
+            };
+            format!(" {sym} {}", sp.target)
+        })
+        .collect();
+    Keep { mult, specs }
 }
 
 /// 属性を足すか、書き換える（インスペクタの「属性」。F-EDIT-12）。`attr` が無ければ足し、あればその名前の属性を書き換える。
-/// 書き換えるときは、`constant` などの修飾と値の書き方（`:=`・`default`）を保つ。
+/// 書き換えるときは、`constant` などの修飾と値の書き方（`:=`・`default`）、多重度（`[2]`）と特殊化（`:> a`）を保つ（#223）。
 ///
 /// # 引数
 ///
@@ -1412,7 +1473,7 @@ pub(super) fn set_attribute(
                 _ => head,
             };
             let op = e.value_op.as_deref().unwrap_or("=");
-            let line = attribute_line(&head, name, ty, op, value);
+            let line = attribute_line(&head, name, &keep_parts(e), ty, op, value);
             let (s, end) = (d.b(e.start), d.b(e.end));
             let mut text = d.text.to_owned();
             text.replace_range(s..end, &line);
@@ -1423,7 +1484,7 @@ pub(super) fn set_attribute(
             })
         }
         None => {
-            let line = attribute_line("attribute", name, ty, "=", value);
+            let line = attribute_line("attribute", name, &Keep::default(), ty, "=", value);
             let (text, s, end) = insert_into(d.text, d.target(f.entry), &line);
             Ok(Change {
                 text,

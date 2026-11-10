@@ -3,7 +3,7 @@
 
 import { readLayout, removeLayoutComment, type ProjectFileResult } from "../core";
 import { BrowserFileProvider, type PickedFile } from "../files/browser-file";
-import { idbHandleStore } from "../files/idb-handle-store";
+import { handleStoreTooNew, idbHandleStore } from "../files/idb-handle-store";
 import { hasFsAccess, LocalFolderProvider, MAX_TREE_FILES, type FsApi } from "../files/local-folder";
 import { childPath, movedPath, nameProblem, parentPath, pathFromFolder, renameSelectionEnd } from "../files/entry-names";
 import { hasFolderEdits, hasFolderFiles, ProviderRegistry, type DirEntry, type FileProvider, type FileRef, type RecentFolder } from "../files/types";
@@ -14,7 +14,9 @@ import { afterRestore, findFile, keptDraftsNotice, kvSessionStore, planStart, sa
 import { layoutNameFor, PROJECT_FILE, suggestName, Workspace, type Doc, type StartWith } from "../workspace/workspace";
 import { fit } from "./canvas";
 import { ask } from "./dialog";
-import { $, closest, esc, store } from "./dom";
+import { $, closest, esc, isFormField, store } from "./dom";
+import { globalShortcut } from "./keyboard";
+import { modalOpen } from "./modal";
 import { flushEdit } from "./editor";
 import { download } from "./export";
 import { dropHistory, recordHistory, useHistory } from "./history";
@@ -1555,6 +1557,11 @@ function initMenu(): void {
   document.addEventListener("keydown", (ev) => {
     if (!(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
     const k = ev.key.toLowerCase();
+    // ダイアログを開いている間は、裏で保存や「開く」のダイアログを出さない（Q-8。#234）
+    if ((k === "s" || k === "o") && !globalShortcut(k, isFormField(ev.target), modalOpen())) {
+      ev.preventDefault();
+      return;
+    }
     if (k === "s") {
       ev.preventDefault();
       if (shownKey) void save(shownKey, ev.shiftKey);
@@ -1829,5 +1836,12 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
   window.addEventListener("focus", () => void checkExternal());
   await start();
   renderFiles();
-  void refreshRecents();
+  void refreshRecents().then(() => {
+    // 前回のフォルダの記録が新しい版の形なら、使えないことを知らせる（記録は消さない。C-11、ADR-0023 §4。#241）
+    if (handleStoreTooNew()) toast(TOO_NEW_HANDLES);
+  });
 }
+
+/** 前回のフォルダの記録（IndexedDB）が新しい版の形で使えないときの知らせ（#241）。 */
+const TOO_NEW_HANDLES =
+  "前回開いたフォルダの記録は、新しい版の Modelith が書いた形のため、この版では使えません。記録は消さずに残します。フォルダは「フォルダを開く」から開いてください";

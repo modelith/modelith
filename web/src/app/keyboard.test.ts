@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextMenuIndex, nextMenuItem, nextTabIndex, rovingStop, spaceKeyPans, wrapFocus } from "./keyboard";
+import { globalShortcut, nextMenuIndex, nextMenuItem, nextTabIndex, rovingStop, spaceKeyPans, wrapFocus } from "./keyboard";
 
 describe("wrapFocus（Q-8：ダイアログの中で Tab を回す）", () => {
   it("最後の要素で Tab を押すと、先頭へ回す（境界：末尾）", () => {
@@ -288,5 +288,24 @@ describe("spaceKeyPans（Q-8：Space で図を動かすか。#235）", () => {
 
   it("図の中でも入力欄なら、文字を打つ（境界値）", () => {
     expect(spaceKeyPans("INPUT", true)).toBe(false);
+  });
+});
+
+describe("globalShortcut（Q-8：画面全体の近道を動かすか。#233・#234）", () => {
+  it.each([
+    ["z", false, false, true],
+    ["y", false, false, true],
+    ["s", true, false, true],
+    ["o", true, false, true],
+  ] as const)("ダイアログが無ければ、%s は動かす（入力欄 %s）（正常系）", (key, inField, modal, want) => {
+    expect(globalShortcut(key, inField, modal)).toBe(want);
+  });
+
+  it.each(["z", "y", "a"])("入力欄の中の %s は、その欄のものにする（説明の入力欄・選択肢を含む）", (key) => {
+    expect(globalShortcut(key, true, false)).toBe(false);
+  });
+
+  it.each(["z", "y", "a", "s", "o"])("ダイアログを開いている間は、%s を動かさない（異常系）", (key) => {
+    expect(globalShortcut(key, false, true)).toBe(false);
   });
 });

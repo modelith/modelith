@@ -166,6 +166,7 @@ mark.selr{background:var(--selrange)}
 @keyframes fade{0%{background:var(--flash)}70%{background:var(--flash)}100%{background:transparent}}
 .problems{border-top:1px solid var(--rule);max-height:28%;overflow:auto;font-size:12px}
 .problems:empty{display:none}
+.problems .more{padding:6px 12px;color:var(--ink2)}
 .problems button{display:block;width:100%;text-align:left;border:0;border-radius:0;border-bottom:1px solid var(--rule);background:transparent;color:var(--err);padding:6px 12px;white-space:normal}
 .views{display:flex;gap:4px}
 .views button{border-radius:999px;padding:4px 11px;font-size:12px}

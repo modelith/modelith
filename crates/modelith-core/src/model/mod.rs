@@ -22,6 +22,7 @@ pub use views::{is_standard_view, std_view_label};
 
 use std::collections::{HashMap, HashSet};
 
+use crate::project::text::ref_segs;
 use crate::project::{Entry, ParseResult, RelKind, Span, merge};
 
 /// 図に描かない定義の種類（ほかの定義はすべて図に描く要素になる）。ツリーにだけ出す。
@@ -791,7 +792,7 @@ impl<'a> Builder<'a> {
     /// resolve("Nope::R", Some(P の番号)) → None
     /// ```
     fn resolve(&self, chain: &str, ctx: Option<usize>) -> Option<usize> {
-        let mut segs = chain.split('.');
+        let mut segs = ref_segs(chain).into_iter();
         let first = segs.next().unwrap_or("");
         let mut cur = self.lookup(first, ctx);
         for seg in segs {
@@ -1189,8 +1190,8 @@ impl<'a> Builder<'a> {
                     } else {
                         "flow"
                     };
-                    let pa: Vec<&str> = ra.split('.').collect();
-                    let pb: Vec<&str> = rb.split('.').collect();
+                    let pa = ref_segs(ra);
+                    let pb = ref_segs(rb);
                     let (ea, eb) = (self.resolve(pa[0], pe), self.resolve(pb[0], pe));
                     if ea.is_none() || eb.is_none() {
                         let who = if ea.is_none() { ra } else { rb };
@@ -1253,7 +1254,7 @@ impl<'a> Builder<'a> {
                 }
                 RelKind::Message { a: ra, b: rb, .. } => {
                     for x in [ra, rb] {
-                        let seg = x.split('.').next().unwrap_or("");
+                        let seg = ref_segs(x)[0];
                         let head = pe.and_then(|pe| self.child_named(pe, seg));
                         if head.is_none() {
                             let owner = pe.map_or("", |pe| self.e(pe).name.as_str());
@@ -1401,7 +1402,7 @@ impl<'a> Builder<'a> {
     /// ```
     fn missing_end<'s>(&self, ends: &'s [String], pe: Option<usize>) -> Option<&'s String> {
         ends.iter().find(|x| {
-            let head = x.split('.').next().unwrap_or("");
+            let head = ref_segs(x)[0];
             self.resolve(head, pe).is_none()
         })
     }
@@ -1427,7 +1428,7 @@ impl<'a> Builder<'a> {
     /// ```
     fn missing_chain(&self, ends: &[String], pe: Option<usize>) -> Option<String> {
         ends.iter().find_map(|x| {
-            let head = x.split('.').next().unwrap_or("");
+            let head = ref_segs(x)[0];
             self.chain_miss(self.resolve(head, pe), x, 0)
         })
     }

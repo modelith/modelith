@@ -26,6 +26,9 @@ pub struct ProjectFile {
     /// 知らせの種類ごとの重さ（F-EDIT-11、ADR-0019 §2）。書いていない種類は既定の重さ。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub levels: BTreeMap<String, Level>,
+    /// 知らせの重さのうち、この版の知らない重さ（新しい版が足した値など）。使わずに、書き戻すときにそのまま残す（#238）。
+    #[serde(skip)]
+    pub unknown_levels: Map<String, Value>,
     /// 不明な項目。書き戻すときもそのまま残す。
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -138,10 +141,11 @@ pub fn parse(text: &str) -> Parsed {
             "中身が空です。少なくとも { } と書いてください",
         ));
     }
-    let value: Value = match serde_json::from_str(text) {
+    let mut value: Value = match serde_json::from_str(text) {
         Ok(v) => v,
         Err(e) => return failed(syntax_problem(&locator, text, &e)),
     };
+    let unknown_levels = take_unknown_levels(&mut value);
     let mut problems = type_problems(&value, &locator);
     if !problems.is_empty() {
         return Parsed {
@@ -151,7 +155,10 @@ pub fn parse(text: &str) -> Parsed {
     }
     // 型は上で確かめたので、ここで失敗するのは想定外（そのときも誤りとして返す）
     let project = match serde_json::from_value::<ProjectFile>(value) {
-        Ok(p) => p,
+        Ok(p) => ProjectFile {
+            unknown_levels,
+            ..p
+        },
         Err(e) => {
             return failed(error(
                 locator.of_offset(0),
@@ -160,6 +167,15 @@ pub fn parse(text: &str) -> Parsed {
         }
     };
     problems.extend(unknown_key_problems(&project, &locator));
+    problems.extend(project.unknown_levels.keys().map(|kind| {
+        problem(
+            Severity::Warning,
+            locator.of_key(&["levels", kind]),
+            &format!(
+                "知らせ「{kind}」の重さは、この版の知らない値です。この版では既定の重さにし、削除せずに残します"
+            ),
+        )
+    }));
     problems.sort_by_key(|p| (p.line, p.column));
     Parsed {
         project: Some(project),
@@ -337,10 +353,72 @@ fn parsed_for_change(text: &str) -> Result<ProjectFile, String> {
 /// to_text(parse(r#"{"x":1,"name":"A"}"#) の設定) → "{\n  \"name\": \"A\",\n  \"plugins\": {},\n  \"x\": 1\n}\n"
 /// ```
 pub fn to_text(project: &ProjectFile) -> String {
+    // 項目の順（name・plugins・levels・不明な項目）を保つため、同じ並びの構造にして書く。
+    // この版の知らない重さも、知っている重さと一緒に levels に書き戻す（#238）
+    #[derive(Serialize)]
+    struct Out<'a> {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: &'a Option<String>,
+        plugins: &'a BTreeMap<String, PluginUse>,
+        #[serde(skip_serializing_if = "Map::is_empty")]
+        levels: Map<String, Value>,
+        #[serde(flatten)]
+        extra: &'a Map<String, Value>,
+    }
+    let mut levels: Map<String, Value> = project
+        .levels
+        .iter()
+        .filter_map(|(k, v)| serde_json::to_value(v).ok().map(|v| (k.clone(), v)))
+        .collect();
+    for (k, v) in &project.unknown_levels {
+        levels.entry(k.clone()).or_insert_with(|| v.clone());
+    }
+    let out = Out {
+        name: &project.name,
+        plugins: &project.plugins,
+        levels,
+        extra: &project.extra,
+    };
     // 文字列のキーと JSON の値だけの構造なので、JSON への変換は失敗しない
-    let mut text = serde_json::to_string_pretty(project).unwrap_or_else(|_| "{}".to_owned());
+    let mut text = serde_json::to_string_pretty(&out).unwrap_or_else(|_| "{}".to_owned());
     text.push('\n');
     text
+}
+
+/// 知らせの重さ（levels）から、この版の知らない重さの文字列（`"fatal"` など）を取り出す（#238）。
+/// 新しい版が重さの値を足しても、古い版でプロジェクトの設定全体を読めなくならないよう、その種類だけを使わずに残す。
+/// 文字列でない値はここでは取り出さず、型の誤りとして知らせる。
+///
+/// # 引数
+///
+/// - `value`：JSON として読んだ設定ファイル全体（取り出した値は消す）
+///
+/// # 戻り値
+///
+/// 取り出した、種類と重さの組。
+///
+/// # 例
+///
+/// ```text
+/// take_unknown_levels({"levels":{"a":"fatal","b":"off"}}) → {"a":"fatal"}（value は {"levels":{"b":"off"}} になる）
+/// take_unknown_levels({"levels":{"a":1}})               → {}（型の誤りとして残す）
+/// ```
+fn take_unknown_levels(value: &mut Value) -> Map<String, Value> {
+    let Some(levels) = value.get_mut("levels").and_then(Value::as_object_mut) else {
+        return Map::new();
+    };
+    let unknown: Vec<String> = levels
+        .iter()
+        .filter(|(_, v)| {
+            v.as_str()
+                .is_some_and(|s| !matches!(s, "error" | "warning" | "info" | "off"))
+        })
+        .map(|(k, _)| k.clone())
+        .collect();
+    unknown
+        .into_iter()
+        .filter_map(|k| levels.remove(&k).map(|v| (k, v)))
+        .collect()
 }
 
 /// 誤り 1 件だけの、設定を使わない結果を作る。

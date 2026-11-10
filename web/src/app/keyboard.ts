@@ -106,3 +106,21 @@ export function nextMenuItem(usable: readonly boolean[], current: number, key: s
   }
   return null;
 }
+
+/**
+ * Space キーを、図を手のひらで動かす操作にするか（#235）。図の上か、どこにも入力が当たっていないときだけにし、
+ * ボタン・メニュー・入力欄などでは、その部品の Space（押す・文字を打つ）を残す（Q-8）。
+ *
+ * @param tag 入力を受け取っている要素のタグ名（大文字。"BODY"・"BUTTON" など）
+ * @param inCanvas その要素が図の領域の中か
+ * @returns 図を動かす操作にするなら true
+ * @example
+ * spaceKeyPans("BODY", false)   // → true（どこにも入力が当たっていない）
+ * spaceKeyPans("DIV", true)     // → true（図の上）
+ * spaceKeyPans("BUTTON", false) // → false（ボタンを押す）
+ * spaceKeyPans("SUMMARY", false) // → false（メニューを開く）
+ */
+export function spaceKeyPans(tag: string, inCanvas: boolean): boolean {
+  if (/INPUT|TEXTAREA|SELECT/.test(tag)) return false;
+  return inCanvas || tag === "BODY";
+}

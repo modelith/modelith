@@ -727,6 +727,31 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
     if d.names().contains(nn) {
         return Err(format!("「{nn}」は既に使われています"));
     }
+    Ok(rename_refs(d, f, nn))
+}
+
+/// 名前を変え、参照もまとめて書き換える（`rename` の、名前を確かめた後の部分）。名前が使えるかは呼ぶ側が確かめる。
+/// インスペクタでの属性の名前の変更（持ち主の中で重ならないかだけを確かめる）でも使う（#231）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `f`：名前を変える宣言
+/// - `nn`：新しい名前（前後の空白は除いたもの。今の名前と違う）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキストと、選ぶ名前・光らせる範囲（名前を変えた宣言の頭）。
+///
+/// # 例
+///
+/// ```text
+/// rename_refs(Doc("package P { part def D { attribute a; attribute u = a * 2; } }"), a, "z")
+///   → text = "package P { part def D { attribute z; attribute u = z * 2; } }"
+/// ```
+pub(super) fn rename_refs(d: &Doc<'_>, f: &Found, nn: &str) -> Change {
+    let e = d.e(f.entry);
+    let old = e.name.as_str();
     let ts = tokens(d.text);
     let significant = |i: usize, step: isize| -> Option<&(SyntaxKind, usize, &str)> {
         let mut j = i as isize + step;
@@ -805,11 +830,11 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
         (p as isize + grow) as usize
     };
     let flash = (shift(d.b(e.start)), shift(d.b(e.head_end)));
-    Ok(Change {
+    Change {
         text: out,
         select: Some(nn.to_owned()),
         flash: Some(flash),
-    })
+    }
 }
 
 /// 名前の変更で、名前のトークンがその宣言を指すかを確かめる関数を作る（#220）。
@@ -1094,6 +1119,7 @@ fn delete_edge(d: &Doc<'_>, id: &str, ctx: Option<&str>) -> Result<Change, Refus
 /// `verify` は a の `objective` の中（無ければ `objective { … }` を作る）、`frame` は a の中に関心事、
 /// `flow` は 2 つの部品を持つ定義（内部ブロック図なら対象）の中に流れを書く。
 /// 名前は `sysml_name` で書き、空白や日本語を含む名前は引用名（`'R one'`）にする（8.2.2.3）。
+/// 書く場所と別の package（ほかのファイルを含む）の要素は、修飾名（`Parts::Bus`）で書く（`ref_text`。#232）。
 ///
 /// # 引数
 ///
@@ -1136,7 +1162,11 @@ fn connect(
             let nm = d.unique_child(a.entry, &lower_first(&eb.name));
             (
                 d.target(a.entry),
-                format!("{kw} {} : {};", sysml_name(&nm), sysml_name(&eb.name)),
+                format!(
+                    "{kw} {} : {};",
+                    sysml_name(&nm),
+                    d.ref_text(b.entry, a.entry)
+                ),
             )
         }
         "satisfy" => {
@@ -1148,8 +1178,8 @@ fn connect(
                 d.target(host),
                 format!(
                     "satisfy {} by {};",
-                    sysml_name(&eb.name),
-                    sysml_name(&ea.name)
+                    d.ref_text(b.entry, host),
+                    d.ref_text(a.entry, host)
                 ),
             )
         }
@@ -1163,10 +1193,10 @@ fn connect(
                 .filter(|_| has_objective)
                 .and_then(|o| objective_block(d.text, d.b(o)));
             match objective {
-                Some(t) => (t, format!("verify {};", sysml_name(&eb.name))),
+                Some(t) => (t, format!("verify {};", d.ref_text(b.entry, a.entry))),
                 None => (
                     d.target(a.entry),
-                    format!("objective {{ verify {}; }}", sysml_name(&eb.name)),
+                    format!("objective {{ verify {}; }}", d.ref_text(b.entry, a.entry)),
                 ),
             }
         }
@@ -1177,7 +1207,7 @@ fn connect(
                 format!(
                     "frame concern {} : {};",
                     sysml_name(&nm),
-                    sysml_name(&eb.name)
+                    d.ref_text(b.entry, a.entry)
                 ),
             )
         }
@@ -1191,8 +1221,8 @@ fn connect(
                 d.target(host),
                 format!(
                     "#derivation dependency from {} to {};",
-                    sysml_name(&ea.name),
-                    sysml_name(&eb.name)
+                    d.ref_text(a.entry, host),
+                    d.ref_text(b.entry, host)
                 ),
             )
         }

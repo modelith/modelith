@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextMenuIndex, nextMenuItem, nextTabIndex, rovingStop, wrapFocus } from "./keyboard";
+import { nextMenuIndex, nextMenuItem, nextTabIndex, rovingStop, spaceKeyPans, wrapFocus } from "./keyboard";
 
 describe("wrapFocus（Q-8：ダイアログの中で Tab を回す）", () => {
   it("最後の要素で Tab を押すと、先頭へ回す（境界：末尾）", () => {
@@ -270,5 +270,23 @@ describe("nextMenuItem（Q-9：開いているメニューで上下の矢印キ�
     const next = ["ArrowLeft", "ArrowRight", "Tab", "Home"].map((key) => nextMenuItem(usable, 0, key));
     // Assert
     expect(next).toEqual([null, null, null, null]);
+  });
+});
+
+describe("spaceKeyPans（Q-8：Space で図を動かすか。#235）", () => {
+  it.each([
+    ["BODY", false, true],
+    ["DIV", true, true],
+    ["svg", true, true],
+  ] as const)("%s（図の中 %s）では図を動かす（正常系）", (tag, inCanvas, want) => {
+    expect(spaceKeyPans(tag, inCanvas)).toBe(want);
+  });
+
+  it.each(["BUTTON", "SUMMARY", "A", "INPUT", "TEXTAREA", "SELECT"])("%s では、その部品の Space を残す（図の外）", (tag) => {
+    expect(spaceKeyPans(tag, false)).toBe(false);
+  });
+
+  it("図の中でも入力欄なら、文字を打つ（境界値）", () => {
+    expect(spaceKeyPans("INPUT", true)).toBe(false);
   });
 });

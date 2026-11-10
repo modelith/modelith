@@ -434,10 +434,9 @@ fn parse_reads_levels() {
 }
 
 #[test]
-fn parse_rejects_a_level_that_is_not_one_of_the_four() {
-    // Arrange（異常系: 知らない重さと、文字列でない重さ）
-    let text =
-        "{\n  \"levels\": {\n    \"trace.verify\": \"loud\",\n    \"unsupported\": 1\n  }\n}";
+fn parse_rejects_a_level_that_is_not_a_string() {
+    // Arrange（異常系: 文字列でない重さは、書き方の誤り）
+    let text = "{\n  \"levels\": {\n    \"unsupported\": 1\n  }\n}";
     // Act
     let parsed = parse(text);
     // Assert
@@ -445,10 +444,28 @@ fn parse_rejects_a_level_that_is_not_one_of_the_four() {
     assert_eq!(
         problems_of(text),
         vec![
-            "Error 3:5 知らせ「trace.verify」の重さは、\"error\"・\"warning\"・\"info\"・\"off\" のどれかで書いてください",
-            "Error 4:5 知らせ「unsupported」の重さは、\"error\"・\"warning\"・\"info\"・\"off\" のどれかで書いてください",
+            "Error 3:5 知らせ「unsupported」の重さは、\"error\"・\"warning\"・\"info\"・\"off\" のどれかで書いてください",
         ]
     );
+}
+
+#[test]
+fn parse_keeps_a_level_value_this_version_does_not_know() {
+    // Arrange（新しい版が重さの値を足しても、設定全体は読む。その種類は既定の重さにし、値は書き戻す。#238）
+    let text = "{\n  \"plugins\": {},\n  \"levels\": {\n    \"trace.verify\": \"fatal\",\n    \"unsupported\": \"off\"\n  }\n}\n";
+    // Act
+    let parsed = parse(text);
+    let project = parsed.project.expect("設定を読む");
+    // Assert
+    assert_eq!(project.levels.get("trace.verify"), None);
+    assert_eq!(project.levels.get("unsupported"), Some(&Level::Off));
+    assert_eq!(
+        problems_of(text),
+        vec![
+            "Warning 4:5 知らせ「trace.verify」の重さは、この版の知らない値です。この版では既定の重さにし、削除せずに残します",
+        ]
+    );
+    assert_eq!(to_text(&project), text);
 }
 
 #[test]

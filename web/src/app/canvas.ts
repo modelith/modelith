@@ -2,6 +2,7 @@
 
 import { $, closest } from "./dom";
 import { boxesOf, nearestBorder, pinPoint, W } from "./geometry";
+import { spaceKeyPans } from "./keyboard";
 import { renderInspector } from "./inspector";
 import { MSGOPS, OPS, selNodes, setSelection, toggleSel } from "./ops";
 import { openCtx, ctxItemsAt } from "./ctxmenu";
@@ -620,7 +621,9 @@ export function initCanvas(): void {
     if (ev.button === 1) ev.preventDefault();
   });
   document.addEventListener("keydown", (ev) => {
-    if (ev.code !== "Space" || (ev.target instanceof Element && /INPUT|TEXTAREA|SELECT/.test(ev.target.tagName))) return;
+    // 図の上か、どこにも入力が当たっていないときだけ図を動かす。ボタンやメニューの Space は押す操作のまま残す（Q-8。#235）
+    const t = ev.target instanceof Element ? ev.target : document.body;
+    if (ev.code !== "Space" || !spaceKeyPans(t.tagName, wrap.contains(t))) return;
     ev.preventDefault();
     if (!S.spaceDown) {
       S.spaceDown = true;

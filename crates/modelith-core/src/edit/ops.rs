@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 
+use super::more::sysml_name;
 use super::text::{Target, indent_at, insert_into, lower_first, remove_range};
 use super::{Change, Doc, Intent, Refusal, more};
 use crate::project::{RelKind, Span, text::is_basic_name};
@@ -657,8 +658,9 @@ pub(super) fn tokens(text: &str) -> Vec<(SyntaxKind, usize, &str)> {
         .collect()
 }
 
-/// 名前を変え、参照もまとめて書き換える。定義なら名前の出てくるところすべて、使用なら持ち主の中の宣言と `名前.`・`名前 :` などの参照。
-/// コメントの中・長い名前の一部・`a.e` の `.` の後ろの名前は変えない。定義なら引用名（`'名前'`）の中も変える。暫定コアの `OPS.rename` と同じ。
+/// 名前を変え、参照もまとめて書き換える。定義なら見える範囲の名前すべて、使用なら持ち主の中の宣言と参照
+/// （`then a`・`first a`・`= a * 2`・`:> a`・`a.b` の `a` など。#221）。同じ名前の別の宣言に隠されたところ（`def_reach`）は変えない。
+/// コメントの中・長い名前の一部・使用の `x.e` の `.` の後ろの名前は変えない。引用名（`'名前'`）の中も変える。
 ///
 /// # 引数
 ///
@@ -696,34 +698,28 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
         return Err(format!("「{nn}」は既に使われています"));
     }
     let ts = tokens(d.text);
-    let significant = |i: usize, step: isize| -> Option<&(SyntaxKind, usize, &str)> {
-        let mut j = i as isize + step;
-        while let Some(t) = usize::try_from(j).ok().and_then(|j| ts.get(j)) {
-            if !t.0.is_trivia() && t.0 != SyntaxKind::REGULAR_COMMENT {
-                return Some(t);
-            }
-            j += step;
-        }
-        None
-    };
-    // 使用の名前は、持ち主（部品定義など）の中でだけ参照される
+    // 使用の名前は、持ち主（部品定義など）の中でだけ参照される。`a.e` の `.` の後ろは、別の要素の特性なので変えない
     let owner =
         e.pe.map_or(0..d.text.len(), |p| d.b(d.e(p).start)..d.b(d.e(p).end));
+    // 見える範囲の中で、同じ名前の別の宣言に隠されていないところだけを変える（#220）
+    let seen = def_reach(d, f.entry, old);
+    let refers = |i: usize, at: usize| {
+        let after_dot = i > 0 && ts[i - 1].0 == SyntaxKind::DOT;
+        seen(&ts, i) && (e.is_def || (owner.contains(&at) && !after_dot))
+    };
     let mut hits: Vec<(usize, usize)> = Vec::new(); // (位置, 消す長さ)
     for (i, &(kind, at, s)) in ts.iter().enumerate() {
-        if kind == SyntaxKind::QUOTED_NAME && e.is_def && s.len() > 2 && &s[1..s.len() - 1] == old {
+        if kind == SyntaxKind::QUOTED_NAME
+            && s.len() > 2
+            && &s[1..s.len() - 1] == old
+            && refers(i, at)
+        {
             hits.push((at + 1, old.len()));
         }
         if kind != SyntaxKind::IDENT || s != old {
             continue;
         }
-        let hit = e.is_def || {
-            let in_owner = owner.contains(&at);
-            let after_dot = i > 0 && ts[i - 1].0 == SyntaxKind::DOT;
-            let dot_next = ts.get(i + 1).is_some_and(|t| t.0 == SyntaxKind::DOT);
-            let decl_next = significant(i, 1).is_some_and(|t| t.2.starts_with([':', ';', '{']));
-            in_owner && !after_dot && (dot_next || decl_next)
-        };
+        let hit = refers(i, at);
         if hit {
             hits.push((at, old.len()));
         }
@@ -753,6 +749,64 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
         select: Some(nn.to_owned()),
         flash: Some(flash),
     })
+}
+
+/// 名前の変更で、名前のトークンがその宣言を指すかを確かめる関数を作る（#220）。
+/// 宣言が見える範囲は、package（か一番上）に置いた宣言ならテキスト全体、定義の中に置いた宣言ならその持ち主の中。
+/// その中でも、同じ名前を宣言する別の要素が、もっと内側に見える範囲を持つなら、そこはその要素を指す（隠される）。
+/// `X::名前` の形は、修飾 `X` が定義の持ち主の名前のときだけ指す。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `i`：名前を変える宣言の番号
+/// - `old`：今の名前
+///
+/// # 戻り値
+///
+/// （トークンの列, 名前のトークンの番号）を受け取り、その宣言を指すなら true を返す関数。
+///
+/// # 例
+///
+/// ```text
+/// // "package P { part def B; part def K { part def B; part b : B; } part z : B; }" の外側の B のとき
+/// def_reach(d, 外側の B, "B")(ts, z の型の B)   → true
+/// def_reach(d, 外側の B, "B")(ts, K の中の B)   → false（K の中の B に隠される）
+/// def_reach(d, 外側の B, "B")(ts, "K::B" の B)  → false（修飾が持ち主の名前でない）
+/// ```
+fn def_reach<'a>(
+    d: &'a Doc<'_>,
+    i: usize,
+    old: &'a str,
+) -> impl Fn(&[(SyntaxKind, usize, &str)], usize) -> bool + 'a {
+    let reach = |j: usize| match d.e(j).pe {
+        Some(p) if d.e(p).kind != "package" => d.b(d.e(p).start)..d.b(d.e(p).end),
+        _ => 0..d.text.len(),
+    };
+    let mine = reach(i);
+    let hidden: Vec<std::ops::Range<usize>> = (0..d.p.entries.len())
+        .filter(|&j| j != i && d.e(j).name == old)
+        .map(reach)
+        .filter(|r| r != &mine && mine.start <= r.start && r.end <= mine.end)
+        .collect();
+    let owner = d.e(i).pe.map(|p| d.e(p).name.as_str());
+    move |ts, k| {
+        let prev = (0..k)
+            .rev()
+            .map(|j| &ts[j])
+            .find(|t| !t.0.is_trivia() && t.0 != SyntaxKind::REGULAR_COMMENT);
+        if prev.is_some_and(|t| t.0 == SyntaxKind::COLON2) {
+            let qual = (0..k)
+                .rev()
+                .map(|j| &ts[j])
+                .filter(|t| !t.0.is_trivia() && t.0 != SyntaxKind::REGULAR_COMMENT)
+                .nth(1);
+            let name = qual.map(|t| t.2.trim_matches('\''));
+            return owner.is_none_or(|o| name == Some(o));
+        }
+        let at = ts[k].1;
+        mine.contains(&at) && !hidden.iter().any(|r| r.contains(&at))
+    }
 }
 
 /// 要素を削除する。行全体を占めるなら行ごと消す。選んだ要素の中に選んだ要素があれば、外側だけを消す。
@@ -978,6 +1032,7 @@ fn delete_edge(d: &Doc<'_>, id: &str, ctx: Option<&str>) -> Result<Change, Refus
 /// `comp` は a の中に部品、`satisfy`・`derive` は同じ関係を最後に書いた場所（無ければ最初の package）に文、
 /// `verify` は a の `objective` の中（無ければ `objective { … }` を作る）、`frame` は a の中に関心事、
 /// `flow` は 2 つの部品を持つ定義（内部ブロック図なら対象）の中に流れを書く。
+/// 名前は `sysml_name` で書き、空白や日本語を含む名前は引用名（`'R one'`）にする（8.2.2.3）。
 ///
 /// # 引数
 ///
@@ -997,6 +1052,8 @@ fn delete_edge(d: &Doc<'_>, id: &str, ctx: Option<&str>) -> Result<Change, Refus
 /// // d.text = "package P {\n    part def A;\n    part def B;\n    requirement def R;\n}\n" のとき
 /// connect(d, "comp", A, B, None, None, None)     → Ok(text に "part def A {\n        part b : B;\n    }")
 /// connect(d, "satisfy", A, R, None, None, None)  → Ok(text に "    satisfy R by A;\n}")
+/// // R・A の名前が 'R one'・'A 1' のとき
+/// connect(d, "satisfy", A, R, None, None, None)  → Ok(text に "    satisfy 'R one' by 'A 1';\n}")
 /// // d.text = "package P { part def E; part def F; }" のとき
 /// connect(d, "flow", E, F, None, None, None)     → Err("2 つの部品を両方持つ部品定義がないため、流れを書けません")
 /// connect(d, "bogus", E, F, None, None, None)    → Err("関係の種類「bogus」は扱えません")
@@ -1016,7 +1073,10 @@ fn connect(
         "comp" => {
             let kw = lookup(KW_FOR, &eb.kind).unwrap_or("part");
             let nm = d.unique_child(a.entry, &lower_first(&eb.name));
-            (d.target(a.entry), format!("{kw} {nm} : {};", eb.name))
+            (
+                d.target(a.entry),
+                format!("{kw} {} : {};", sysml_name(&nm), sysml_name(&eb.name)),
+            )
         }
         "satisfy" => {
             let host = last_rel(|k| matches!(k, RelKind::Satisfy { .. }))
@@ -1025,7 +1085,11 @@ fn connect(
             let host = host.ok_or_else(no_package)?;
             (
                 d.target(host),
-                format!("satisfy {} by {};", eb.name, ea.name),
+                format!(
+                    "satisfy {} by {};",
+                    sysml_name(&eb.name),
+                    sysml_name(&ea.name)
+                ),
             )
         }
         "verify" => {
@@ -1038,10 +1102,10 @@ fn connect(
                 .filter(|_| has_objective)
                 .and_then(|o| objective_block(d.text, d.b(o)));
             match objective {
-                Some(t) => (t, format!("verify {};", eb.name)),
+                Some(t) => (t, format!("verify {};", sysml_name(&eb.name))),
                 None => (
                     d.target(a.entry),
-                    format!("objective {{ verify {}; }}", eb.name),
+                    format!("objective {{ verify {}; }}", sysml_name(&eb.name)),
                 ),
             }
         }
@@ -1049,7 +1113,11 @@ fn connect(
             let nm = d.unique_child(a.entry, &lower_first(&eb.name));
             (
                 d.target(a.entry),
-                format!("frame concern {nm} : {};", eb.name),
+                format!(
+                    "frame concern {} : {};",
+                    sysml_name(&nm),
+                    sysml_name(&eb.name)
+                ),
             )
         }
         "derive" => {
@@ -1060,7 +1128,11 @@ fn connect(
             let host = host.ok_or_else(no_package)?;
             (
                 d.target(host),
-                format!("#derivation dependency from {} to {};", ea.name, eb.name),
+                format!(
+                    "#derivation dependency from {} to {};",
+                    sysml_name(&ea.name),
+                    sysml_name(&eb.name)
+                ),
             )
         }
         "flow" => {
@@ -1073,7 +1145,7 @@ fn connect(
             // 内部ブロック図の入れ子の部品は、対象の中から `a.b` で指す
             let end = |u: usize, p: Option<&str>| {
                 let path = super::ibd::path_of(d, parent, u);
-                p.map_or_else(|| path.clone(), |p| format!("{path}.{p}"))
+                p.map_or_else(|| path.clone(), |p| format!("{path}.{}", sysml_name(p)))
             };
             (
                 d.target(parent),

@@ -31,6 +31,36 @@ fn flashed(text: &str, out: &Outcome) -> String {
     String::from_utf16_lossy(&text.encode_utf16().collect::<Vec<_>>()[a..b])
 }
 
+// ---- 括弧が閉じていないテキスト ----
+
+#[test]
+fn edits_are_refused_while_braces_or_comments_are_open() {
+    // 同値分割：閉じ括弧が無い・閉じていないコメント・閉じが多い。どれも書く場所を取り違えるので断る（#222）
+    for text in [
+        "package G {\n    part def A;\n    requirement def R;\n",
+        "package G {\n    part def A;\n    /* note\n}\n",
+        "package G {\n    part def A;\n}\n}\n",
+    ] {
+        // Act
+        let why = refused(text, r#"{"op":"addNode","kind":"requirement def"}"#);
+        // Assert
+        assert_eq!(why, UNBALANCED, "{text}");
+    }
+}
+
+#[test]
+fn braces_inside_comments_and_strings_do_not_count() {
+    // Arrange（境界値：コメント・文字列の中の括弧は数えない）
+    let text = "package G {\n    /* { */\n    part def A { doc /* } */ }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"addNode","kind":"part def"}"#);
+    // Assert
+    assert!(
+        after.ends_with("    part def NewPart {\n    }\n}\n"),
+        "{after}"
+    );
+}
+
 // ---- 要素の追加 ----
 
 #[test]
@@ -179,6 +209,32 @@ fn rename_usage_changes_declaration_and_paths_only() {
 }
 
 #[test]
+fn rename_state_changes_transition_sources_and_targets() {
+    // Arrange（遷移の元 `first a`・省略形の `then a`・`accept … then a` のどれも、状態 a を指す。#221）
+    let text = "package D {\n    attribute def E;\n    state def S {\n        entry; then a;\n        state a;\n        state c;\n        transition first a accept E then c;\n        transition t3 first c then a;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"s:a","name":"aa","ctx":"S"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package D {\n    attribute def E;\n    state def S {\n        entry; then aa;\n        state aa;\n        state c;\n        transition first aa accept E then c;\n        transition t3 first c then aa;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn rename_usage_changes_references_in_values_and_specializations() {
+    // Arrange（属性の値の式・`:>` の参照も変える。`k.a` の `.` の後ろは別の要素の特性なので変えない）
+    let text = "package P { part def D { attribute a : Real; attribute u : Real = a * 2; attribute f :> a; part k : D; attribute w = k.a; } }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"u:a","ctx":"D","name":"z"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def D { attribute z : Real; attribute u : Real = z * 2; attribute f :> z; part k : D; attribute w = k.a; } }"
+    );
+}
+
+#[test]
 fn rename_flash_follows_earlier_renamed_references() {
     // Arrange（境界値：宣言より前に参照がある。光らせる範囲が、ずれた後の宣言を指す）
     let text = "package P { part def C { part a : Long; } part def Long; }";
@@ -186,6 +242,37 @@ fn rename_flash_follows_earlier_renamed_references() {
     let (after, out) = run(text, r#"{"op":"rename","key":"Long","name":"L"}"#);
     // Assert
     assert_eq!(flashed(&after, &out), "part def L");
+}
+
+#[test]
+fn rename_definition_leaves_a_nested_definition_of_the_same_name() {
+    // Arrange（K の中の B は外側の B を隠す。K の中の参照と K::B は内側の B を指す。#220）
+    let text = "package P {\n    part def B;\n    part def K {\n        part def B;\n        part b : B;\n    }\n    part z : B;\n    part y : K::B;\n    part x : P::B;\n}\n";
+    // Act
+    let (outer, _) = run(text, r#"{"op":"rename","key":"B","name":"Outer"}"#);
+    let (inner, _) = run(text, r#"{"op":"rename","key":"B@K","name":"Inner"}"#);
+    // Assert
+    assert_eq!(
+        outer,
+        "package P {\n    part def Outer;\n    part def K {\n        part def B;\n        part b : B;\n    }\n    part z : Outer;\n    part y : K::B;\n    part x : P::Outer;\n}\n"
+    );
+    assert_eq!(
+        inner,
+        "package P {\n    part def B;\n    part def K {\n        part def Inner;\n        part b : Inner;\n    }\n    part z : B;\n    part y : K::Inner;\n    part x : P::B;\n}\n"
+    );
+}
+
+#[test]
+fn rename_definition_in_a_package_still_renames_other_packages() {
+    // Arrange（境界値：package に置いた定義は、ほかの package からの参照（import した名前）も変える）
+    let text = "package P { part def B; }\npackage Q { import P::*; part q : B; }\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"B","name":"C"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def C; }\npackage Q { import P::*; part q : C; }\n"
+    );
 }
 
 #[test]
@@ -470,6 +557,57 @@ fn connect_writes_each_relation_kind() {
         assert!(after.contains(want), "{json}\n{after}");
         assert!(out.flash.is_some(), "{json}");
     }
+}
+
+#[test]
+fn connect_writes_quoted_names_as_quoted_names() {
+    // Arrange（同値分割：空白を含む名前・日本語の名前。どちらも引用名で書く（8.2.2.3）。#219）
+    let text = "package P {\n    part def 'P one';\n    part def '部品';\n    requirement def 'R one';\n    requirement def '要求';\n    concern def 'K one';\n    verification def 'V one';\n}\n";
+    let cases = [
+        (
+            r#"{"op":"connect","rel":"comp","from":"P one","to":"部品"}"#,
+            "part '部品' : '部品';",
+        ),
+        (
+            r#"{"op":"connect","rel":"satisfy","from":"P one","to":"R one"}"#,
+            "satisfy 'R one' by 'P one';",
+        ),
+        (
+            r#"{"op":"connect","rel":"verify","from":"V one","to":"要求"}"#,
+            "objective { verify '要求'; }",
+        ),
+        (
+            r#"{"op":"connect","rel":"frame","from":"R one","to":"K one"}"#,
+            "frame concern 'k one' : 'K one';",
+        ),
+        (
+            r#"{"op":"connect","rel":"derive","from":"R one","to":"要求"}"#,
+            "#derivation dependency from 'R one' to '要求';",
+        ),
+    ];
+    for (json, want) in cases {
+        // Act
+        let (after, _) = run(text, json);
+        // Assert
+        assert!(after.contains(want), "{json}\n{after}");
+    }
+}
+
+#[test]
+fn connect_flow_writes_quoted_part_and_port_names() {
+    // Arrange（境界値：部品とポートの名前が引用名。経路の各段を引用名で書く。#219）
+    let text = "package P { part def X { port 'p in'; } part def A { part 'x 1' : X; } part def B { port o; } \
+                part def C { part 'a 1' : A; part b : B; } }";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"connect","rel":"flow","from":"u:b","to":"u:a 1.x 1","fromPort":"o","toPort":"p in","ctx":"C"}"#,
+    );
+    // Assert
+    assert!(
+        after.contains("flow from b.o to 'a 1'.'x 1'.'p in';"),
+        "{after}"
+    );
 }
 
 #[test]

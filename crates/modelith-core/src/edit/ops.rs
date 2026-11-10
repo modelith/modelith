@@ -723,7 +723,14 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
             flash: None,
         });
     }
-    if d.names().contains(nn) {
+    // 同じ名前空間（同じ持ち主の直下）に同じ名前があるときだけ断る。別の定義の中の同じ名前は重ならない（#244）
+    let pe = d.e(f.entry).pe;
+    let taken =
+        d.p.entries
+            .iter()
+            .enumerate()
+            .any(|(i, x)| i != f.entry && x.pe == pe && x.name == nn);
+    if taken {
         return Err(format!("「{nn}」は既に使われています"));
     }
     Ok(rename_refs(d, f, nn))

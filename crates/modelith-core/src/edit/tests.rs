@@ -325,6 +325,22 @@ fn rename_definition_in_a_package_still_renames_other_packages() {
 }
 
 #[test]
+fn rename_allows_a_name_used_only_in_another_namespace() {
+    // Arrange（定義 A の名前を、中の特性の名前にできる。同じ名前空間の重なりだけを断る。#244）
+    let text = "package P { part def A { part inner; } part def B; }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"A","name":"inner"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def inner { part inner; } part def B; }"
+    );
+    assert!(
+        refused(text, r#"{"op":"rename","key":"A","name":"B"}"#).contains("既に使われています")
+    );
+}
+
+#[test]
 fn rename_is_refused_for_bad_or_used_names_and_noop_for_same_name() {
     // 同値分割：使えない名前・既にある名前・同じ名前
     let text = "package P { part def A; part def B; }";

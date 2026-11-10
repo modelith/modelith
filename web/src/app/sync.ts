@@ -332,6 +332,14 @@ export function toast(msg: string): void {
 }
 
 /**
+ * 出ているトーストを消す（前の操作の知らせが、何も起きなかった操作の後まで残って見えないように。#244）。
+ */
+export function dismissToast(): void {
+  clearTimeout(toastTimer);
+  $("#toast").classList.remove("on");
+}
+
+/**
  * 失敗をトーストで知らせる。理由はブラウザの英語の文を見せず日本語の文（errorText）にし、詳しい内容（投げられた値）はコンソールに残す（Q-4・Q-6）。
  *
  * @param what できなかったこと（「保存できませんでした」など。句点なし）

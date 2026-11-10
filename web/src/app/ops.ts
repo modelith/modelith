@@ -15,7 +15,7 @@ import { attachEnds } from "./pins";
 import { KW_FOR, type RelKind } from "./relations";
 import { highlight, render } from "./render";
 import { cancelConnect, clearSel, S } from "./state";
-import { commitLayout, setText, settled, toast } from "./sync";
+import { commitLayout, dismissToast, setText, settled, toast } from "./sync";
 import { CC, curLayout, nodeByKey, phaseLabel } from "./views";
 import type { Pos } from "./layout";
 import { isPackageName, packageNameFor } from "./new-package";
@@ -230,7 +230,10 @@ export const OPS = {
    * await OPS.rename(A, "B")     // → false（B が既にあるとき。理由をトーストで出す）
    */
   async rename(n: ModelNode, nn: string): Promise<boolean> {
-    if (nn === n.name) return true;
+    if (nn === n.name) {
+      dismissToast(); // 何も変えないので、前の知らせを残さない（#244）
+      return true;
+    }
     const r = await perform({ op: "rename", key: n.key, name: nn, ctx: ctxKey() });
     if (!r) return false;
     // 図の要素のキーも名前に合わせて変える（内部ブロック図の部品・ライフラインは u:・l: を付けたまま。状態は中の要素のキーも変える）

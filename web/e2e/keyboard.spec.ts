@@ -191,3 +191,13 @@ test.describe("モデルツリー", () => {
     await expect(page.locator("#tree .ti.sel")).toBeFocused();
   });
 });
+
+test("Q-3・Q-8: テキスト欄に Tab で入ると、フォーカスの印（枠）が見える（#244）", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  // Act
+  expect(await tabUntil(page, "#ed")).toBe(true);
+  // Assert
+  const outline = await page.locator("#ed").evaluate((el) => getComputedStyle(el).outlineStyle);
+  expect(outline).toBe("solid");
+});

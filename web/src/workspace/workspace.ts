@@ -958,9 +958,11 @@ export class Workspace {
    *
    * @param from 名前を変えるもののパス
    * @param to 新しいパス
-   * @returns 動かし終えたら解決する Promise。フォルダが開かれていない・動かせない・動かす先に何かあるときは例外（Error）で拒否する
+   * @returns 動かし終えたら解決する Promise。フォルダが開かれていない・動かせない・動かす先に何かあるとき
+   *   （モデルのファイルなら、新しい名前の配置ファイルが既にあるときも。何も動かさない）は例外（Error）で拒否する
    * @example
    * await ws.renameEntry("a.sysml", "b.sysml") // → b.sysml と b.layout.json になり、a.sysml の文書は b.sysml の文書になる
+   * await ws.renameEntry("a.sysml", "c.sysml") // → Error「図の配置のファイル「c.layout.json」が既にあるため、…」（c.sysml が無く c.layout.json だけあるとき）
    * await ws.renameEntry("models", "parts")    // → parts/… になり、中の文書も付け替わる
    */
   async renameEntry(from: string, to: string): Promise<void> {
@@ -970,12 +972,15 @@ export class Workspace {
     if (!hasFolderEdits(source)) throw new Error("このフォルダでは名前を変えられません");
     const docs = this.docsIn(from);
     const isFile = modelFiles(f.entries).some((r) => r.path === from);
-    await source.moveInFolder(f.ref, from, to);
-    if (isFile && hasFolderFiles(source)) {
-      const layoutFrom = childPath(parentPath(from), layoutNameFor(from.slice(from.lastIndexOf("/") + 1)));
-      const layoutTo = childPath(parentPath(to), layoutNameFor(to.slice(to.lastIndexOf("/") + 1)));
-      if (layoutFrom !== layoutTo && (await source.readInFolder(f.ref, layoutFrom)) !== null) await source.moveInFolder(f.ref, layoutFrom, layoutTo);
+    const layoutFrom = childPath(parentPath(from), layoutNameFor(from.slice(from.lastIndexOf("/") + 1)));
+    const layoutTo = childPath(parentPath(to), layoutNameFor(to.slice(to.lastIndexOf("/") + 1)));
+    const files = isFile && layoutFrom !== layoutTo && hasFolderFiles(source) ? source : null;
+    // 新しい名前の配置ファイルが既にあれば、何も動かす前に断る（動かした後では、モデルだけが動いて別の配置と組になるため。#225）
+    if (files && (await files.readInFolder(f.ref, layoutTo)) !== null) {
+      throw new Error(`図の配置のファイル「${layoutTo}」が既にあるため、「${to}」にできません。別の名前にしてください`);
     }
+    await source.moveInFolder(f.ref, from, to);
+    if (files && (await files.readInFolder(f.ref, layoutFrom)) !== null) await source.moveInFolder(f.ref, layoutFrom, layoutTo);
     f.entries = await source.list(f.ref);
     await this.readModelFiles();
     const moved = modelFiles(f.entries);

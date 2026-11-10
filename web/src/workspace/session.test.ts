@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DirEntry, FileRef, RecentAccess } from "../files/types";
-import { afterRestore, findFile, kvSessionStore, parseSession, planStart, restoreOrder, sampleDraft, sessionFrom, type Session, type StartPlan } from "./session";
+import { afterRestore, findFile, keptDraftsNotice, kvSessionStore, parseSession, planStart, restoreOrder, sampleDraft, sessionFrom, type Session, type StartPlan } from "./session";
 
 const ref = (path: string, id = `dir:1/${path}`): FileRef => ({ provider: "local", id, name: path.split("/").pop() ?? path, path });
 const ENTRIES: DirEntry[] = [
@@ -190,5 +190,19 @@ describe("parseSession・kvSessionStore", () => {
     expect(shifted).toEqual({ folder: true, docs: [{ path: "a.sysml" }], active: 0 });
     expect(outside).toEqual({ folder: false, docs: [{ draft: 0 }], active: null });
     expect(onBroken).toEqual({ folder: false, docs: [{ draft: 0 }], active: null });
+  });
+});
+
+describe("keptDraftsNotice（C-11）", () => {
+  it("使わずに残した記録が無ければ、知らせない（正常系）", () => {
+    expect(keptDraftsNotice({ unused: 0, locked: false })).toBeNull();
+  });
+
+  it("使わずに残した記録があれば、その数と、消さずに残すことを知らせる（境界値: 1 件）", () => {
+    expect(keptDraftsNotice({ unused: 1, locked: false })).toBe("新しい版の Modelith が残した下書きが 1 件あり、この版では開けません。消さずに残します");
+  });
+
+  it("一覧を書き換えずに残すときは、この版の下書きが残らないことも知らせる（異常系）", () => {
+    expect(keptDraftsNotice({ unused: 0, locked: true })).toContain("この版で作った無題の文書は下書きに残りません");
   });
 });

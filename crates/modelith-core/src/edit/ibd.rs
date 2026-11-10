@@ -7,6 +7,7 @@
 //!   n 項の接続（8.2.3.13 の n-ary-connection）は、点 `j:名前`（名前が無ければ `j:#番号`）から端ごとに `connect|点|端|#番号`。
 
 use super::Doc;
+use super::more::sysml_name;
 use super::ops::EdgeAt;
 use crate::model::flow_label;
 use crate::project::{Rel, RelKind, Span};
@@ -477,7 +478,7 @@ pub(super) fn entry_of(d: &Doc<'_>, c: usize, key: &str) -> Option<usize> {
 ///
 /// # 戻り値
 ///
-/// 参照。対象の中の部品をたどって見つからなければ、その部品の名前。
+/// テキストに書く参照（各段は `sysml_name` で、必要なら引用名にする）。対象の中の部品をたどって見つからなければ、その部品の名前。
 ///
 /// # 例
 ///
@@ -486,13 +487,14 @@ pub(super) fn entry_of(d: &Doc<'_>, c: usize, key: &str) -> Option<usize> {
 /// path_of(d, C, a の番号) → "a"
 /// path_of(d, C, x の番号) → "a.x"
 /// path_of(d, C, v の番号) → "a.x.v"
+/// // 名前に空白を含む部品は引用名で書く（8.2.2.3）："part def C { part 'a 1' : A; }" のとき
+/// path_of(d, C, x の番号) → "'a 1'.x"
 /// ```
 pub(super) fn path_of(d: &Doc<'_>, c: usize, u: usize) -> String {
-    let name = &d.e(u).name;
     parts(d, c)
         .into_iter()
         .find_map(|p| find_path(d, p, u, PATH_DEPTH))
-        .unwrap_or_else(|| name.clone())
+        .unwrap_or_else(|| sysml_name(&d.e(u).name))
 }
 
 /// 部品の中の部品をたどる深さの上限（型が自分を部品に持つような輪で止まらないように）。
@@ -519,9 +521,9 @@ const PATH_DEPTH: usize = 8;
 /// find_path(d, a, a, 8) → Some("a")
 /// ```
 fn find_path(d: &Doc<'_>, from: usize, target: usize, depth: usize) -> Option<String> {
-    let name = &d.e(from).name;
+    let name = sysml_name(&d.e(from).name);
     if from == target {
-        return Some(name.clone());
+        return Some(name);
     }
     if depth == 0 {
         return None;

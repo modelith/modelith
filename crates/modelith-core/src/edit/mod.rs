@@ -214,6 +214,8 @@ pub type Refusal = String;
 ///   → Ok(edits = [])                                   // 同じ名前
 /// edit("package P { part def A; }", Rename { key: "Gone", name: "X" })
 ///   → Err("…Gone…")                                    // 要素が無い
+/// edit("package P { part def A;", AddNode { … })
+///   → Err(UNBALANCED)                                  // 括弧が閉じていない（#222）
 /// ```
 pub fn edit(text: &str, intent: &Intent) -> Result<Outcome, Refusal> {
     edit_in(text, Vec::new(), intent).map_err(|r| r.reason)
@@ -256,6 +258,13 @@ pub struct Refused {
 ///   → Err(Refused { reason: IN_OTHER_FILE, file: Some(1) })
 /// ```
 pub fn edit_in(text: &str, others: Vec<ParseResult>, intent: &Intent) -> Result<Outcome, Refused> {
+    // 括弧が合っていないと、書く場所を取り違えて、ほかの要素を package の外へ出してしまう（#222）
+    if !balanced(text) {
+        return Err(Refused {
+            reason: UNBALANCED.to_owned(),
+            file: None,
+        });
+    }
     let doc = Doc::with(text, project::merge::join(text, others));
     let result = ops::run(&doc, intent);
     if let Some(file) = doc.touched.get() {
@@ -267,6 +276,44 @@ pub fn edit_in(text: &str, others: Vec<ParseResult>, intent: &Intent) -> Result<
     result
         .map(|change| change.outcome(text))
         .map_err(|reason| Refused { reason, file: None })
+}
+
+/// テキストの括弧が閉じていないときに、図からの操作を断る理由の文（画面にそのまま出す。ADR-0014）。
+pub const UNBALANCED: &str = "テキストに閉じていない括弧（{ }）やコメントがあるため、図から変更できません。テキストを直してから、もう一度操作してください";
+
+/// テキストの `{` と `}` が対になっているか。コメント・引用名・文字列の中の括弧は数えない。
+/// 閉じていないコメントや文字列は末尾までを飲み込むので、その後ろの `}` が数えられず、対にならない。
+///
+/// # 引数
+///
+/// - `text`：今のテキスト（全体）
+///
+/// # 戻り値
+///
+/// どこでも閉じが開きより多くならず、最後に数がそろえば true。
+///
+/// # 例
+///
+/// ```text
+/// balanced("package P { part def A; }")     → true
+/// balanced("package P { part def A;")       → false
+/// balanced("package P { /* } */ }")         → true
+/// balanced("package P { /* note\n}")        → false（コメントが閉じていない）
+/// balanced("}{")                            → false
+/// ```
+fn balanced(text: &str) -> bool {
+    let mut depth: i64 = 0;
+    for t in crate::syntax::tokenize(text).0 {
+        match t.kind {
+            crate::syntax::SyntaxKind::L_BRACE => depth += 1,
+            crate::syntax::SyntaxKind::R_BRACE => depth -= 1,
+            _ => {}
+        }
+        if depth < 0 {
+            return false;
+        }
+    }
+    depth == 0
 }
 
 /// 操作の対象のテキストと、その解析結果・モデル。

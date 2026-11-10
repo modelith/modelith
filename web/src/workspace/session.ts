@@ -267,3 +267,21 @@ export function kvSessionStore(kv: KeyValue): SessionStore {
     },
   };
 }
+
+/**
+ * 前回の下書きに、この版の知らない形の記録があったときに、起動したときに出す知らせの文（C-11、ADR-0023 §4）。
+ *
+ * @param kept 使わずに残した記録の数と、下書きの一覧を書き換えずに残すか（Workspace の draftsKept）
+ * @returns 知らせの文。知らせることが無ければ null
+ * @example
+ * keptDraftsNotice({ unused: 0, locked: false }) // → null
+ * keptDraftsNotice({ unused: 2, locked: false }) // → "新しい版の Modelith が残した下書きが 2 件あり、この版では開けません。消さずに残します"
+ * keptDraftsNotice({ unused: 0, locked: true })  // → "前回の下書きは、新しい版の Modelith が残した形のため、この版では開けません。…"
+ */
+export function keptDraftsNotice(kept: { unused: number; locked: boolean }): string | null {
+  if (kept.locked) {
+    return "前回の下書きは、新しい版の Modelith が残した形のため、この版では開けません。消さずに残しますが、この版で作った無題の文書は下書きに残りません。手元に残すには「名前を付けて保存」で保存してください";
+  }
+  if (kept.unused > 0) return `新しい版の Modelith が残した下書きが ${kept.unused} 件あり、この版では開けません。消さずに残します`;
+  return null;
+}

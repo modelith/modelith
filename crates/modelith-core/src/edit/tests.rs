@@ -1117,6 +1117,14 @@ fn save_state_machine_writes_a_state_transition_view() {
 #[test]
 fn save_view_is_refused_without_name_targets_or_with_used_name() {
     let text = "package P { part def A; view v; }";
+    // 同じ package の直下の要素と同じ名前（#240）
+    assert!(
+        refused(
+            text,
+            r#"{"op":"saveView","name":"A","kind":"general","targets":["A"]}"#
+        )
+        .contains("という名前の要素が既にあります")
+    );
     assert!(
         refused(
             text,

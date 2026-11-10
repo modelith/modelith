@@ -929,7 +929,7 @@ fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], inden
 ///
 /// # 戻り値
 ///
-/// 書いた後のテキストと、選ぶ名前・光らせる範囲（足した view）。名前が空・既にある名前・知らない描き方・要素が無い（または package が無い）ときは理由の文（`Err`）。
+/// 書いた後のテキストと、選ぶ名前・光らせる範囲（足した view）。名前が空・既にある図や同じ package の直下の要素の名前・知らない描き方・要素が無い（または package が無い）ときは理由の文（`Err`）。
 ///
 /// # 例
 ///
@@ -938,6 +938,7 @@ fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], inden
 ///   → Ok(text に "    view '全体' : GeneralView {\n        expose P::A;\n        expose P::'電気 ケトル';\n    }\n}")
 /// save_view(Doc("package P { part def A; view v; }"), "v", "general", [A]) → Err("「v」という図は既にあります。別の名前にしてください")
 /// save_view(Doc("package P { part def A; view v; }"), "w", "general", [])  → Err("図に要素が無いため、保存できません")
+/// save_view(Doc("package P { part def A; view v; }"), "A", "general", [A]) → Err("「A」という名前の要素が既にあります。…")
 /// ```
 pub(super) fn save_view(
     d: &Doc<'_>,
@@ -959,6 +960,12 @@ pub(super) fn save_view(
         .first_package()
         .filter(|_| !targets.is_empty())
         .ok_or_else(|| "図に要素が無いため、保存できません".to_owned())?;
+    // 図は package の直下に置くので、同じ package の直下の要素と同じ名前にしない（同じ名前が 2 つになり、参照が曖昧になる。#240）
+    if d.e(pkg).children.iter().any(|&c| d.e(c).name == name) {
+        return Err(format!(
+            "「{name}」という名前の要素が既にあります。図には別の名前を付けてください"
+        ));
+    }
     let indent = format!("{}    ", indent_at(d.text, d.b(d.e(pkg).start)));
     let ts: Vec<usize> = targets.iter().map(|f| f.entry).collect();
     let (text, s, e) = insert_into(

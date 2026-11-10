@@ -1,4 +1,4 @@
-// フォルダの中のファイルとフォルダの名前とパスの決まり（F-FILE-19）。名前の変更・新しいファイル・新しいフォルダーで使う、判断だけの純粋関数。
+// フォルダの中のファイルとフォルダの名前とパスの決まり（F-FILE-19）。名前の変更・新しいファイル・新しいフォルダで使う、判断だけの純粋関数。
 
 import { isModelFile } from "./types";
 
@@ -10,7 +10,8 @@ const BAD_CHARS = /[\\/:*?"<>|]/;
  *
  * @param name 付けようとしている名前
  * @param siblings 同じ場所にあるほかのファイルとフォルダの名前（自分の今の名前は除いて渡す）
- * @param opts `model: true` なら、モデルのファイル（.sysml・.kerml）の名前でなければ使えないとする
+ * @param opts `model: true` なら、モデルのファイル（.sysml・.kerml）の名前でなければ使えないとする。
+ *   `folder: true` なら、配置ファイルの名前（.layout.json で終わる名前）を使えないとする（モデルのファイルの配置を保存できなくなるため。#243）
  * @returns 使えなければ、その理由（画面に出す文）。使えれば null
  * @example
  * nameProblem("b.sysml", ["a.sysml"], { model: true }) // → null
@@ -18,14 +19,16 @@ const BAD_CHARS = /[\\/:*?"<>|]/;
  * nameProblem("a/b", [])                               // → "名前に \ / : * ? \" < > | は使えません"
  * nameProblem("A.sysml", ["a.sysml"])                  // → "同じ場所に「a.sysml」があります"（大文字と小文字は区別しない）
  * nameProblem("a.txt", [], { model: true })            // → "モデルのファイルの名前は「.sysml」か「.kerml」で終わるようにしてください"
+ * nameProblem("a.layout.json", [], { folder: true })   // → "フォルダには、図の配置のファイルと同じ「.layout.json」で終わる名前を付けられません"
  */
-export function nameProblem(name: string, siblings: readonly string[], opts: { model?: boolean } = {}): string | null {
+export function nameProblem(name: string, siblings: readonly string[], opts: { model?: boolean; folder?: boolean } = {}): string | null {
   const n = name.trim();
   if (!n) return "名前を入力してください";
   if (BAD_CHARS.test(n)) return '名前に \\ / : * ? " < > | は使えません';
   if (n === "." || n === ".." || n.endsWith(".")) return "名前の終わりに「.」は使えません";
   const same = siblings.find((s) => s.toLowerCase() === n.toLowerCase());
   if (same !== undefined) return `同じ場所に「${same}」があります`;
+  if (opts.folder && n.toLowerCase().endsWith(".layout.json")) return "フォルダには、図の配置のファイルと同じ「.layout.json」で終わる名前を付けられません";
   if (opts.model && !isModelFile(n)) return "モデルのファイルの名前は「.sysml」か「.kerml」で終わるようにしてください";
   return null;
 }

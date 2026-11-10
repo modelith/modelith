@@ -621,6 +621,23 @@ export class LocalFolderProvider
   }
 
   /**
+   * フォルダの中の 1 つのフォルダの直下にある、すべてのファイルとフォルダの名前（一覧に出さないものも含む。F-FILE-19、#243）。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param path 名前を集めるフォルダの、フォルダからの相対パス（一番上なら ""）
+   * @returns 名前の一覧。そのフォルダが無ければ空
+   * @example
+   * await p.namesInFolder(folder, "")       // → ["a.sysml", "a.layout.json", "readme.md", "models"]
+   * await p.namesInFolder(folder, "absent") // → []
+   */
+  async namesInFolder(folder: FolderRef, path: string): Promise<string[]> {
+    const dir = await descend(this.folderHandle(folder), segmentsOf(path));
+    const names: string[] = [];
+    if (dir) for await (const h of dir.values()) names.push(h.name);
+    return names;
+  }
+
+  /**
    * フォルダの中に空のフォルダを作る（途中のフォルダも作る。F-FILE-19）。
    *
    * @param folder このプロバイダで開いたフォルダ

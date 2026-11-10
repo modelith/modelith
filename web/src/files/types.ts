@@ -212,7 +212,7 @@ export interface FolderTrees extends ProviderInfo {
   removeInFolder(folder: FolderRef, path: string): Promise<boolean>;
 }
 
-/** 開いたフォルダの中に空のフォルダを作り、ファイルやフォルダを動かせる（ファイルの一覧の名前の変更と新しいフォルダー。F-FILE-19）。 */
+/** 開いたフォルダの中に空のフォルダを作り、ファイルやフォルダを動かせる（ファイルの一覧の名前の変更と新しいフォルダ。F-FILE-19）。 */
 export interface FolderEdits extends ProviderInfo {
   /**
    * フォルダの中に空のフォルダを作る（途中のフォルダも作る）。
@@ -225,6 +225,18 @@ export interface FolderEdits extends ProviderInfo {
    * await p.createFolder(folder, "models")       // → Error「「models」は既にあります」（あるとき）
    */
   createFolder(folder: FolderRef, path: string): Promise<void>;
+  /**
+   * フォルダの中の 1 つのフォルダの直下にある、すべてのファイルとフォルダの名前（一覧に出さない readme.md・配置ファイル・隠しファイルも含む）。
+   * 名前を付けるときの重なりを、作る前に確かめるために使う（F-FILE-19、#243）。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param path 名前を集めるフォルダの、フォルダからの相対パス（一番上なら ""）
+   * @returns 名前の一覧（順は決めない）。そのフォルダが無ければ空
+   * @example
+   * await p.namesInFolder(folder, "")       // → ["a.sysml", "a.layout.json", "readme.md", "models"]
+   * await p.namesInFolder(folder, "absent") // → []
+   */
+  namesInFolder(folder: FolderRef, path: string): Promise<string[]>;
   /**
    * フォルダの中のファイルかフォルダを、別のパスへ動かす（名前の変更）。フォルダは中身ごと動かす。中身はバイトのまま写す。
    *

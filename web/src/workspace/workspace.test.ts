@@ -1393,7 +1393,7 @@ describe("Workspace: 同じファイルを続けて開く（F-FILE-17）", () =>
   });
 });
 
-describe("Workspace: ファイルの一覧の名前の変更・削除・新しいフォルダー（F-FILE-19）", () => {
+describe("Workspace: ファイルの一覧の名前の変更・削除・新しいフォルダ（F-FILE-19）", () => {
   it("ファイルの名前を変えると、配置ファイルも動き、開いていた文書は新しいファイルに付け替わる（正常系）", async () => {
     // Arrange
     const s = setup();
@@ -1482,7 +1482,7 @@ describe("Workspace: ファイルの一覧の名前の変更・削除・新し�
     expect(docs.map((d) => d.key)).toEqual([x.key]);
   });
 
-  it("新しいフォルダーを作ると一覧に出る。同じ名前があれば作らない（異常系）", async () => {
+  it("新しいフォルダを作ると一覧に出る。同じ名前があれば作らない（異常系）", async () => {
     // Arrange
     const s = setup();
     await openA(s);
@@ -1493,7 +1493,7 @@ describe("Workspace: ファイルの一覧の名前の変更・削除・新し�
     await expect(s.ws.createFolder("parts")).rejects.toThrow("「parts」は既にあります");
   });
 
-  it("フォルダを開いていなければ、名前の変更・削除・新しいフォルダーはできない（異常系）", async () => {
+  it("フォルダを開いていなければ、名前の変更・削除・新しいフォルダはできない（異常系）", async () => {
     // Arrange
     const s = setup();
     // Act・Assert

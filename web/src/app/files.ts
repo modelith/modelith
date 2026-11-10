@@ -1109,6 +1109,28 @@ function namesIn(dir: string): string[] {
 }
 
 /**
+ * フォルダの中の 1 つのフォルダにある、すべてのファイルとフォルダの名前（一覧に出ない readme.md・配置ファイルも含む。F-FILE-19、#243）。
+ * フォルダから読めなければ、一覧にある名前だけを返す。
+ *
+ * @param dir フォルダのパス（一番上なら ""）
+ * @returns 名前の一覧
+ * @example
+ * // 一番上に a.sysml・a.layout.json・readme.md と models がある
+ * await allNamesIn("") // → ["a.sysml", "models", "a.layout.json", "readme.md"]
+ */
+async function allNamesIn(dir: string): Promise<string[]> {
+  const f = ws.folder();
+  const listed = namesIn(dir);
+  if (!f || !hasFolderEdits(f.source)) return listed;
+  try {
+    return [...new Set([...listed, ...(await f.source.namesInFolder(f.ref, dir))])];
+  } catch (e) {
+    console.warn("フォルダの中の名前を読めませんでした:", e);
+    return listed;
+  }
+}
+
+/**
  * 画面の要素から、ファイルの一覧の行を読み取る。
  *
  * @param el 押した・右クリックした要素
@@ -1229,7 +1251,7 @@ async function newFileIn(dir: string): Promise<void> {
     { id: "ok", label: "作成", kind: "primary" },
   ], { value: "untitled.sysml", label: "ファイル名" });
   if (r?.id !== "ok") return;
-  const problem = nameProblem(r.value, namesIn(dir), { model: true });
+  const problem = nameProblem(r.value, await allNamesIn(dir), { model: true });
   if (problem) return toast(problem);
   try {
     collapsed.delete(dir);
@@ -1240,17 +1262,17 @@ async function newFileIn(dir: string): Promise<void> {
 }
 
 /**
- * フォルダの中に新しいフォルダーを作る（F-FILE-19）。名前を尋ね、使えない名前なら理由をトーストで知らせる。
+ * フォルダの中に新しいフォルダを作る（F-FILE-19）。名前を尋ね、使えない名前なら理由をトーストで知らせる。
  *
  * @param dir 作る場所のフォルダのパス（一番上なら ""）
  */
 async function newFolderIn(dir: string): Promise<void> {
-  const r = await ask("新しいフォルダー", dir ? `フォルダ「${dir}」に作るフォルダーの名前を入力してください。` : "フォルダーの名前を入力してください。", [
+  const r = await ask("新しいフォルダ", dir ? `フォルダ「${dir}」に作るフォルダの名前を入力してください。` : "フォルダの名前を入力してください。", [
     { id: "cancel", label: "やめる" },
     { id: "ok", label: "作成", kind: "primary" },
-  ], { value: "", label: "フォルダー名" });
+  ], { value: "", label: "フォルダ名" });
   if (r?.id !== "ok") return;
-  const problem = nameProblem(r.value, namesIn(dir));
+  const problem = nameProblem(r.value, await allNamesIn(dir), { folder: true });
   if (problem) return toast(problem);
   try {
     collapsed.delete(dir);
@@ -1278,7 +1300,8 @@ function startRename(t: ListTarget): void {
   input.value = old;
   input.spellcheck = false;
   input.setAttribute("aria-label", "新しい名前");
-  const problem = (): string | null => (input.value.trim() === old ? null : nameProblem(input.value, siblings, { model: t.kind === "file" }));
+  const problem = (): string | null =>
+    input.value.trim() === old ? null : nameProblem(input.value, siblings, { model: t.kind === "file", folder: t.kind === "dir" });
   const msg = document.createElement("div");
   msg.className = "rnmsg";
   msg.setAttribute("role", "alert");
@@ -1294,6 +1317,11 @@ function startRename(t: ListTarget): void {
     return p;
   };
   let done = false;
+  // 一覧に出ないファイル（readme.md・配置ファイル）の名前も、読めたら比べる（#243）
+  void allNamesIn(parentPath(t.path)).then((all) => {
+    siblings.splice(0, siblings.length, ...all.filter((n) => n !== old));
+    if (!done && input.value.trim() !== old) show();
+  });
   const finish = (commit: boolean): void => {
     if (done) return;
     done = true;

@@ -407,6 +407,24 @@ export async function rasterize(image: DiagramImage, scale: number, type: string
 }
 
 /**
+ * 画像のコピーに失敗したときの文（F-EXP-5、#243）。ブラウザが書き込みを許さなかった（NotAllowedError）のか、コピーに対応していないのかを分ける。
+ *
+ * @param e 投げられた値
+ * @returns トーストの文
+ * @example
+ * copyFailureText(new DOMException("denied", "NotAllowedError"))
+ *   // → "画像をコピーできませんでした。ブラウザがクリップボードへの書き込みを許しませんでした。ブラウザの許可を確かめるか、PNG 画像としてエクスポートしてください"
+ * copyFailureText(new Error("このブラウザは画像のコピーに対応していません"))
+ *   // → "画像をコピーできませんでした。このブラウザでは、PNG 画像としてエクスポートしてください"
+ */
+export function copyFailureText(e: unknown): string {
+  if (e instanceof Error && e.name === "NotAllowedError") {
+    return "画像をコピーできませんでした。ブラウザがクリップボードへの書き込みを許しませんでした。ブラウザの許可を確かめるか、PNG 画像としてエクスポートしてください";
+  }
+  return "画像をコピーできませんでした。このブラウザでは、PNG 画像としてエクスポートしてください";
+}
+
+/**
  * PNG の画像をクリップボードに入れる（F-EXP-5）。画像はまだできていなくてよい（Safari は、押した直後に書き込みを始めないと断るため、Promise のまま渡す）。
  *
  * @param png PNG の画像（できあがる Promise）

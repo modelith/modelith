@@ -123,11 +123,11 @@ test("F-FILE-19: 削除の確かめで「やめる」を選ぶと、何も消さ
   expect(await readFile(page, "models/x.sysml")).toBe("package X;\n");
 });
 
-test("F-FILE-19: フォルダのメニューから、新しいフォルダーと、その中の新しいファイルを作れる", async ({ page }) => {
+test("F-FILE-19: フォルダのメニューから、新しいフォルダと、その中の新しいファイルを作れる", async ({ page }) => {
   // Arrange
   await openFolder(page, { "models/x.sysml": "package X;\n" });
   // Act
-  await menu(page, "models", "新しいフォルダー…");
+  await menu(page, "models", "新しいフォルダ…");
   await page.locator("#dialogInput").fill("sub");
   await page.locator('#dialogButtons [data-id="ok"]').click();
   // Assert（空のフォルダも一覧に出る）
@@ -140,6 +140,24 @@ test("F-FILE-19: フォルダのメニューから、新しいフォルダーと
   await expect(page.locator("#docName")).toHaveText("y.sysml");
   await expect(row(page, "models/sub/y.sysml")).toBeVisible();
   await expect.poll(() => readFile(page, "models/sub/y.sysml")).toBe("");
+});
+
+test("F-FILE-19: 新しいフォルダの名前は、一覧に出ないファイルとも比べ、配置ファイルの名前は断る（#243）", async ({ page }) => {
+  // Arrange
+  await openFolder(page, { "models/x.sysml": "package X;\n", "models/readme.md": "# 説明\n" });
+  // Act（一覧に出ない readme.md と同じ名前）
+  await menu(page, "models", "新しいフォルダ…");
+  await page.locator("#dialogInput").fill("README.md");
+  await page.locator('#dialogButtons [data-id="ok"]').click();
+  // Assert
+  await expect(page.locator("#toast")).toHaveText("同じ場所に「readme.md」があります");
+  // Act（配置ファイルの名前）
+  await menu(page, "models", "新しいフォルダ…");
+  await page.locator("#dialogInput").fill("x.layout.json");
+  await page.locator('#dialogButtons [data-id="ok"]').click();
+  // Assert（作らない）
+  await expect(page.locator("#toast")).toHaveText("フォルダには、図の配置のファイルと同じ「.layout.json」で終わる名前を付けられません");
+  await expect(row(page, "models/x.layout.json")).toHaveCount(0);
 });
 
 test("F-FILE-19: パスのコピーは開いたフォルダの名前から、相対パスのコピーはフォルダの中からのパスを入れる", async ({ page }) => {

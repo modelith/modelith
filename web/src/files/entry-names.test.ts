@@ -33,6 +33,13 @@ describe("nameProblem（使える名前か）", () => {
     expect(nameProblem("a.txt", [], { model: true })).toBe("モデルのファイルの名前は「.sysml」か「.kerml」で終わるようにしてください");
     expect(nameProblem("a.txt", [])).toBeNull();
   });
+
+  it("フォルダには、配置ファイルと同じ「.layout.json」で終わる名前を付けられない（#243）", () => {
+    // Assert
+    expect(nameProblem("a.layout.json", [], { folder: true })).toBe("フォルダには、図の配置のファイルと同じ「.layout.json」で終わる名前を付けられません");
+    expect(nameProblem("A.Layout.JSON", [], { folder: true })).toBe("フォルダには、図の配置のファイルと同じ「.layout.json」で終わる名前を付けられません");
+    expect(nameProblem("layout.json.d", [], { folder: true })).toBeNull(); // 境界値：終わりでなければ使える
+  });
 });
 
 describe("parentPath・childPath（親と子のパス）", () => {

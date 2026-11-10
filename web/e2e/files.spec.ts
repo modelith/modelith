@@ -47,6 +47,8 @@ test("F-FILE-3: フォルダに新しいファイルを作れ、無題の文書�
   await page.locator('[data-cmd="newInFolder"]').click();
   await page.locator("#dialogInput").fill("models/c.sysml");
   await page.locator('#dialogButtons [data-id="ok"]').click();
+  // 作り終えると c.sysml を表示する。待たずに無題の文書を作ると、遅れて c.sysml に切り替わり、Ctrl+S が c.sysml を上書きする
+  await expect(page.locator("#docName")).toHaveText("c.sysml");
   await page.locator('[data-cmd="new"]').click();
   await typeAtEnd(page, "package U;\n");
   await page.keyboard.press("Control+s");

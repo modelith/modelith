@@ -771,6 +771,70 @@ impl Doc<'_> {
         names
     }
 
+    /// 宣言 `from` の中（またはそこ）から要素 `i` を指すときに、テキストに書く名前（#232）。
+    /// 同じ一番外の package の中なら名前だけ、別の package（ほかのファイルの package を含む）なら修飾名にする。
+    /// 修飾名は `import` が無くても解決できる（ADR-0021）。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：指す要素の宣言の番号
+    /// - `from`：参照を書く場所の宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// テキストに書く名前（必要なら引用名）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // package App { part def Other; } と、ほかのファイルの package Parts { part def Bus; } のとき
+    /// ref_text(Bus の番号, Other の番号)   → "Parts::Bus"
+    /// ref_text(Other の番号, App の番号)   → "Other"
+    /// ```
+    pub(super) fn ref_text(&self, i: usize, from: usize) -> String {
+        let (to, at) = (self.name_path(i), self.name_path(from));
+        if to.first() == at.first() || self.imported_into(i, from) {
+            sysml_name(&self.e(i).name)
+        } else {
+            self.qualified_name(i)
+        }
+    }
+
+    /// 要素 `i` が、`from` を囲む名前空間の `import` で名前だけで見えるか（`import Parts::*;`・`import Parts::Bus;`。#232）。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：指す要素の宣言の番号
+    /// - `from`：参照を書く場所の宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// `from` か、それを囲む宣言（ファイルの一番上を含む）の `import` で取り込んでいれば true。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // package App { import Fleet::*; part def Horn; } と、package Fleet { requirement def Safe; } のとき
+    /// imported_into(Safe の番号, Horn の番号) → true
+    /// ```
+    fn imported_into(&self, i: usize, from: usize) -> bool {
+        let path = self.name_path(i).join("::");
+        let owner = path.rsplit_once("::").map_or("", |(o, _)| o);
+        let mut scopes = vec![None];
+        let mut a = Some(from);
+        while let Some(x) = a {
+            scopes.push(Some(x));
+            a = self.e(x).pe;
+        }
+        self.p.import_list.iter().any(|imp| {
+            scopes.contains(&imp.pe)
+                && ((imp.members
+                    && (imp.path == owner
+                        || (imp.recursive && path.starts_with(&format!("{}::", imp.path)))))
+                    || (!imp.members && imp.path == path))
+        })
+    }
+
     /// テキストに書く修飾名（P::A。名前は必要なら引用名にする）。
     ///
     /// # 引数

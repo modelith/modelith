@@ -1820,6 +1820,26 @@ fn element_of_the_open_file_is_rewritten_with_other_files() {
 }
 
 #[test]
+fn relation_to_another_file_without_import_uses_the_qualified_name() {
+    // Arrange（import が無いと名前だけでは見えないので、修飾名で書く（ADR-0021。#232））
+    let text = "package App {\n    part def Fleet2 { part b : Fleet::Car; }\n    satisfy Fleet::Safe by Fleet2;\n    part def Other;\n}\n";
+    // Act
+    let comp = run_in(
+        text,
+        r#"{"op":"connect","rel":"comp","from":"Other","to":"Car"}"#,
+    );
+    let sat = run_in(
+        text,
+        r#"{"op":"connect","rel":"satisfy","from":"Other","to":"Safe"}"#,
+    );
+    // Assert
+    let comp = comp.expect("書ける");
+    assert!(comp.contains("part car : Fleet::Car;"), "{comp}");
+    let sat = sat.expect("書ける");
+    assert!(sat.contains("satisfy Fleet::Safe by Other;"), "{sat}");
+}
+
+#[test]
 fn relation_to_another_file_is_written_in_the_open_file() {
     // Arrange（ほかのファイルの要求を満たす関係は、表示中のファイルに書く。Safe は既にある関係で図に出ている）
     let added = "package App {\n    import Fleet::*;\n    part def Brake;\n    part def Horn;\n    part c : Car;\n    satisfy Safe by Brake;\n}\n";

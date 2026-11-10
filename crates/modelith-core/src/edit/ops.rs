@@ -1119,6 +1119,7 @@ fn delete_edge(d: &Doc<'_>, id: &str, ctx: Option<&str>) -> Result<Change, Refus
 /// `verify` は a の `objective` の中（無ければ `objective { … }` を作る）、`frame` は a の中に関心事、
 /// `flow` は 2 つの部品を持つ定義（内部ブロック図なら対象）の中に流れを書く。
 /// 名前は `sysml_name` で書き、空白や日本語を含む名前は引用名（`'R one'`）にする（8.2.2.3）。
+/// 書く場所と別の package（ほかのファイルを含む）の要素は、修飾名（`Parts::Bus`）で書く（`ref_text`。#232）。
 ///
 /// # 引数
 ///
@@ -1161,7 +1162,11 @@ fn connect(
             let nm = d.unique_child(a.entry, &lower_first(&eb.name));
             (
                 d.target(a.entry),
-                format!("{kw} {} : {};", sysml_name(&nm), sysml_name(&eb.name)),
+                format!(
+                    "{kw} {} : {};",
+                    sysml_name(&nm),
+                    d.ref_text(b.entry, a.entry)
+                ),
             )
         }
         "satisfy" => {
@@ -1173,8 +1178,8 @@ fn connect(
                 d.target(host),
                 format!(
                     "satisfy {} by {};",
-                    sysml_name(&eb.name),
-                    sysml_name(&ea.name)
+                    d.ref_text(b.entry, host),
+                    d.ref_text(a.entry, host)
                 ),
             )
         }
@@ -1188,10 +1193,10 @@ fn connect(
                 .filter(|_| has_objective)
                 .and_then(|o| objective_block(d.text, d.b(o)));
             match objective {
-                Some(t) => (t, format!("verify {};", sysml_name(&eb.name))),
+                Some(t) => (t, format!("verify {};", d.ref_text(b.entry, a.entry))),
                 None => (
                     d.target(a.entry),
-                    format!("objective {{ verify {}; }}", sysml_name(&eb.name)),
+                    format!("objective {{ verify {}; }}", d.ref_text(b.entry, a.entry)),
                 ),
             }
         }
@@ -1202,7 +1207,7 @@ fn connect(
                 format!(
                     "frame concern {} : {};",
                     sysml_name(&nm),
-                    sysml_name(&eb.name)
+                    d.ref_text(b.entry, a.entry)
                 ),
             )
         }
@@ -1216,8 +1221,8 @@ fn connect(
                 d.target(host),
                 format!(
                     "#derivation dependency from {} to {};",
-                    sysml_name(&ea.name),
-                    sysml_name(&eb.name)
+                    d.ref_text(a.entry, host),
+                    d.ref_text(b.entry, host)
                 ),
             )
         }

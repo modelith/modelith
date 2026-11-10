@@ -124,3 +124,23 @@ export function spaceKeyPans(tag: string, inCanvas: boolean): boolean {
   if (/INPUT|TEXTAREA|SELECT/.test(tag)) return false;
   return inCanvas || tag === "BODY";
 }
+
+/**
+ * 画面全体の近道（Ctrl+Z・Ctrl+Y・Ctrl+S・Ctrl+O・Ctrl+A）を、今の入力先で動かしてよいか（Q-8。#234）。
+ * ダイアログを開いている間は、裏の画面を操作しないので動かさない。元に戻す・やり直す・すべて選ぶは、
+ * 入力欄（テキストの入力・選択肢・複数行の欄）の中ではその欄のものなので動かさない。
+ *
+ * @param key 押したキー（小文字。"z"・"s" など）
+ * @param inField 入力先が入力欄か
+ * @param modal ダイアログを開いているか
+ * @returns 画面全体の近道として動かすなら true
+ * @example
+ * globalShortcut("z", false, false) // → true（図の上で Ctrl+Z）
+ * globalShortcut("z", true, false)  // → false（説明の入力欄の中。欄の中の取り消しにする）
+ * globalShortcut("s", true, false)  // → true（テキスト欄でも保存はする）
+ * globalShortcut("s", false, true)  // → false（ダイアログを開いている）
+ */
+export function globalShortcut(key: string, inField: boolean, modal: boolean): boolean {
+  if (modal) return false;
+  return !(inField && (key === "z" || key === "y" || key === "a"));
+}

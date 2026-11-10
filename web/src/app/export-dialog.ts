@@ -114,7 +114,7 @@ async function exportFile(): Promise<void> {
   const format = selectedFormat();
   const name = exportFileName($<HTMLInputElement>("#exportName").value, format, activeTabLabel());
   let note = "";
-  if (!format.image) download(name, drawioXml(), format.mediaType);
+  if (!format.image) download(name, drawioXml(activeTabLabel()), format.mediaType);
   else if (!format.raster) download(name, selectedImage(format).svg, format.mediaType);
   else {
     const image = selectedImage(format);

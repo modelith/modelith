@@ -163,7 +163,7 @@ fn rename_definition_changes_every_reference_but_not_comments_or_longer_names() 
     // Assert
     assert_eq!(
         after,
-        "package P {\n    part def Motor; // Engine の説明\n    part def Car { part e : Motor; }\n    part def EngineX;\n    part def 'Q' { part q : 'Motor'; }\n}"
+        "package P {\n    part def Motor; // Engine の説明\n    part def Car { part e : Motor; }\n    part def EngineX;\n    part def 'Q' { part q : Motor; }\n}"
     );
     assert_eq!(out.select.as_deref(), Some("Motor"));
     assert_eq!(flashed(&after, &out), "part def Motor");
@@ -246,7 +246,7 @@ fn rename_flash_follows_earlier_renamed_references() {
 
 #[test]
 fn rename_writes_non_basic_names_as_quoted_names() {
-    // Arrange（同値分割：日本語・空白を含む・数字で始まる・予約語。引用名の参照は引用符の中だけを変える。短い名前は変えない）
+    // Arrange（同値分割：日本語・空白を含む・数字で始まる・予約語。引用名の参照も、新しい名前の引用名で書く。短い名前は変えない）
     let text = "package P {\n    requirement def <'Kettle'> Kettle;\n    part def C { part k : Kettle; part q : 'Kettle'; }\n}";
     // Act
     let (jp, out) = run(
@@ -271,7 +271,7 @@ fn rename_writes_non_basic_names_as_quoted_names() {
 
 #[test]
 fn rename_from_a_quoted_name_back_to_a_basic_name() {
-    // Arrange（引用名の定義と使用を、基本名に戻す。宣言は基本名で書き、ほかの引用名の参照は引用符の中だけを変える）
+    // Arrange（引用名の定義と使用を、基本名に戻す。宣言も参照も基本名で書き、引用符を外す（#244））
     let text = "package P { part def '電気 ケトル'; part def C { part '中の 部品' : '電気 ケトル'; flow from '中の 部品'.p to x.q; } }";
     // Act
     let (def, _) = run(
@@ -285,11 +285,11 @@ fn rename_from_a_quoted_name_back_to_a_basic_name() {
     // Assert
     assert_eq!(
         def,
-        "package P { part def Kettle; part def C { part '中の 部品' : 'Kettle'; flow from '中の 部品'.p to x.q; } }"
+        "package P { part def Kettle; part def C { part '中の 部品' : Kettle; flow from '中の 部品'.p to x.q; } }"
     );
     assert_eq!(
         usage,
-        "package P { part def '電気 ケトル'; part def C { part inner : '電気 ケトル'; flow from 'inner'.p to x.q; } }"
+        "package P { part def '電気 ケトル'; part def C { part inner : '電気 ケトル'; flow from inner.p to x.q; } }"
     );
 }
 
@@ -321,6 +321,22 @@ fn rename_definition_in_a_package_still_renames_other_packages() {
     assert_eq!(
         after,
         "package P { part def C; }\npackage Q { import P::*; part q : C; }\n"
+    );
+}
+
+#[test]
+fn rename_allows_a_name_used_only_in_another_namespace() {
+    // Arrange（定義 A の名前を、中の特性の名前にできる。同じ名前空間の重なりだけを断る。#244）
+    let text = "package P { part def A { part inner; } part def B; }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"A","name":"inner"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def inner { part inner; } part def B; }"
+    );
+    assert!(
+        refused(text, r#"{"op":"rename","key":"A","name":"B"}"#).contains("既に使われています")
     );
 }
 
@@ -707,6 +723,28 @@ fn connect_flow_writes_quoted_part_and_port_names() {
 }
 
 #[test]
+fn connect_refuses_a_relation_that_is_already_written() {
+    // Arrange（同じ満たす・導出の関係を 2 回足さない。空白の違いは同じとみなす。#244）
+    let text = "package P {\n    part def A;\n    requirement def R;\n    requirement def S;\n    satisfy  R by A;\n    #derivation dependency from R to S;\n}\n";
+    // Act・Assert
+    for json in [
+        r#"{"op":"connect","rel":"satisfy","from":"A","to":"R"}"#,
+        r#"{"op":"connect","rel":"derive","from":"R","to":"S"}"#,
+    ] {
+        assert_eq!(refused(text, json), "同じ関係が既にあります", "{json}");
+    }
+    // 向きが逆の導出は別の関係
+    let (after, _) = run(
+        text,
+        r#"{"op":"connect","rel":"derive","from":"S","to":"R"}"#,
+    );
+    assert!(
+        after.contains("#derivation dependency from S to R;"),
+        "{after}"
+    );
+}
+
+#[test]
 fn connect_verify_adds_to_existing_objective() {
     // Arrange
     let text = "package P { requirement def R; requirement def S; verification def V { objective { verify R; } } }";
@@ -935,12 +973,18 @@ fn update_message_rewrites_name_and_type_keeping_then() {
         "{typed}"
     );
     assert!(bare.contains("then message from b to a;"), "{bare}");
+    // 日本語の名前は引用名で書く。「'」は書けない（#244）
+    let (jp, _) = run(
+        SEQ,
+        r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"沸かす","type":""}"#,
+    );
+    assert!(jp.contains("then message '沸かす' from b to a;"), "{jp}");
     assert!(
         refused(
             SEQ,
-            r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"1x","type":""}"#
+            r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"it's","type":""}"#
         )
-        .contains("英字")
+        .contains("「'」")
     );
 }
 
@@ -1626,6 +1670,22 @@ fn set_doc_adds_a_doc_when_missing_and_keeps_line_breaks() {
     assert_eq!(
         b,
         "package P {\n    part def A {\n        attribute m : Real;\n        doc /* 1 行目\n           2 行目 * / の後 */\n    }\n}\n"
+    );
+}
+
+#[test]
+fn set_doc_writes_a_blank_line_as_an_empty_line() {
+    // Arrange（段落の間の空の行は、字下げを付けずに空の行のまま書く。#244）
+    let text = "package P {\n    part def A;\n}\n";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"setDoc","key":"A","text":"段落 1\n\n段落 2"}"#,
+    );
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def A {\n        doc /* 段落 1\n\n           段落 2 */\n    }\n}\n"
     );
 }
 

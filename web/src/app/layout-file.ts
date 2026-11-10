@@ -1,7 +1,7 @@
 // 配置ファイル（model.sysml の隣の model.layout.json、ADR-0005）の読み書き。判断だけの純粋関数。
 // 差分とマージを読みやすくするため、キー順を固定し、要素ごとに 1 行で書く。
 
-import { emptyView, layoutFromJson, layoutToJson, type Layout } from "./layout";
+import { emptyView, isLayoutJson, layoutFromJson, layoutToJson, type Layout } from "./layout";
 
 /** 配置ファイルの形式の版。古い版が読み違える変更をしたときだけ上げる（ADR-0023 §3）。 */
 export const LAYOUT_FORMAT = 1;
@@ -141,6 +141,7 @@ export function serializeLayout(layout: Layout, extras: LayoutExtras = NO_EXTRAS
  * readRaw("")                                          // → "empty"
  * readRaw("{}")                                        // → "empty"（中身の無いオブジェクト）
  * readRaw("{ broken")                                  // → { error: "配置ファイルを読めません（JSON の形が壊れています）" }
+ * readRaw('{"modelith":"layout","format":1,"views":{"v":[]}}') // → { error: "配置ファイルの形が違います" }（ビューが配列）
  */
 function readRaw(text: string): { top: Record<string, unknown>; views: Record<string, unknown> } | { error: string } | "empty" {
   if (!text.trim()) return "empty";
@@ -157,6 +158,8 @@ function readRaw(text: string): { top: Record<string, unknown>; views: Record<st
     return { error: "配置ファイルの形が違います" };
   }
   if (o.format !== LAYOUT_FORMAT) return { error: `配置ファイルの形式（${String(o.format)}）に対応していません` };
+  // 知っている項目の形が違えば、読み飛ばして保存で消さないよう、読めないファイルとして扱う（C-11、#244）
+  if (!isLayoutJson(o.views as Record<string, unknown>)) return { error: "配置ファイルの形が違います" };
   return { top: o as Record<string, unknown>, views: o.views as Record<string, unknown> };
 }
 

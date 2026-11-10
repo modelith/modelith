@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { build, parse } from "../core";
 import { flowContentOf } from "./action-flow";
-import { drawioEdgeStyle, drawioFlowCell, drawioStateCell, drawioText, mxfileXml } from "./export";
+import { drawioEdgeStyle, drawioFlowCell, drawioLineShape, drawioStateCell, drawioText, mxfileXml } from "./export";
 import { stateContentOf } from "./state-machine";
 
 describe("drawioEdgeStyle（F-EXP-2）", () => {
@@ -133,5 +133,15 @@ describe("drawioText（html=1 のセルの値、F-EXP-2）", () => {
     const unref = (t: string): string =>
       t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
     expect(unref(unref(v))).toBe(name);
+  });
+});
+
+describe("drawioLineShape（F-EXP-2。#244）", () => {
+  it("画面が直角なら、draw.io も直角の線にする（正常系）", () => {
+    expect(drawioLineShape("ortho")).toBe("edgeStyle=orthogonalEdgeStyle;");
+  });
+
+  it("画面が曲線なら、draw.io も曲線にする", () => {
+    expect(drawioLineShape("curve")).toBe("curved=1;");
   });
 });

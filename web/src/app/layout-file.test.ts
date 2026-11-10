@@ -173,6 +173,8 @@ describe("writeLock（ADR-0023）", () => {
   it.each([
     ["{ broken", "配置ファイルを読めません（JSON の形が壊れています）"],
     ['{"views":{}}', "配置ファイルの形が違います"],
+    ['{"modelith":"layout","format":1,"views":{"v":[1,2]}}', "配置ファイルの形が違います"],
+    ['{"modelith":"layout","format":1,"views":{"v":{"A":"bad"}}}', "配置ファイルの形が違います"],
     [sample("layout-format-2.json"), "配置ファイルの形式（2）に対応していません"],
   ])("読めないファイル（%s）は、空の配置で上書きしないよう保存しない（異常系）", (text, error) => {
     // Act / Assert

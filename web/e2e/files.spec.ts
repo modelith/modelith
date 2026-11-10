@@ -47,6 +47,8 @@ test("F-FILE-3: フォルダに新しいファイルを作れ、無題の文書�
   await page.locator('[data-cmd="newInFolder"]').click();
   await page.locator("#dialogInput").fill("models/c.sysml");
   await page.locator('#dialogButtons [data-id="ok"]').click();
+  // 作り終えると c.sysml を表示する。待たずに無題の文書を作ると、遅れて c.sysml に切り替わり、Ctrl+S が c.sysml を上書きする
+  await expect(page.locator("#docName")).toHaveText("c.sysml");
   await page.locator('[data-cmd="new"]').click();
   await typeAtEnd(page, "package U;\n");
   await page.keyboard.press("Control+s");
@@ -225,6 +227,18 @@ test("C-11: この版の知らない機能を含む配置ファイルは、開�
   await expect(page.locator("#toast")).toContainText("新しい版の Modelith で使った機能（shared-layers）");
   await moveAlphaAndSave(page);
   // Assert（未保存の印（●）も付けず、配置ファイルは読んだときのまま）
+  await expect(page.locator("#docName")).toHaveText("a.sysml");
+  expect(await readFile(page, "a.layout.json")).toBe(layout);
+});
+
+test("C-11: 知っている項目の形が違う配置ファイル（座標が文字列・ビューが配列）は、開いたときに知らせ、保存しても書き換えない（#244）", async ({ page }) => {
+  // Arrange
+  const layout = '{"modelith":"layout","format":1,"views":{"all":{"Alpha":"bad"},"trace":[1,2]}}\n';
+  // Act
+  await openAllView(page, layout);
+  await expect(page.locator("#toast")).toContainText("配置ファイルの形が違います");
+  await moveAlphaAndSave(page);
+  // Assert
   await expect(page.locator("#docName")).toHaveText("a.sysml");
   expect(await readFile(page, "a.layout.json")).toBe(layout);
 });

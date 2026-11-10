@@ -6,10 +6,12 @@ import { $ } from "./dom";
 import { flushEdit } from "./editor";
 import { parseLayoutFile } from "./layout-file";
 import { scrollEditorTo } from "./render";
+import { pushVersion } from "./history-list";
 import { S } from "./state";
 import { committedLayout, loadLayout, notifyLayoutChange, setText, toast } from "./sync";
 
-const MAX = 200;
+/** 元に戻せる回数（F-EDIT-4）。履歴は今の版を含めて、この数より 1 つ多く持つ（#244）。 */
+const UNDO_STEPS = 200;
 
 /** 履歴の 1 版。配置は配置ファイルの文字列で持つ。 */
 interface Snapshot {
@@ -77,16 +79,15 @@ export function dropHistory(key: string): void {
 
 /**
  * 今の版を履歴に記録する。直前の版と同じなら何もしない。今の位置より後ろの版（やり直せる版）は捨て、
- * 200 版を超えたら古いものから捨てる（F-EDIT-4）。ボタンの状態を描き直す。
+ * 今の版のほかに 200 版を超えたら古いものから捨てる（200 回まで元に戻せる。F-EDIT-4）。ボタンの状態を描き直す。
  */
 export function recordHistory(): void {
   H.timer = undefined;
   const now = current();
   if (same(H.list[H.i], now)) return;
-  H.list = H.list.slice(0, H.i + 1);
-  H.list.push(now);
-  if (H.list.length > MAX) H.list.shift();
-  H.i = H.list.length - 1;
+  const next = pushVersion(H.list, H.i, now, UNDO_STEPS);
+  H.list = next.list;
+  H.i = next.at;
   updateUndoUI();
 }
 

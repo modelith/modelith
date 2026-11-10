@@ -8,7 +8,6 @@ use super::{Change, Doc, Intent, Refusal, more};
 use crate::project::{RelKind, Span, text::is_basic_name};
 use crate::syntax::{SyntaxKind, tokenize};
 
-pub(super) const BAD_NAME: &str = "名前は英字か _ で始め、英字・数字・_ だけで付けてください";
 /// 名前を変えるときに使えない文字を含む名前を断る文。
 pub(super) const BAD_RENAME: &str = "名前に「'」「\\」や改行は使えません";
 
@@ -724,7 +723,14 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
             flash: None,
         });
     }
-    if d.names().contains(nn) {
+    // 同じ名前空間（同じ持ち主の直下）に同じ名前があるときだけ断る。別の定義の中の同じ名前は重ならない（#244）
+    let pe = d.e(f.entry).pe;
+    let taken =
+        d.p.entries
+            .iter()
+            .enumerate()
+            .any(|(i, x)| i != f.entry && x.pe == pe && x.name == nn);
+    if taken {
         return Err(format!("「{nn}」は既に使われています"));
     }
     Ok(rename_refs(d, f, nn))
@@ -803,18 +809,12 @@ pub(super) fn rename_refs(d: &Doc<'_>, f: &Found, nn: &str) -> Change {
         hits.push(i);
     }
     hits.sort_unstable();
-    // 宣言の名前と基本名の参照は必要なら引用名に（宣言は基本名に戻せる）、ほかの引用名の参照は引用符の中だけを書き換える
-    let quoted_inner = sysml_name(nn);
-    let quoted_inner = quoted_inner.trim_matches('\'');
+    // 宣言も参照も、新しい名前を必要なときだけ引用名で書く（基本名に戻すときは引用符も外す。#244）
     let edits: Vec<(usize, usize, String)> = hits
         .iter()
         .map(|&i| {
-            let (kind, at, s) = ts[i];
-            if kind == SyntaxKind::QUOTED_NAME && Some(i) != head {
-                (at + 1, s.len() - 2, quoted_inner.to_owned())
-            } else {
-                (at, s.len(), sysml_name(nn))
-            }
+            let (_, at, s) = ts[i];
+            (at, s.len(), sysml_name(nn))
         })
         .collect();
     let mut out = d.text.to_owned();
@@ -1329,12 +1329,38 @@ fn connect(
         }
         _ => return Err(format!("関係の種類「{rel}」は扱えません")),
     };
+    // package の直下に書く関係（満たす・導出）は、同じ文が既にあれば足さない（同じ関係が 2 行になるため。#244）
+    if matches!(rel, "satisfy" | "derive") && has_statement(d.text, &snippet) {
+        return Err("同じ関係が既にあります".to_owned());
+    }
     let (text, a, b) = insert_into(d.text, host, &snippet);
     Ok(Change {
         text,
         select: None,
         flash: Some((a, b)),
     })
+}
+
+/// テキストに、空白の違いを除いて同じ文があるか。コメントの中も数えるが、関係の重複を断るのに使うだけなので問題にならない。
+///
+/// # 引数
+///
+/// - `text`：テキスト
+/// - `stmt`：探す文（`satisfy R by A;` など）
+///
+/// # 戻り値
+///
+/// 空白をまとめた形で `stmt` が現れれば true。
+///
+/// # 例
+///
+/// ```text
+/// has_statement("package P {\n    satisfy  R by A;\n}", "satisfy R by A;") → true
+/// has_statement("package P { satisfy R by B; }", "satisfy R by A;")         → false
+/// ```
+fn has_statement(text: &str, stmt: &str) -> bool {
+    let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+    squash(text).contains(&squash(stmt))
 }
 
 /// 関係を書く package が無いときの理由の文を作る（画面にそのまま出す。ADR-0014）。

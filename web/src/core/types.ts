@@ -56,6 +56,8 @@ export interface Entry {
    */
   valueOp?: string;
   doc?: string;
+  /** 説明の本文を、行の区切りと空の行を保ったもの（インスペクタで見せ、書き換える。`doc` は 1 行にまとめたもので、図に描く）。Rust のコアだけが作る。 */
+  docText?: string;
   /** ケース・解析・検証の目的（`objective { doc /* … *\/ }`、8.2.2.21）の説明。Rust のコアだけが作る。 */
   objective?: string;
   meta?: Record<string, Record<string, string>>;

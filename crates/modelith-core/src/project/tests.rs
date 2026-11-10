@@ -555,6 +555,18 @@ fn doc_in_the_package_body_is_still_the_package_doc() {
 }
 
 #[test]
+fn doc_text_keeps_the_paragraphs_that_doc_joins_into_one_line() {
+    // Arrange（説明の 2 つの形：図に描く doc は 1 行に、インスペクタの docText は段落を保つ。#244）
+    let text = "package P { part def A {\n    doc /* 段落 1\n       続き\n\n       段落 2 */\n} }";
+    // Act
+    let r = run(text);
+    // Assert
+    let a = entry(&r, "A");
+    assert_eq!(a.doc.as_deref(), Some("段落 1 続き 段落 2"));
+    assert_eq!(a.doc_text.as_deref(), Some("段落 1\n続き\n\n段落 2"));
+}
+
+#[test]
 fn metadata_body_redefinitions_keep_their_value_on_the_metadata() {
     // Arrange（同値分割：:>>・redefines・値の無い再定義・入れ子の本体。MetadataBodyUsage、8.2.2.27）
     let text = "package P { metadata def M { attribute x : Integer; attribute y : Integer; } \

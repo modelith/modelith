@@ -3,7 +3,7 @@
 // 開け閉めは modal.ts に任せる（Q-8：背景を inert にし、Esc で閉じたら開いたメニューへ入力を戻す）。名前と倍率の決め方は export-file.ts に置く。
 
 import { $, esc } from "./dom";
-import { copyImage, drawioXml, download, rasterize, svgExport, type DiagramImage } from "./export";
+import { copyFailureText, copyImage, drawioXml, download, rasterize, svgExport, type DiagramImage } from "./export";
 import { EXPORT_FORMATS, EXPORT_SCALES, exportFileName, exportFormat, rasterScale, type ExportFormat } from "./export-file";
 import { openModal } from "./modal";
 import { activeTabLabel } from "./panels";
@@ -133,7 +133,7 @@ async function exportFile(): Promise<void> {
 
 /**
  * 選んだ範囲・倍率・背景の図を PNG 画像にしてクリップボードに入れ、ダイアログを閉じて知らせる（F-EXP-5）。
- * ブラウザが許さないときは、ファイルとしてエクスポートするよう知らせる（ダイアログは開いたまま）。
+ * コピーできないときは、理由を分けて、ファイルとしてエクスポートするよう知らせる（ダイアログは開いたまま）。
  */
 async function copyToClipboard(): Promise<void> {
   const format = selectedFormat();
@@ -144,7 +144,7 @@ async function copyToClipboard(): Promise<void> {
     await copyImage(rasterize(image, scale.scale, "image/png", transparentBackground(format)));
   } catch (e) {
     console.error(e);
-    toast("画像をコピーできませんでした。このブラウザでは、PNG 画像としてエクスポートしてください");
+    toast(copyFailureText(e));
     return;
   }
   hideExportDialog();

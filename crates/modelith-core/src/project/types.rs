@@ -113,6 +113,9 @@ pub struct Entry {
     pub value_op: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
+    /// 説明の本文を、行の区切りと空の行を保ったもの（インスペクタで見せ、書き換える。`doc` は空白を 1 つにまとめたもので、図に描く）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub doc_text: Option<String>,
     /// ケース・解析・検証の目的（`objective { doc /* … */ }`、8.2.2.21）の説明。持ち主の説明（`doc`）とは分けて持つ。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub objective: Option<String>,

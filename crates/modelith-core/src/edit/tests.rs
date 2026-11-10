@@ -1640,6 +1640,22 @@ fn set_doc_adds_a_doc_when_missing_and_keeps_line_breaks() {
 }
 
 #[test]
+fn set_doc_writes_a_blank_line_as_an_empty_line() {
+    // Arrange（段落の間の空の行は、字下げを付けずに空の行のまま書く。#244）
+    let text = "package P {\n    part def A;\n}\n";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"setDoc","key":"A","text":"段落 1\n\n段落 2"}"#,
+    );
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def A {\n        doc /* 段落 1\n\n           段落 2 */\n    }\n}\n"
+    );
+}
+
+#[test]
 fn set_doc_with_empty_text_removes_the_doc() {
     // Arrange（境界値：空の文。説明が無ければ何も変えない）
     let text = "package P {\n    requirement def R {\n        doc /* 古い */\n    }\n    requirement def S;\n}\n";

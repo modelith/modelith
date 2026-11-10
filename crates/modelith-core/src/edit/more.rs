@@ -1270,7 +1270,7 @@ fn doc_span(d: &Doc<'_>, i: usize) -> Option<(usize, usize, usize)> {
     None
 }
 
-/// 説明の文をコメントの本文にする。`*/` は書けないので `* /` にし、2 行目からは字下げを揃える。
+/// 説明の文をコメントの本文にする。`*/` は書けないので `* /` にし、2 行目からは字下げを揃える。空の行は字下げを付けず空の行のまま書く。
 ///
 /// # 引数
 ///
@@ -1287,11 +1287,20 @@ fn doc_span(d: &Doc<'_>, i: usize) -> Option<(usize, usize, usize)> {
 /// doc_comment("お湯を沸かす", "    ")        → "/* お湯を沸かす */"
 /// doc_comment("1 行目\n2 行目", "    ")     → "/* 1 行目\n       2 行目 */"
 /// doc_comment("a */ b", "")                 → "/* a * / b */"
+/// doc_comment("段落 1\n\n段落 2", "  ")      → "/* 段落 1\n\n     段落 2 */"
 /// ```
 fn doc_comment(text: &str, indent: &str) -> String {
     let body = text.trim().replace("*/", "* /");
-    let lines: Vec<&str> = body.lines().map(str::trim_end).collect();
-    format!("/* {} */", lines.join(&format!("\n{indent}   ")))
+    let lines: Vec<String> = body
+        .lines()
+        .map(str::trim_end)
+        .enumerate()
+        .map(|(i, l)| match (i, l.is_empty()) {
+            (0, _) | (_, true) => l.to_owned(),
+            _ => format!("{indent}   {l}"),
+        })
+        .collect();
+    format!("/* {} */", lines.join("\n"))
 }
 
 /// 要素の説明（要求の文章など、`doc /* … */`）を書き換える。説明が無ければ本体の終わりに足し、文が空なら説明を消す（F-EDIT-12）。

@@ -147,7 +147,9 @@ test("F-FILE-7: 図の配置のファイルが他のアプリで変わってい�
   await page.mouse.down();
   await page.mouse.move(b.x + 220, b.y + 90, { steps: 6 });
   await page.mouse.up();
-  await putFiles(page, { "a.layout.json": '{ "theirs": true }\n' });
+  // 他のアプリが書いたのは、この版で読める配置ファイル（読めない配置ファイルは上書きしない。C-11）
+  const theirs = '{"modelith":"layout","format":1,"views":{"all":{"Beta":[500,500]}}}\n';
+  await putFiles(page, { "a.layout.json": theirs });
   // Act
   await page.keyboard.press("Control+s");
   await expect(page.locator("#dialogTitle")).toHaveText("ファイルが他で変更されています");
@@ -155,7 +157,7 @@ test("F-FILE-7: 図の配置のファイルが他のアプリで変わってい�
   const untouched = await readFile(page, "a.layout.json");
   await page.locator('#dialogButtons [data-id="overwrite"]').click();
   // Assert（選ぶまでは上書きせず、上書きを選べば自分の配置になる。テキストのファイルは触らない）
-  expect(untouched).toBe('{ "theirs": true }\n');
+  expect(untouched).toBe(theirs);
   await expect.poll(() => readFile(page, "a.layout.json")).toMatch(/"Alpha"/);
   expect(await readFile(page, "a.sysml")).toBe(A);
 });
@@ -225,6 +227,34 @@ test("C-11: この版の知らない機能を含む配置ファイルは、開�
   // Assert（未保存の印（●）も付けず、配置ファイルは読んだときのまま）
   await expect(page.locator("#docName")).toHaveText("a.sysml");
   expect(await readFile(page, "a.layout.json")).toBe(layout);
+});
+
+test("C-11: 他のアプリが新しい版の機能を書いた配置ファイルは、「上書きする」を選んでも書き換えず、ファイルの配置を表示する（#226）", async ({ page }) => {
+  // Arrange（開いた後に、新しい版が配置ファイルを書き換える）
+  await openAllView(page, '{"modelith":"layout","format":1,"views":{"all":{"Alpha":[0,0]}}}\n');
+  const newer = '{"modelith":"layout","format":1,"views":{"all":{"Alpha":[0,0]}},"requires":["shared-layers"],"writer":"0.3"}\n';
+  await putFiles(page, { "a.layout.json": newer });
+  // Act
+  await moveAlphaAndSave(page);
+  await expect(page.locator("#dialogTitle")).toHaveText("ファイルが他で変更されています");
+  await page.locator('#dialogButtons [data-id="overwrite"]').click();
+  // Assert（配置ファイルは新しい版の書いたまま。理由を知らせ、未保存の印も残さない）
+  await expect(page.locator("#toast")).toContainText("新しい版の Modelith で使った機能（shared-layers）");
+  expect(await readFile(page, "a.layout.json")).toBe(newer);
+  await expect(page.locator("#docName")).toHaveText("a.sysml");
+});
+
+test("C-11: 他のアプリが知らない項目を足した配置ファイルに「上書きする」と、自分の配置を書き、知らない項目を残す（#226）", async ({ page }) => {
+  // Arrange
+  await openAllView(page, '{"modelith":"layout","format":1,"views":{"all":{"Alpha":[0,0]}}}\n');
+  await putFiles(page, { "a.layout.json": '{"modelith":"layout","format":1,"views":{"all":{"Alpha":[0,0]}},"writer":"0.3"}\n' });
+  // Act
+  await moveAlphaAndSave(page);
+  await expect(page.locator("#dialogTitle")).toHaveText("ファイルが他で変更されています");
+  await page.locator('#dialogButtons [data-id="overwrite"]').click();
+  // Assert
+  await expect.poll(async () => JSON.parse((await readFile(page, "a.layout.json")) ?? "{}").views?.all?.Alpha).not.toEqual([0, 0]);
+  expect(JSON.parse((await readFile(page, "a.layout.json")) ?? "").writer).toBe("0.3");
 });
 
 test("F-FILE-8: 画面に戻ったとき、未編集のファイルは他のアプリでの変更を読み直す", async ({ page }) => {

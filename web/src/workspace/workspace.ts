@@ -668,6 +668,26 @@ export class Workspace {
   }
 
   /**
+   * 配置ファイルだけを読み直し、保存した配置と版を今のファイルのものにする（今の配置は変えない）。
+   * 他のアプリで変わった配置ファイルに上書きする前に、そのファイルの知らない項目や、この版では書けない印を見るために使う（#226）。
+   * key の文書が無い・隣を扱えないなら何もしない。
+   *
+   * @param key 文書のキー
+   * @returns 読み直した配置ファイルの中身（無ければ ""）。読み直さなかったら null
+   * @example
+   * await ws.reloadSavedLayout(doc.key) // → '{"modelith":"layout",…,"requires":["shared-layers"]}'（doc.savedLayout も同じになり、layoutStale は消える）
+   * await ws.reloadSavedLayout("gone")  // → null
+   */
+  async reloadSavedLayout(key: string): Promise<string | null> {
+    const doc = this.get(key);
+    if (!doc?.ref || doc.layoutHome !== "sibling") return null;
+    const { savedLayout, layoutVersion } = await this.readLayout(doc.ref);
+    Object.assign(doc, { savedLayout, layoutVersion, layoutStale: false });
+    this.changed();
+    return savedLayout;
+  }
+
+  /**
    * 文書を閉じる。閉じたのが表示中なら隣の文書（後ろ、無ければ前）に切り替え、最後の 1 つなら表示中を無くす（新しい文書は作らない。F-FILE-14）。
    * 無題の文書なら下書きからも消す。最後の 1 つなら、すべて閉じたことを下書きの保存先に残す。key の文書が無ければ何もしない。
    *

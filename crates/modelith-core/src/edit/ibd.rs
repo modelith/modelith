@@ -175,9 +175,12 @@ fn walk(d: &Doc<'_>, from: usize, key: String, segs: &[&str]) -> (String, usize)
 /// // a の本体に書いた関係なら
 /// end_key(d, C, a の本体, "x.p") → Some("u:a.x")
 /// end_key(d, C, a の本体, "p")   → Some("u:a")
+/// // 引用名の部品 'x 1' があるとき
+/// end_key(d, C, 対象, "'x 1'.p") → Some("u:x 1")
 /// ```
 fn end_key(d: &Doc<'_>, c: usize, scope: Scope, path: &str) -> Option<String> {
-    let segs: Vec<&str> = path.split('.').collect();
+    // 引用名の段は引用符を外し、引用名の中の `.` では分けない（#230）
+    let segs = crate::project::text::ref_segs(path);
     let first = segs.first().copied().unwrap_or("");
     match scope.part {
         None => {

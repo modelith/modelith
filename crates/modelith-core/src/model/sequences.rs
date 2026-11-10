@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use super::chains::ChainEnd;
 use super::{Builder, Edge, Lifeline, Sequence, SequenceEvent, SequenceMessage};
+use crate::project::text::ref_segs;
 use crate::project::{RelKind, Span};
 
 /// ライフラインになる使用の種類（シナリオの直下に書いたもの）。
@@ -320,7 +321,7 @@ impl Builder<'_> {
             let RelKind::Message { a, b, .. } = &r.kind else {
                 continue;
             };
-            let head = |x: &str| x.split('.').next().unwrap_or("").to_owned();
+            let head = |x: &str| ref_segs(x)[0].to_owned();
             let (from, to) = (head(a), head(b));
             if !lifelines.iter().any(|l| l.name == from) || !lifelines.iter().any(|l| l.name == to)
             {
@@ -369,12 +370,17 @@ impl Builder<'_> {
         events: &mut Events,
         pos: usize,
     ) -> Result<Option<usize>, ()> {
-        let Some((head, rest)) = chain.split_once('.') else {
+        let all = ref_segs(chain);
+        let [head, segs @ ..] = all.as_slice() else {
             return Ok(None);
         };
+        if segs.is_empty() {
+            return Ok(None);
+        }
+        let (head, rest) = (*head, segs.join("."));
+        let rest = rest.as_str();
         let l = lifelines.iter().find(|l| l.name == head).ok_or(())?;
-        let segs: Vec<&str> = rest.split('.').collect();
-        match self.follow_chain(l.entry, &segs) {
+        match self.follow_chain(l.entry, segs) {
             ChainEnd::Found(i) => Ok(Some(match events.by_entry.get(&i) {
                 Some(&e) => e,
                 None => events.add(head, rest, Some(i), pos),
@@ -507,7 +513,7 @@ impl Builder<'_> {
         if let Some(i) = messages.iter().position(named) {
             return EndAt::Found(Point::Message(i));
         }
-        let head = reference.split('.').next().unwrap_or("");
+        let head = ref_segs(reference)[0];
         match self.event_ref(reference, lifelines, events, pos) {
             Ok(Some(e)) => EndAt::Found(Point::Event(e)),
             Err(()) if lifelines.iter().any(|l| l.name == head) => EndAt::Missing,
@@ -541,7 +547,7 @@ impl Builder<'_> {
         if reference.is_empty() {
             return EndAt::Skip;
         }
-        let mut segs = reference.split('.');
+        let mut segs = ref_segs(reference).into_iter();
         let Some(head) = self.lookup(segs.next().unwrap_or(""), Some(body)) else {
             return EndAt::Missing;
         };

@@ -518,6 +518,19 @@ fn ibd_ids_follow_chains_of_three_levels_into_nested_parts() {
 }
 
 #[test]
+fn ibd_ids_resolve_quoted_part_names_at_line_ends() {
+    // Arrange（接続の端の部品が引用名。引用符の中身を名前として解決し、線の ID にする（8.2.2.3。#230））
+    let text = "package P { part def X { port p; } part def C { part 'x 1' : X; part y : X; connect 'x 1'.p to y.p; } }";
+    // Act（その線を消せるなら、線として解決できている）
+    let (after, _) = run(
+        text,
+        r#"{"op":"deleteEdge","id":"flow|u:x 1|u:y|#1","ctx":"C"}"#,
+    );
+    // Assert
+    assert!(!after.contains("connect 'x 1'.p to y.p;"), "{after}");
+}
+
+#[test]
 fn delete_edge_with_unknown_id_is_refused() {
     assert!(refused("package P { }", r#"{"op":"deleteEdge","id":"x"}"#).contains("関係"));
 }

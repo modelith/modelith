@@ -158,6 +158,7 @@ main[data-tree="off"] .treepane,main[data-tree="off"] #splitTree,main[data-text=
 .editor pre,.editor textarea{position:absolute;inset:0;margin:0;padding:12px 14px 40vh;font-family:var(--mono);font-size:12.5px;line-height:19px;tab-size:4;white-space:pre;overflow:auto;border:0;letter-spacing:0}
 .editor pre{color:var(--ink);pointer-events:none}
 .editor textarea{background:transparent;color:transparent;caret-color:var(--ink);resize:none;outline:none}
+.editor textarea:focus-visible{outline:2px solid var(--sel);outline-offset:-2px}
 .editor textarea::selection{background:rgba(31,111,235,.28);color:transparent}
 .tk-kw{color:var(--syn-kw);font-weight:500}.tk-cm{color:var(--syn-cm);font-style:italic}.tk-str{color:var(--syn-str)}.tk-num{color:var(--syn-num)}
 mark{color:inherit;border-radius:2px}

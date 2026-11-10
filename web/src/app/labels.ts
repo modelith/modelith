@@ -119,3 +119,21 @@ export const tabTitle = (name: string, hint: string): string => (hint.startsWith
 export function attrText(a: Pick<Entry, "name" | "type"> & { value?: string | undefined; valueOp?: string | undefined }): string {
   return `${a.name}${a.type ? ` : ${a.type}` : ""}${a.value ? ` ${a.valueOp ?? "="} ${a.value}` : ""}`;
 }
+
+/**
+ * 説明を書き換えたときのトーストの文。テキストに書けない「*\/」を「* /」にしたときは、そのことも知らせる（F-EDIT-12、#244）。
+ *
+ * @param name 要素の名前
+ * @param label 説明の呼び方（「説明」・「要求の文章」）
+ * @param text 書いた説明の文（空なら消した）
+ * @returns トーストの文
+ * @example
+ * docChangedMessage("R", "要求の文章", "3 分で沸かす") // → "「R」の要求の文章を変えました"
+ * docChangedMessage("A", "説明", "")                   // → "「A」の説明を消しました"
+ * docChangedMessage("A", "説明", "a *\/ b")            // → "「A」の説明を変えました。「*\/」はテキストに書けないため「* /」にしました"
+ */
+export function docChangedMessage(name: string, label: string, text: string): string {
+  if (!text.trim()) return `「${name}」の${label}を消しました`;
+  const done = `「${name}」の${label}を変えました`;
+  return text.includes("*/") ? `${done}。「*/」はテキストに書けないため「* /」にしました` : done;
+}

@@ -449,6 +449,7 @@ impl Ctx {
                         self.out.entries[pe].objective = Some(normalize(inner));
                     } else {
                         self.out.entries[pe].doc = Some(normalize(inner));
+                        self.out.entries[pe].doc_text = Some(doc_body(inner));
                     }
                 }
                 return;
@@ -880,6 +881,7 @@ impl Ctx {
                     .and(child(n, FEATURE_VALUE))
                     .and_then(|v| value_op(&v)),
                 doc: None,
+                doc_text: None,
                 objective: None,
                 meta: None,
                 phase_val: None,
@@ -979,6 +981,7 @@ impl Ctx {
                 value: None,
                 value_op: None,
                 doc: None,
+                doc_text: None,
                 objective: None,
                 meta: None,
                 phase_val: None,
@@ -1647,6 +1650,7 @@ impl Ctx {
             value: None,
             value_op: None,
             doc: None,
+            doc_text: None,
             objective: None,
             meta: None,
             phase_val: None,

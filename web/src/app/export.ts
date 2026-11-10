@@ -85,6 +85,19 @@ export function drawioEdgeStyle(kind: string): string {
 }
 
 /**
+ * 画面の線の形（直角・曲線）を、draw.io の線の形にする（F-EXP-2。#244）。
+ *
+ * @param edgeStyle 画面の線の形（"ortho"：直角・"curve"：曲線）
+ * @returns draw.io の style に足す文字列
+ * @example
+ * drawioLineShape("ortho") // → "edgeStyle=orthogonalEdgeStyle;"
+ * drawioLineShape("curve") // → "curved=1;"
+ */
+export function drawioLineShape(edgeStyle: string): string {
+  return edgeStyle === "curve" ? "curved=1;" : "edgeStyle=orthogonalEdgeStyle;";
+}
+
+/**
  * シーケンス図のライフラインの上のイベント（8.2.3.9 の sq-proxy）を、draw.io の図形にする。白抜きの小さな丸（10×10）で、札は右下に書く。
  *
  * @param ev イベント
@@ -151,6 +164,7 @@ export function drawioStateCell(n: ModelNode): { style: string; value: string } 
  * ポートは小さな箱に、線は経路の出口・入口を指定した直角の線にする。並行の状態の領域は、破線で区切る。シーケンス図はライフラインとメッセージ、
  * ライフラインの上のイベント（白抜きの丸と札）と、イベントの間の順序（破線と開いた矢印）にする。
  *
+ * @param page ページの名前（画面のタブの名前。省けば図の種類の名前。#244）
  * @returns draw.io（app.diagrams.net）で読み込める mxfile の XML
  * @example
  * // ブロック定義図に要素が 1 つも無い
@@ -159,7 +173,7 @@ export function drawioStateCell(n: ModelNode): { style: string; value: string } 
  * // ブロック定義図に part def A がある
  * drawioXml() // → 上の root の中に <mxCell id="n2" value="«part def»&lt;br&gt;&lt;b&gt;A&lt;/b&gt;" … vertex="1" …> が入る
  */
-export function drawioXml(): string {
+export function drawioXml(page?: string): string {
   const v = curView();
   const cc = viewContent(S.M, v);
   const { nodes, edges } = cc;
@@ -194,7 +208,7 @@ export function drawioXml(): string {
       if (e.kind !== "succession" || !src || !dst) continue;
       cells += `<mxCell id="e${id++}" value="${drawioText(e.label)}" style="html=1;dashed=1;endArrow=open;endFill=0;" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
     }
-    return mxfileXml("sd " + (cc.ctx ? cc.ctx.name : ""), cells);
+    return mxfileXml(page || "sd " + (cc.ctx ? cc.ctx.name : ""), cells);
   }
   const rects = boxesOf(nodes, L.pos);
   const rect = (n: ModelNode): Box => rects.get(n.key) ?? { x: 0, y: 0, w: 0, h: 0 };
@@ -302,9 +316,9 @@ export function drawioXml(): string {
       if (bends.length) points = `<Array as="points">${bends.map((p) => `<mxPoint x="${p[0]}" y="${p[1]}"/>`).join("")}</Array>`;
     }
     const geom = points ? `<mxGeometry relative="1" as="geometry">${points}</mxGeometry>` : `<mxGeometry relative="1" as="geometry"/>`;
-    cells += `<mxCell id="e${id++}" value="${drawioText(e.label)}" style="html=1;rounded=1;edgeStyle=orthogonalEdgeStyle;${st}${extra}" edge="1" parent="1" source="${src}" target="${dst}">${geom}</mxCell>`;
+    cells += `<mxCell id="e${id++}" value="${drawioText(e.label)}" style="html=1;rounded=1;${drawioLineShape(S.edgeStyle)}${st}${extra}" edge="1" parent="1" source="${src}" target="${dst}">${geom}</mxCell>`;
   }
-  return mxfileXml(v.label, cells);
+  return mxfileXml(page || v.label, cells);
 }
 
 /** エクスポートする SVG の決め方（F-EXP-4）。 */

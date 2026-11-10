@@ -1,6 +1,6 @@
 //! メッセージ・フェーズ・ポート・保存された図の操作（暫定コアの `ops.ts`・`pins.ts`・`view-ops.ts`・`view-text.ts` と同じ書き方）。
 
-use super::ops::{BAD_NAME, Found, append_package, messages, tokens};
+use super::ops::{Found, append_package, messages, tokens};
 use super::text::{Splice, indent_at, insert_into, insert_splice, remove_range};
 use super::{Change, Doc, Refusal};
 use crate::project::{Expose, RelKind, Scope, text::is_basic_name};
@@ -141,7 +141,7 @@ pub(super) fn add_message(d: &Doc<'_>, ctx: &str, from: &str, to: &str) -> Resul
 /// - `d`：操作の対象のテキスト
 /// - `ctx`：シナリオのキー
 /// - `id`：メッセージの ID（`msg|順番|名前`）
-/// - `name`：新しい名前（基本名。空なら名前を書かない）
+/// - `name`：新しい名前（空なら名前を書かない。基本名でなければ引用名で書く）
 /// - `ty`：アイテムの型（空なら `of 型` を書かない）
 ///
 /// # 戻り値
@@ -153,7 +153,8 @@ pub(super) fn add_message(d: &Doc<'_>, ctx: &str, from: &str, to: &str) -> Resul
 /// ```text
 /// update_message(Doc(SEQ), "S", "msg|1|m2", "go", "Cmd") → Ok(text に "then message go of Cmd from b to a;")
 /// update_message(Doc(SEQ), "S", "msg|1|m2", "", "")      → Ok(text に "then message from b to a;")
-/// update_message(Doc(SEQ), "S", "msg|1|m2", "1x", "")    → Err(BAD_NAME)
+/// update_message(Doc(SEQ), "S", "msg|1|m2", "沸かす", "")  → Ok(text に "then message '沸かす' from b to a;")
+/// update_message(Doc(SEQ), "S", "msg|1|m2", "it's", "")  → Err(BAD_RENAME)
 /// ```
 pub(super) fn update_message(
     d: &Doc<'_>,
@@ -162,8 +163,12 @@ pub(super) fn update_message(
     name: &str,
     ty: &str,
 ) -> Result<Change, Refusal> {
-    if !name.is_empty() && !is_basic_name(name) {
-        return Err(BAD_NAME.to_owned());
+    let name = name.trim();
+    if name
+        .chars()
+        .any(|c| c == '\'' || c == '\\' || c.is_control())
+    {
+        return Err(super::ops::BAD_RENAME.to_owned());
     }
     let c = d.context(ctx)?;
     let (i, ms) = message_at(d, c, id)?;
@@ -177,10 +182,11 @@ pub(super) fn update_message(
     } else {
         ""
     };
+    // 日本語や空白を含む名前も、要素の名前と同じく引用名で書く（8.2.2.3。#244）
     let name = if name.is_empty() {
         String::new()
     } else {
-        format!("{name} ")
+        format!("{} ", sysml_name(name))
     };
     let of = if ty.is_empty() {
         String::new()
@@ -1271,7 +1277,7 @@ fn doc_span(d: &Doc<'_>, i: usize) -> Option<(usize, usize, usize)> {
     None
 }
 
-/// 説明の文をコメントの本文にする。`*/` は書けないので `* /` にし、2 行目からは字下げを揃える。
+/// 説明の文をコメントの本文にする。`*/` は書けないので `* /` にし、2 行目からは字下げを揃える。空の行は字下げを付けず空の行のまま書く。
 ///
 /// # 引数
 ///
@@ -1288,11 +1294,20 @@ fn doc_span(d: &Doc<'_>, i: usize) -> Option<(usize, usize, usize)> {
 /// doc_comment("お湯を沸かす", "    ")        → "/* お湯を沸かす */"
 /// doc_comment("1 行目\n2 行目", "    ")     → "/* 1 行目\n       2 行目 */"
 /// doc_comment("a */ b", "")                 → "/* a * / b */"
+/// doc_comment("段落 1\n\n段落 2", "  ")      → "/* 段落 1\n\n     段落 2 */"
 /// ```
 fn doc_comment(text: &str, indent: &str) -> String {
     let body = text.trim().replace("*/", "* /");
-    let lines: Vec<&str> = body.lines().map(str::trim_end).collect();
-    format!("/* {} */", lines.join(&format!("\n{indent}   ")))
+    let lines: Vec<String> = body
+        .lines()
+        .map(str::trim_end)
+        .enumerate()
+        .map(|(i, l)| match (i, l.is_empty()) {
+            (0, _) | (_, true) => l.to_owned(),
+            _ => format!("{indent}   {l}"),
+        })
+        .collect();
+    format!("/* {} */", lines.join("\n"))
 }
 
 /// 要素の説明（要求の文章など、`doc /* … */`）を書き換える。説明が無ければ本体の終わりに足し、文が空なら説明を消す（F-EDIT-12）。

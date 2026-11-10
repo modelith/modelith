@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { build, parse } from "../core";
 import { flowContentOf } from "./action-flow";
-import { copyFailureText, drawioEdgeStyle, drawioFlowCell, drawioStateCell, drawioText, mxfileXml } from "./export";
+import { copyFailureText, drawioEdgeStyle, drawioFlowCell, drawioLineShape, drawioStateCell, drawioText, mxfileXml } from "./export";
 import { stateContentOf } from "./state-machine";
 
 describe("drawioEdgeStyle（F-EXP-2）", () => {
@@ -144,5 +144,15 @@ describe("copyFailureText（画像のコピーに失敗した理由。F-EXP-5、
     // Assert
     expect(denied).toBe("画像をコピーできませんでした。ブラウザがクリップボードへの書き込みを許しませんでした。ブラウザの許可を確かめるか、PNG 画像としてエクスポートしてください");
     expect(unsupported).toBe("画像をコピーできませんでした。このブラウザでは、PNG 画像としてエクスポートしてください");
+  });
+});
+
+describe("drawioLineShape（F-EXP-2。#244）", () => {
+  it("画面が直角なら、draw.io も直角の線にする（正常系）", () => {
+    expect(drawioLineShape("ortho")).toBe("edgeStyle=orthogonalEdgeStyle;");
+  });
+
+  it("画面が曲線なら、draw.io も曲線にする", () => {
+    expect(drawioLineShape("curve")).toBe("curved=1;");
   });
 });

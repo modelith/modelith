@@ -727,6 +727,31 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
     if d.names().contains(nn) {
         return Err(format!("「{nn}」は既に使われています"));
     }
+    Ok(rename_refs(d, f, nn))
+}
+
+/// 名前を変え、参照もまとめて書き換える（`rename` の、名前を確かめた後の部分）。名前が使えるかは呼ぶ側が確かめる。
+/// インスペクタでの属性の名前の変更（持ち主の中で重ならないかだけを確かめる）でも使う（#231）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `f`：名前を変える宣言
+/// - `nn`：新しい名前（前後の空白は除いたもの。今の名前と違う）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキストと、選ぶ名前・光らせる範囲（名前を変えた宣言の頭）。
+///
+/// # 例
+///
+/// ```text
+/// rename_refs(Doc("package P { part def D { attribute a; attribute u = a * 2; } }"), a, "z")
+///   → text = "package P { part def D { attribute z; attribute u = z * 2; } }"
+/// ```
+pub(super) fn rename_refs(d: &Doc<'_>, f: &Found, nn: &str) -> Change {
+    let e = d.e(f.entry);
+    let old = e.name.as_str();
     let ts = tokens(d.text);
     let significant = |i: usize, step: isize| -> Option<&(SyntaxKind, usize, &str)> {
         let mut j = i as isize + step;
@@ -805,11 +830,11 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
         (p as isize + grow) as usize
     };
     let flash = (shift(d.b(e.start)), shift(d.b(e.head_end)));
-    Ok(Change {
+    Change {
         text: out,
         select: Some(nn.to_owned()),
         flash: Some(flash),
-    })
+    }
 }
 
 /// 名前の変更で、名前のトークンがその宣言を指すかを確かめる関数を作る（#220）。

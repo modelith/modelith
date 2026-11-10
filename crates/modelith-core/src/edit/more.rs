@@ -1387,6 +1387,7 @@ fn keep_parts(e: &crate::project::Entry) -> Keep {
 
 /// 属性を足すか、書き換える（インスペクタの「属性」。F-EDIT-12）。`attr` が無ければ足し、あればその名前の属性を書き換える。
 /// 書き換えるときは、`constant` などの修飾と値の書き方（`:=`・`default`）、多重度（`[2]`）と特殊化（`:> a`）を保つ（#223）。
+/// 名前を変えるときは、それを使う参照もまとめて変える（#231）。
 ///
 /// # 引数
 ///
@@ -1463,6 +1464,15 @@ pub(super) fn set_attribute(
             let e = d.e(c);
             if e.close.is_some() {
                 return Err("この属性には中身があるため、テキストで直してください".to_owned());
+            }
+            if e.name != name {
+                // 名前を変えるときは、式や `:>` などの参照もまとめて変えてから、型と値を書き換える（F-EDIT-3。#231）
+                let renamed = super::ops::rename_refs(d, &Found { entry: c }, name).text;
+                let d2 = Doc::with(
+                    &renamed,
+                    crate::project::project(&renamed, &crate::syntax::parse(&renamed)),
+                );
+                return set_attribute(&d2, &Found { entry: f.entry }, Some(name), name, ty, value);
             }
             let head = match e.mods.as_deref() {
                 Some(m) if !m.is_empty() => format!("{m} attribute"),

@@ -1699,6 +1699,22 @@ fn set_attribute_keeps_multiplicity_and_specializations() {
 }
 
 #[test]
+fn set_attribute_renames_the_references_to_the_attribute() {
+    // Arrange（値の式・`:>`・持ち主の中の参照も変える。`k.a` の `.` の後ろは別の要素の特性なので変えない。#231）
+    let text = "package P { part def D { attribute a : Real; attribute u : Real = a * 2; attribute f :> a; part k : D; attribute w = k.a; } }";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"setAttribute","key":"D","attr":"a","name":"z","type":"Real","value":"3"}"#,
+    );
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def D { attribute z : Real = 3; attribute u : Real = z * 2; attribute f :> z; part k : D; attribute w = k.a; } }"
+    );
+}
+
+#[test]
 fn set_attribute_is_refused_for_bad_or_used_names_and_stray_characters() {
     // 同値分割：空の名前・既にある名前・型や値に ; { } 改行・見つからない属性・本体のある属性
     let text = "package P { part def A { attribute m; attribute n; attribute b { } } }";

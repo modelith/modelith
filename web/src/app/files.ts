@@ -1240,15 +1240,15 @@ async function newFileIn(dir: string): Promise<void> {
 }
 
 /**
- * フォルダの中に新しいフォルダーを作る（F-FILE-19）。名前を尋ね、使えない名前なら理由をトーストで知らせる。
+ * フォルダの中に新しいフォルダを作る（F-FILE-19）。名前を尋ね、使えない名前なら理由をトーストで知らせる。
  *
  * @param dir 作る場所のフォルダのパス（一番上なら ""）
  */
 async function newFolderIn(dir: string): Promise<void> {
-  const r = await ask("新しいフォルダー", dir ? `フォルダ「${dir}」に作るフォルダーの名前を入力してください。` : "フォルダーの名前を入力してください。", [
+  const r = await ask("新しいフォルダ", dir ? `フォルダ「${dir}」に作るフォルダの名前を入力してください。` : "フォルダの名前を入力してください。", [
     { id: "cancel", label: "やめる" },
     { id: "ok", label: "作成", kind: "primary" },
-  ], { value: "", label: "フォルダー名" });
+  ], { value: "", label: "フォルダ名" });
   if (r?.id !== "ok") return;
   const problem = nameProblem(r.value, namesIn(dir));
   if (problem) return toast(problem);

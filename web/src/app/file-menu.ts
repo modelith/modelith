@@ -18,7 +18,7 @@ const ITEMS: Record<FileMenuTarget, readonly (FileMenuAction | null)[]> = {
 export const FILE_MENU_LABEL: Record<FileMenuAction, string> = {
   open: "開く",
   newFile: "新しいファイル…",
-  newFolder: "新しいフォルダー…",
+  newFolder: "新しいフォルダ…",
   rename: "名前の変更",
   delete: "削除…",
   copyPath: "パスのコピー",

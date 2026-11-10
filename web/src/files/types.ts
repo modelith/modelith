@@ -212,7 +212,7 @@ export interface FolderTrees extends ProviderInfo {
   removeInFolder(folder: FolderRef, path: string): Promise<boolean>;
 }
 
-/** 開いたフォルダの中に空のフォルダを作り、ファイルやフォルダを動かせる（ファイルの一覧の名前の変更と新しいフォルダー。F-FILE-19）。 */
+/** 開いたフォルダの中に空のフォルダを作り、ファイルやフォルダを動かせる（ファイルの一覧の名前の変更と新しいフォルダ。F-FILE-19）。 */
 export interface FolderEdits extends ProviderInfo {
   /**
    * フォルダの中に空のフォルダを作る（途中のフォルダも作る）。

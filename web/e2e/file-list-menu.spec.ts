@@ -123,11 +123,11 @@ test("F-FILE-19: 削除の確かめで「やめる」を選ぶと、何も消さ
   expect(await readFile(page, "models/x.sysml")).toBe("package X;\n");
 });
 
-test("F-FILE-19: フォルダのメニューから、新しいフォルダーと、その中の新しいファイルを作れる", async ({ page }) => {
+test("F-FILE-19: フォルダのメニューから、新しいフォルダと、その中の新しいファイルを作れる", async ({ page }) => {
   // Arrange
   await openFolder(page, { "models/x.sysml": "package X;\n" });
   // Act
-  await menu(page, "models", "新しいフォルダー…");
+  await menu(page, "models", "新しいフォルダ…");
   await page.locator("#dialogInput").fill("sub");
   await page.locator('#dialogButtons [data-id="ok"]').click();
   // Assert（空のフォルダも一覧に出る）

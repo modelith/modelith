@@ -8,7 +8,7 @@ describe("fileMenuItems（メニューの項目）", () => {
     expect(fileMenuItems("file").filter((a) => a !== null).map((a) => FILE_MENU_LABEL[a])).toEqual(["開く", "名前の変更", "削除…", "パスのコピー", "相対パスのコピー"]);
   });
 
-  it("フォルダは新しいファイル・新しいフォルダー・名前の変更・削除・2 つのパスのコピー", () => {
+  it("フォルダは新しいファイル・新しいフォルダ・名前の変更・削除・2 つのパスのコピー", () => {
     // Assert
     expect(fileMenuItems("dir").filter((a) => a !== null)).toEqual(["newFile", "newFolder", "rename", "delete", "copyPath", "copyRelative"]);
   });

@@ -3,6 +3,7 @@
 //! 各段は、前の段の宣言の本体、その型の定義の本体、型の定義が特殊化した定義の本体、前の段が部分集合・再定義した相手の順に探す。
 //! 探す先がファイルの外（標準ライブラリなど）にあり、中身を確かめられないときは、見つからないとは言わない。
 
+use crate::project::text::ref_segs;
 use std::collections::HashSet;
 
 use super::Builder;
@@ -81,7 +82,7 @@ impl Builder<'_> {
         chain: &str,
         skip: usize,
     ) -> Option<String> {
-        let rest: Vec<&str> = chain.split('.').skip(1).collect();
+        let rest: Vec<&str> = ref_segs(chain).into_iter().skip(1).collect();
         match self.follow_chain(head?, &rest) {
             ChainEnd::Missing(i) if i >= skip => Some(format!("「{chain}」の「{}」", rest[i])),
             _ => None,

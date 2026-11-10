@@ -2,7 +2,9 @@
 //!
 //! 書き方は Cargo の版の指定と同じ。比べる記号（`=`・`>`・`>=`・`<`・`<=`・`~`・`^`。省くと `^`）と、
 //! 1〜3 個の数で書いた版を組にし、カンマで区切って並べる（すべてを満たす版が範囲）。
+//! `*` だけの組はどの版も許す。`0.2.x`・`0.2.*` のように桁を `x`・`X`・`*` にすると、その桁から後ろを書かなかったのと同じ（`^0.2`）。
 //! 本体の版は、プレリリースの印（`-rc.2` など）を外して比べる（`0.1.0-rc.2` の本体は `0.1.0` として扱う）。
+//! そろえるため、範囲に書いた版のプレリリースとビルドの印（`>=0.2.0-beta.1` の `-beta.1`）も外して比べる（#242）。
 
 /// 版（メジャー・マイナー・パッチ）。
 type Ver = (u64, u64, u64);
@@ -71,20 +73,35 @@ fn bad_range(range: &str) -> String {
 /// # 例
 ///
 /// ```text
-/// bounds(">=0.1.0") → Some(((0, 1, 0), None))
-/// bounds("^0.2")    → Some(((0, 2, 0), Some((0, 3, 0))))
-/// bounds("<1")      → Some(((0, 0, 0), Some((1, 0, 0))))
-/// bounds("1.x")     → None
+/// bounds(">=0.1.0")         → Some(((0, 1, 0), None))
+/// bounds("^0.2")            → Some(((0, 2, 0), Some((0, 3, 0))))
+/// bounds("<1")              → Some(((0, 0, 0), Some((1, 0, 0))))
+/// bounds("*")               → Some(((0, 0, 0), None))
+/// bounds("0.2.x")           → Some(((0, 2, 0), Some((0, 3, 0))))
+/// bounds(">=0.2.0-beta.1")  → Some(((0, 2, 0), None))
+/// bounds("1.y")             → None
 /// ```
 fn bounds(part: &str) -> Option<(Ver, Option<Ver>)> {
     let part = part.trim();
+    if part == "*" {
+        return Some(((0, 0, 0), None));
+    }
     let (op, rest) = [">=", "<=", "=", ">", "<", "~", "^"]
         .iter()
         .find_map(|op| part.strip_prefix(op).map(|r| (*op, r)))
         .unwrap_or(("^", part));
-    let nums: Vec<u64> = rest
-        .trim()
-        .split('.')
+    // プレリリースとビルドの印を外し、`x`・`X`・`*` の桁から後ろを書かなかったものにする
+    let rest = rest.trim().split(['-', '+']).next().unwrap_or("");
+    let digits: Vec<&str> = rest.split('.').collect();
+    let wild = digits
+        .iter()
+        .position(|x| matches!(*x, "x" | "X" | "*"))
+        .unwrap_or(digits.len());
+    if wild == 0 {
+        return None;
+    }
+    let nums: Vec<u64> = digits[..wild]
+        .iter()
         .map(|x| {
             (!x.is_empty() && x.bytes().all(|b| b.is_ascii_digit()))
                 .then(|| x.parse().ok())
@@ -216,6 +233,27 @@ mod tests {
     }
 
     #[test]
+    fn wildcards_and_prerelease_versions_follow_cargo() {
+        // Arrange（#242。[範囲, 版, 含むか]。`*`・桁の x と *・範囲に書いたプレリリースの版）
+        let cases = [
+            ("*", (0, 1, 0), true),
+            ("*", (9, 9, 9), true),
+            ("0.2.x", (0, 2, 5), true),
+            ("0.2.*", (0, 3, 0), false),
+            ("1.X", (1, 9, 0), true),
+            (">=0.2.0-beta.1", (0, 2, 0), true),
+            (">=0.2.0-beta.1, <0.3.0", (0, 1, 0), false),
+            ("^0.1.0+build.5", (0, 1, 3), true),
+        ];
+        for (range, v, want) in cases {
+            // Act
+            let got = range_allows(range, v);
+            // Assert
+            assert_eq!(got, Ok(want), "{range} {v:?}");
+        }
+    }
+
+    #[test]
     fn badly_written_ranges_are_errors() {
         // Act / Assert（異常系：空・名前・4 つ目の数・数でない桁・空の組・カンマの無い並び）
         for range in [
@@ -223,7 +261,8 @@ mod tests {
             " ",
             "latest",
             "0.1.0.1",
-            "1.x",
+            "1.y",
+            "x",
             ">=0.1.0,",
             ">=0.1.0 <0.3.0",
         ] {

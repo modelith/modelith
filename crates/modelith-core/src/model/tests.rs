@@ -1965,3 +1965,27 @@ fn transitions_outside_state_definitions_are_not_drawn() {
     assert!(m.state_machines.is_empty());
     assert!(m.problems.is_empty());
 }
+#[test]
+fn quoted_names_resolve_as_line_ends() {
+    // Arrange（同値分割：状態遷移・アクションの順序・接続の端を引用名で書く。引用符の中身を名前として解決する（8.2.2.3）。#230）
+    let states = "package D { attribute def E; state def S { entry; then 'a b'; state 'a b'; state c; transition first 'a b' accept E then c; } }";
+    let actions = "package P { action def F { action 'a 1'; action b; first 'a 1' then b; } }";
+    // Act
+    let (_, sm) = run(states);
+    let (_, af) = run(actions);
+    // Assert（見つからない相手の問題を出さず、線を引く）
+    assert!(sm.problems.is_empty(), "{:?}", sm.problems);
+    let t: Vec<(&str, &str)> = sm.state_machines[0]
+        .edges
+        .iter()
+        .map(|e| (e.from.as_str(), e.to.as_str()))
+        .collect();
+    assert!(t.contains(&("s:a b", "s:c")), "{t:?}");
+    assert!(af.problems.is_empty(), "{:?}", af.problems);
+    let f: Vec<(&str, &str)> = af.action_flows[0]
+        .edges
+        .iter()
+        .map(|e| (e.from.as_str(), e.to.as_str()))
+        .collect();
+    assert!(f.contains(&("a:a 1", "a:b")), "{f:?}");
+}

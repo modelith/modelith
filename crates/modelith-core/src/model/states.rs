@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use super::{Builder, Edge, StateMachine, StateNode};
+use crate::project::text::ref_segs;
 use crate::project::{Entry, Rel, RelKind, Span};
 
 /// 状態の使用の種類（StateUsage・ExhibitStateUsage、8.2.2.18）。
@@ -204,7 +205,7 @@ impl Builder<'_> {
     /// state_key("nope", S, keys)    → None
     /// ```
     fn state_key(&self, reference: &str, body: usize, keys: &Keys) -> Option<String> {
-        let mut segments = reference.split('.');
+        let mut segments = ref_segs(reference).into_iter();
         let head = segments.next().unwrap_or("");
         let mut scope = Some(body);
         let mut found = None;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextMenuIndex, nextMenuItem, nextTabIndex, rovingStop, wrapFocus } from "./keyboard";
+import { globalShortcut, nextMenuIndex, nextMenuItem, nextTabIndex, rovingStop, wrapFocus } from "./keyboard";
 
 describe("wrapFocus（Q-8：ダイアログの中で Tab を回す）", () => {
   it("最後の要素で Tab を押すと、先頭へ回す（境界：末尾）", () => {
@@ -270,5 +270,24 @@ describe("nextMenuItem（Q-9：開いているメニューで上下の矢印キ�
     const next = ["ArrowLeft", "ArrowRight", "Tab", "Home"].map((key) => nextMenuItem(usable, 0, key));
     // Assert
     expect(next).toEqual([null, null, null, null]);
+  });
+});
+
+describe("globalShortcut（Q-8：画面全体の近道を動かすか。#233・#234）", () => {
+  it.each([
+    ["z", false, false, true],
+    ["y", false, false, true],
+    ["s", true, false, true],
+    ["o", true, false, true],
+  ] as const)("ダイアログが無ければ、%s は動かす（入力欄 %s）（正常系）", (key, inField, modal, want) => {
+    expect(globalShortcut(key, inField, modal)).toBe(want);
+  });
+
+  it.each(["z", "y", "a"])("入力欄の中の %s は、その欄のものにする（説明の入力欄・選択肢を含む）", (key) => {
+    expect(globalShortcut(key, true, false)).toBe(false);
+  });
+
+  it.each(["z", "y", "a", "s", "o"])("ダイアログを開いている間は、%s を動かさない（異常系）", (key) => {
+    expect(globalShortcut(key, false, true)).toBe(false);
   });
 });

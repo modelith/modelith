@@ -810,6 +810,7 @@ fn def_reach<'a>(
 }
 
 /// 要素を削除する。行全体を占めるなら行ごと消す。選んだ要素の中に選んだ要素があれば、外側だけを消す。
+/// 消す要素を指す関係の文と、作成した図の `expose` も一緒に消す（`dangling_spans`。#239）。
 /// 光らせる範囲は、最後に消した位置（テキストの前のほう）の 1 バイト。
 ///
 /// # 引数
@@ -832,10 +833,14 @@ fn def_reach<'a>(
 /// ```
 fn delete(d: &Doc<'_>, keys: &[String], ctx: Option<&str>) -> Result<Change, Refusal> {
     let mut spans: Vec<(usize, usize)> = Vec::new();
+    let mut gone: Vec<usize> = Vec::new();
     for k in keys {
-        let e = d.e(d.find(k, ctx)?.entry);
+        let i = d.find(k, ctx)?.entry;
+        let e = d.e(i);
         spans.push((d.b(e.start), d.b(e.end)));
+        gone.push(i);
     }
+    spans.extend(dangling_spans(d, &gone));
     spans.sort_unstable();
     spans.dedup();
     let outer: Vec<(usize, usize)> = spans
@@ -857,6 +862,85 @@ fn delete(d: &Doc<'_>, keys: &[String], ctx: Option<&str>) -> Result<Change, Ref
         select: None,
         flash: Some((at, at + 1)),
     })
+}
+
+/// 消す要素を指して残ってしまう文の範囲（バイト）。図の線になる関係の文（`satisfy`・`connect` など、
+/// `ParseResult.rels` の文そのもの）と、作成した図がその要素だけを出している `expose`（#239）。
+/// 宣言の中に書いた関係（`part def Car :> Vehicle` の `:>` など）は、宣言ごと消してしまうので含めない。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `gone`：消す宣言の番号
+///
+/// # 戻り値
+///
+/// 一緒に消す範囲（バイト。重なってよい）。
+///
+/// # 例
+///
+/// ```text
+/// // "package P { part def K; requirement def R; satisfy R by K; view v { expose P::K; } }" で K を消すとき
+/// dangling_spans(d, [K]) → ["satisfy R by K;" の範囲, "expose P::K;" の範囲]
+/// ```
+fn dangling_spans(d: &Doc<'_>, gone: &[usize]) -> Vec<(usize, usize)> {
+    let keys: HashSet<&str> =
+        d.m.nodes
+            .iter()
+            .filter(|n| gone.contains(&n.entry))
+            .map(|n| n.key.as_str())
+            .collect();
+    // 線の範囲は文の `;` までを含み、関係の文は含まないので、始まりで突き合わせる
+    let rel_starts: HashSet<usize> = d.p.rels.iter().map(|r| r.start).collect();
+    let mut out: Vec<(usize, usize)> =
+        d.m.edges
+            .iter()
+            .filter(|e| keys.contains(e.from.as_str()) || keys.contains(e.to.as_str()))
+            .filter(|e| rel_starts.contains(&e.src.start))
+            .map(|e| (d.b(e.src.start), d.b(e.src.end)))
+            .collect();
+    for (v, _) in
+        d.p.entries
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.exposes.is_some())
+    {
+        for &i in gone {
+            out.extend(
+                d.exposes_only_for(v, i)
+                    .iter()
+                    .map(|x| (d.b(x.start), with_semicolon(d.text, d.b(x.end)))),
+            );
+        }
+    }
+    out
+}
+
+/// 文の終わりの位置を、すぐ後ろ（空白を挟んでよい）の `;` の後ろまで延ばす。
+///
+/// # 引数
+///
+/// - `text`：テキスト
+/// - `end`：文の終わり（バイト）
+///
+/// # 戻り値
+///
+/// `;` が続けばその後ろ、続かなければ `end` のまま。
+///
+/// # 例
+///
+/// ```text
+/// with_semicolon("expose P::K; x", 11) → 12
+/// with_semicolon("expose P::K x", 11)  → 11
+/// ```
+fn with_semicolon(text: &str, end: usize) -> usize {
+    let rest = &text[end..];
+    let ws = rest.len() - rest.trim_start().len();
+    if rest[ws..].starts_with(';') {
+        end + ws + 1
+    } else {
+        end
+    }
 }
 
 /// 図の関係の範囲と、関係を書いた文（`ParseResult.rels` の番号）。

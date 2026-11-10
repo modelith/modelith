@@ -45,6 +45,18 @@ function restoreFocus(opener: HTMLElement | null): void {
 }
 
 /**
+ * ダイアログを 1 つでも開いているか（開いている間は、画面全体の近道を動かさない。Q-8。#234）。
+ *
+ * @returns 開いていれば true
+ * @example
+ * modalOpen() // → false（何も開いていない）
+ * modalOpen() // → true（エクスポートのダイアログを開いている）
+ */
+export function modalOpen(): boolean {
+  return opened.size > 0;
+}
+
+/**
  * モーダルのダイアログを開く。背景（body のほかの子要素）を inert にして押せなくし、Tab と Shift+Tab をダイアログの中で回す。
  * 背景の inert は、開く前の値を覚えて、閉じるときに戻す（開いているファイルが無いときの inert などを壊さない）。
  * ダイアログの上に重ねて開くときは、開くダイアログ自身が下のダイアログの背景として inert になっているので、開いている間だけ外す。

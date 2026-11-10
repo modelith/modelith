@@ -260,7 +260,7 @@ export const OPS = {
     S.sel = moves[0]?.[1] ?? nk;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
-    toast(`「${n.name}」を「${nn}」に変更しました。使っている箇所もまとめて変えました`);
+    toast(`「${n.name}」を「${nn}」に変更しました。このファイルの中で使っている箇所も変えました`);
     return true;
   },
 

@@ -1,5 +1,5 @@
 // ファイルを仮に開く（F-FILE-17）。ローカルフォルダの代わりに OPFS を使う。
-import { expect, openApp, putFiles, test } from "./fixtures";
+import { expect, openApp, putFiles, readFile, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 /** a・b・c のフォルダを開く。 */
@@ -54,4 +54,33 @@ test("F-FILE-17: 開いているファイルの一覧でダブルクリックす
   await expect(page.locator("#docName")).toHaveText("b.sysml");
   // Assert
   await expect.poll(() => openDocs(page)).toEqual(["electric-kettle.sysml", "a.sysml", "b.sysml*"]);
+});
+
+test("F-FILE-17: 仮に開いたファイルの配置ファイルに、前に表示していたファイルの要素の位置を書かない（#224）", async ({ page }) => {
+  // Arrange（a を開いたまま、b を仮に開く）
+  await openApp(page);
+  await putFiles(page, { "a.sysml": "package A { part def Alpha; part def Beta; }\n", "b.sysml": "package B { part def Gamma; part def Delta; }\n" });
+  await page.locator('[data-cmd="openFolder"]').click();
+  await row(page, "a.sysml").dblclick();
+  await expect(page.locator("#docName")).toHaveText("a.sysml");
+  await row(page, "b.sysml").click();
+  await expect(page.locator("#docName")).toHaveText("b.sysml");
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="all"]').click();
+  const gamma = page.locator('#gNodes [data-key="Gamma"]');
+  await gamma.waitFor();
+  // Act（Gamma を動かして保存する）
+  const g = (await gamma.boundingBox())!;
+  await page.mouse.move(g.x + 20, g.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(g.x + 220, g.y + 90, { steps: 6 });
+  await page.mouse.up();
+  await page.keyboard.press("Control+s");
+  // Assert（b の配置ファイルには b の要素だけがある）
+  await expect.poll(() => readFile(page, "b.layout.json")).not.toBeNull();
+  const saved = JSON.parse((await readFile(page, "b.layout.json")) ?? "{}") as { views: Record<string, Record<string, unknown>> };
+  const keys = Object.values(saved.views).flatMap((v) => Object.keys(v));
+  expect(keys).toContain("Gamma");
+  expect(keys).not.toContain("Alpha");
+  expect(keys).not.toContain("Beta");
 });

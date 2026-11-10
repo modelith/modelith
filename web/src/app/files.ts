@@ -12,7 +12,9 @@ import { afterRestore, keptDraftsNotice, kvSessionStore, planStart, sampleDraft,
 import { layoutNameFor, PROJECT_FILE, suggestName, Workspace, type Doc, type StartWith } from "../workspace/workspace";
 import { fit } from "./canvas";
 import { ask } from "./dialog";
-import { $, closest, esc, store } from "./dom";
+import { $, closest, esc, isFormField, store } from "./dom";
+import { globalShortcut } from "./keyboard";
+import { modalOpen } from "./modal";
 import { flushEdit } from "./editor";
 import { download } from "./export";
 import { dropHistory, recordHistory, useHistory } from "./history";
@@ -877,6 +879,11 @@ function initMenu(): void {
   document.addEventListener("keydown", (ev) => {
     if (!(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
     const k = ev.key.toLowerCase();
+    // ダイアログを開いている間は、裏で保存や「開く」のダイアログを出さない（Q-8。#234）
+    if ((k === "s" || k === "o") && !globalShortcut(k, isFormField(ev.target), modalOpen())) {
+      ev.preventDefault();
+      return;
+    }
     if (k === "s") {
       ev.preventDefault();
       if (shownKey) void save(shownKey, ev.shiftKey);

@@ -814,7 +814,7 @@ impl Doc<'_> {
     /// exposes_only_for(v の番号, A の番号) → [expose P::A]
     /// exposes_only_for(v の番号, B の番号) → []
     /// ```
-    fn exposes_only_for(&self, view: usize, i: usize) -> Vec<&Expose> {
+    pub(super) fn exposes_only_for(&self, view: usize, i: usize) -> Vec<&Expose> {
         let plain = self.name_path(i).join("::");
         self.e(view)
             .exposes

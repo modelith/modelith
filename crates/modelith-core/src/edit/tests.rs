@@ -531,6 +531,19 @@ fn ibd_ids_resolve_quoted_part_names_at_line_ends() {
 }
 
 #[test]
+fn delete_removes_relations_and_exposes_that_point_to_the_element() {
+    // Arrange（K を指す満たす関係と、作成した図の expose。宣言の中の特殊化（Car :> K）は宣言ごと消えるので残す。#239）
+    let text = "package P {\n    part def K;\n    part def J;\n    part def Car :> K;\n    requirement def R;\n    satisfy R by K;\n    satisfy R by J;\n    view v {\n        expose P::K;\n        expose P::J;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["K"]}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def J;\n    part def Car :> K;\n    requirement def R;\n    satisfy R by J;\n    view v {\n        expose P::J;\n    }\n}\n"
+    );
+}
+
+#[test]
 fn delete_edge_with_unknown_id_is_refused() {
     assert!(refused("package P { }", r#"{"op":"deleteEdge","id":"x"}"#).contains("関係"));
 }

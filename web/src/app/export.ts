@@ -28,6 +28,21 @@ const LIGHT: Record<string, string> = {
 const LC: ColorFn = (k) => LIGHT[k] ?? "#000000";
 
 /**
+ * draw.io の `html=1` のセルの値（XML の属性）に、ただの文字を書く形にする（F-EXP-2）。
+ * draw.io は値を HTML として描くので、名前の `<`・`&` をそのまま見せるには、HTML の文字参照にしたうえで、XML の属性のために、もう一度文字参照にする。
+ *
+ * @param s 書く文字（要素の名前・線のラベルなど）
+ * @returns 値の属性に書く文字
+ * @example
+ * drawioText("A")         // → "A"
+ * drawioText("<b>pa</b>") // → "&amp;lt;b&amp;gt;pa&amp;lt;/b&amp;gt;"（draw.io では「<b>pa</b>」と見える）
+ * drawioText("it's")      // → "it&#39;s"
+ */
+export function drawioText(s: string): string {
+  return esc(esc(s)).replace(/'/g, "&#39;");
+}
+
+/**
  * draw.io の図形と線（mxCell）を、draw.io（app.diagrams.net）がそのまま開ける .drawio のファイルの形（圧縮しない mxfile）で包む。
  * 根の 2 つのセル（id 0 と、図形の親になる id 1）を先に置く。
  *
@@ -155,14 +170,14 @@ export function drawioXml(): string {
     const Hh = seqGeom(cc).H;
     cc.nodes.forEach((l, i) => {
       map.set(l.key, "n" + id);
-      cells += `<mxCell id="n${id++}" value="${q(l.name + (l.entry.type ? " : " + l.entry.type : ""))}" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;outlineConnect=0;size=${SEQ.h};fillColor=#E6EFF8;strokeColor=#2D5A87;" vertex="1" parent="1"><mxGeometry x="${i * SEQ.dx}" y="0" width="${SEQ.w}" height="${Hh}" as="geometry"/></mxCell>`;
+      cells += `<mxCell id="n${id++}" value="${drawioText(l.name + (l.entry.type ? " : " + l.entry.type : ""))}" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;outlineConnect=0;size=${SEQ.h};fillColor=#E6EFF8;strokeColor=#2D5A87;" vertex="1" parent="1"><mxGeometry x="${i * SEQ.dx}" y="0" width="${SEQ.w}" height="${Hh}" as="geometry"/></mxCell>`;
     });
     cc.edges.forEach((e, k) => {
       if (e.kind !== "message") return;
       const y = seqRowY(e.row ?? k) / Hh;
       const src = map.get(e.from), dst = map.get(e.to);
       if (!src || !dst) return;
-      cells += `<mxCell id="e${id++}" value="${q(`${(e.idx ?? k) + 1}. ${e.label}${e.type ? " : " + e.type : ""}`)}" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;exitX=0.5;exitY=${y.toFixed(4)};entryX=0.5;entryY=${y.toFixed(4)};exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
+      cells += `<mxCell id="e${id++}" value="${drawioText(`${(e.idx ?? k) + 1}. ${e.label}${e.type ? " : " + e.type : ""}`)}" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;exitX=0.5;exitY=${y.toFixed(4)};entryX=0.5;entryY=${y.toFixed(4)};exitPerimeter=0;entryPerimeter=0;" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
     });
     // ライフラインの上のイベント（8.2.3.9 の sq-proxy）は白抜きの丸と札、イベントの間の順序（sq-succession）は破線と開いた矢印
     const lane = new Map(cc.nodes.map((l, i) => [l.key, i]));
@@ -171,12 +186,12 @@ export function drawioXml(): string {
       if (i == null) continue;
       map.set(ev.key, "n" + id);
       const c = drawioEventCell(ev, i);
-      cells += `<mxCell id="n${id++}" value="${q(ev.label)}" style="${c.style}" vertex="1" parent="1"><mxGeometry x="${c.x}" y="${c.y}" width="10" height="10" as="geometry"/></mxCell>`;
+      cells += `<mxCell id="n${id++}" value="${drawioText(ev.label)}" style="${c.style}" vertex="1" parent="1"><mxGeometry x="${c.x}" y="${c.y}" width="10" height="10" as="geometry"/></mxCell>`;
     }
     for (const e of cc.edges) {
       const src = map.get(e.from), dst = map.get(e.to);
       if (e.kind !== "succession" || !src || !dst) continue;
-      cells += `<mxCell id="e${id++}" value="${q(e.label)}" style="html=1;dashed=1;endArrow=open;endFill=0;" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
+      cells += `<mxCell id="e${id++}" value="${drawioText(e.label)}" style="html=1;dashed=1;endArrow=open;endFill=0;" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
     }
     return mxfileXml("sd " + (cc.ctx ? cc.ctx.name : ""), cells);
   }
@@ -196,7 +211,7 @@ export function drawioXml(): string {
       // n 項の接続の点（8.2.3.13 の n-ary-connection-dot）は、塗った小さな丸
       const nid = "n" + id++;
       map.set(n.key, nid);
-      cells += `<mxCell id="${nid}" value="${q(n.name)}" style="ellipse;html=1;fillColor=${LC("k-con")};strokeColor=${LC("k-con")};verticalLabelPosition=top;verticalAlign=bottom;" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
+      cells += `<mxCell id="${nid}" value="${drawioText(n.name)}" style="ellipse;html=1;fillColor=${LC("k-con")};strokeColor=${LC("k-con")};verticalLabelPosition=top;verticalAlign=bottom;" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
       continue;
     }
     if (n.flow) {
@@ -238,7 +253,7 @@ export function drawioXml(): string {
         pp.side === "l" ? "labelPosition=left;align=right;" : pp.side === "r" ? "labelPosition=right;align=left;" : pp.side === "t" ? "verticalLabelPosition=top;verticalAlign=bottom;" : "verticalLabelPosition=bottom;verticalAlign=top;";
       const pid = "n" + id++;
       map.set(n.key + "|port:" + pp.port.name, pid);
-      cells += `<mxCell id="${pid}" value="${q(pp.port.name)}" style="rounded=0;html=1;fillColor=#FFFFFF;strokeColor=${c};fontSize=9;${lp}" vertex="1" parent="${nid}"><mxGeometry x="${pq.x - 6}" y="${pq.y - 6}" width="12" height="12" as="geometry"/></mxCell>`;
+      cells += `<mxCell id="${pid}" value="${drawioText(pp.port.name)}" style="rounded=0;html=1;fillColor=#FFFFFF;strokeColor=${c};fontSize=9;${lp}" vertex="1" parent="${nid}"><mxGeometry x="${pq.x - 6}" y="${pq.y - 6}" width="12" height="12" as="geometry"/></mxCell>`;
     }
   }
   // 並行の状態の領域（8.2.3.18）を、破線で区切る（状態定義そのものが並行なら、対象の枠の中を区切る）
@@ -265,7 +280,7 @@ export function drawioXml(): string {
       if (tpid) dst = tpid;
       else extra += cp(z.side, z.t.toFixed(3), "entry") + "entryPerimeter=0;";
     }
-    cells += `<mxCell id="e${id++}" value="${q(e.label)}" style="html=1;rounded=1;edgeStyle=orthogonalEdgeStyle;${st}${extra}" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
+    cells += `<mxCell id="e${id++}" value="${drawioText(e.label)}" style="html=1;rounded=1;edgeStyle=orthogonalEdgeStyle;${st}${extra}" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
   }
   return mxfileXml(v.label, cells);
 }

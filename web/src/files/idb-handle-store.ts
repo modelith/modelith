@@ -19,8 +19,40 @@ function openDb(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB, 1);
     req.onupgradeneeded = () => req.result.createObjectStore(STORE);
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error("IndexedDB を開けません"));
+    req.onerror = () => {
+      newer ||= isNewerDb(req.error);
+      reject(req.error ?? new Error("IndexedDB を開けません"));
+    };
   });
+}
+
+// データベースが、この版より新しい版の形だったか（開けずに、前回のフォルダを覚えられない。C-11、ADR-0023 §4。#241）
+let newer = false;
+
+/**
+ * IndexedDB を開けなかった理由が、データベースがこの版より新しい版の形だからか。
+ *
+ * @param err 開けなかったときのエラー
+ * @returns 新しい版の形（VersionError）なら true
+ * @example
+ * isNewerDb(new DOMException("", "VersionError")) // → true
+ * isNewerDb(new DOMException("", "UnknownError")) // → false
+ * isNewerDb(null)                                  // → false
+ */
+export function isNewerDb(err: unknown): boolean {
+  return err instanceof Error && err.name === "VersionError";
+}
+
+/**
+ * これまでにデータベースを開こうとして、この版より新しい版の形だと分かったか（起動したときに知らせるため。#241）。
+ *
+ * @returns 新しい版の形だと分かっていれば true
+ * @example
+ * handleStoreTooNew() // → false（開けた・まだ開いていない）
+ * handleStoreTooNew() // → true（新しい版の Modelith がデータベースの形を変えていた）
+ */
+export function handleStoreTooNew(): boolean {
+  return newer;
 }
 
 /**

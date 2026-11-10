@@ -604,6 +604,32 @@ fn ibd_ids_follow_chains_of_three_levels_into_nested_parts() {
 }
 
 #[test]
+fn ibd_ids_resolve_quoted_part_names_at_line_ends() {
+    // Arrange（接続の端の部品が引用名。引用符の中身を名前として解決し、線の ID にする（8.2.2.3。#230））
+    let text = "package P { part def X { port p; } part def C { part 'x 1' : X; part y : X; connect 'x 1'.p to y.p; } }";
+    // Act（その線を消せるなら、線として解決できている）
+    let (after, _) = run(
+        text,
+        r#"{"op":"deleteEdge","id":"flow|u:x 1|u:y|#1","ctx":"C"}"#,
+    );
+    // Assert
+    assert!(!after.contains("connect 'x 1'.p to y.p;"), "{after}");
+}
+
+#[test]
+fn delete_removes_relations_and_exposes_that_point_to_the_element() {
+    // Arrange（K を指す満たす関係と、作成した図の expose。宣言の中の特殊化（Car :> K）は宣言ごと消えるので残す。#239）
+    let text = "package P {\n    part def K;\n    part def J;\n    part def Car :> K;\n    requirement def R;\n    satisfy R by K;\n    satisfy R by J;\n    view v {\n        expose P::K;\n        expose P::J;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["K"]}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def J;\n    part def Car :> K;\n    requirement def R;\n    satisfy R by J;\n    view v {\n        expose P::J;\n    }\n}\n"
+    );
+}
+
+#[test]
 fn delete_edge_with_unknown_id_is_refused() {
     assert!(refused("package P { }", r#"{"op":"deleteEdge","id":"x"}"#).contains("関係"));
 }
@@ -1226,6 +1252,14 @@ fn save_state_machine_writes_a_state_transition_view() {
 #[test]
 fn save_view_is_refused_without_name_targets_or_with_used_name() {
     let text = "package P { part def A; view v; }";
+    // 同じ package の直下の要素と同じ名前（#240）
+    assert!(
+        refused(
+            text,
+            r#"{"op":"saveView","name":"A","kind":"general","targets":["A"]}"#
+        )
+        .contains("という名前の要素が既にあります")
+    );
     assert!(
         refused(
             text,

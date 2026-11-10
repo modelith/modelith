@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry as Slot;
 
 use super::{ActionFlow, Builder, Edge, FlowNode, Lane, Port, flow_label, has_word};
+use crate::project::text::ref_segs;
 use crate::project::{ACTION_FLOW_KINDS, Entry, Rel, RelKind, Span};
 
 /// 継起の端（元か先）。
@@ -73,7 +74,7 @@ impl Keys {
         if let Some(e) = end.entry {
             return self.by_entry.get(&e).map(|k| (k.clone(), None));
         }
-        let mut segs = end.reference.split('.');
+        let mut segs = ref_segs(end.reference).into_iter();
         let head = segs.next().unwrap_or("");
         if let Some(k) = self.by_name.get(&(body, head.to_owned())) {
             let mut key = k.clone();
@@ -337,7 +338,7 @@ impl Builder<'_> {
             ("「順序付きの流れ」", "succession flow")
         };
         for (end, found) in [&line.a, &line.b].into_iter().zip(found) {
-            let head = end.reference.split('.').next().unwrap_or("");
+            let head = ref_segs(end.reference)[0];
             if found
                 || end.entry.is_some()
                 || head.is_empty()

@@ -201,3 +201,19 @@ test("Q-3・Q-8: テキスト欄に Tab で入ると、フォーカスの印（�
   const outline = await page.locator("#ed").evaluate((el) => getComputedStyle(el).outlineStyle);
   expect(outline).toBe("solid");
 });
+
+test("Q-8: テキストの色付けの層には Tab で止まらず、テキスト欄に入る（#237）", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  // Act（Tab を押していき、テキスト欄に入るまでに止まった要素を集める）
+  const stops: string[] = [];
+  for (let i = 0; i < 80; i++) {
+    await page.keyboard.press("Tab");
+    const id = await page.evaluate(() => document.activeElement?.id ?? "");
+    stops.push(id);
+    if (id === "ed") break;
+  }
+  // Assert
+  expect(stops).toContain("ed");
+  expect(stops).not.toContain("hl");
+});

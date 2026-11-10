@@ -252,6 +252,43 @@ pub fn unquote(s: &str) -> &str {
         .unwrap_or(s)
 }
 
+/// 特徴の連鎖（`a.b.c`）を段に分け、各段の引用符を外す。引用名の中の `.` では分けない（8.2.2.3・8.2.2.6。#230）。
+///
+/// # 引数
+///
+/// - `s`：参照（`a.b`・`'a 1'.p`・`'x.y'.z` など）
+///
+/// # 戻り値
+///
+/// 段（引用符を外したもの）の並び。`s` が空なら空の段 1 つ（`str::split` と同じ）。
+///
+/// # 例
+///
+/// ```text
+/// ref_segs("a.b")        → ["a", "b"]
+/// ref_segs("'a 1'.p")    → ["a 1", "p"]
+/// ref_segs("'x.y'.z")    → ["x.y", "z"]
+/// ref_segs("")           → [""]
+/// ```
+pub fn ref_segs(s: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let (mut start, mut quoted, mut escaped) = (0, false, false);
+    for (i, c) in s.char_indices() {
+        match c {
+            _ if escaped => escaped = false,
+            '\\' if quoted => escaped = true,
+            '\'' => quoted = !quoted,
+            '.' if !quoted => {
+                out.push(unquote(&s[start..i]));
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(unquote(&s[start..]));
+    out
+}
+
 /// 頭の修飾（暫定コアの MOD_RE に、alpha.7 で `constant`・`variant`・`snapshot`・`timeslice` を足したもの）。
 /// `private`・`in` などを、後ろに空白が続く限り外す。（修飾, 残り）を返す。
 ///
@@ -581,6 +618,16 @@ pub fn first_word(head: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ref_segs_splits_outside_quotes_and_unquotes_each_step() {
+        // 同値クラス: 基本名・引用名・引用名の中の `.`・エスケープした引用符、境界値: 空の参照
+        assert_eq!(ref_segs("a.b"), ["a", "b"]);
+        assert_eq!(ref_segs("'a 1'.p"), ["a 1", "p"]);
+        assert_eq!(ref_segs("'x.y'.z"), ["x.y", "z"]);
+        assert_eq!(ref_segs("'it\\'s'.p"), ["it\\'s", "p"]);
+        assert_eq!(ref_segs(""), [""]);
+    }
 
     #[test]
     fn strip_mods_takes_only_leading_modifiers_followed_by_space() {

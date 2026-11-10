@@ -12,6 +12,8 @@ import { stageLabel } from "./app/stage";
 import { initCtxMenu } from "./app/ctxmenu";
 import { initDiagramList } from "./app/diagram-list";
 import { $, isFormField, store } from "./app/dom";
+import { globalShortcut } from "./app/keyboard";
+import { modalOpen } from "./app/modal";
 import { initEditor } from "./app/editor";
 import { initWordHelp } from "./app/word-help";
 import { initTextMode } from "./app/text-mode";
@@ -144,9 +146,13 @@ function initToolbar(): void {
   $("#zMini").onclick = $("#menuMini").onclick = toggleMinimap;
   document.addEventListener("keydown", (ev) => {
     if (!(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
-    if (ev.target instanceof HTMLInputElement) return;
     const k = ev.key.toLowerCase();
-    if (k === "a" && !isFormField(ev.target)) {
+    // ダイアログの間と、入力欄の中の元に戻す・すべて選ぶは、画面全体の近道にしない（Q-8。#233・#234）。
+    // テキスト欄（#ed）の元に戻す・やり直すは、モデルの履歴で行うので入力欄に数えない（F-EDIT-4）
+    const editor = ev.target instanceof HTMLElement && ev.target.id === "ed";
+    if (!globalShortcut(k, isFormField(ev.target) && !editor, modalOpen())) return;
+    if (k === "a" && editor) return;
+    if (k === "a") {
       ev.preventDefault();
       selectAll();
     } else if (k === "z") {

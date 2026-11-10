@@ -9,6 +9,7 @@ pub mod model;
 pub mod plugin_host;
 pub mod project;
 pub mod project_file;
+mod read_error;
 pub mod rules;
 pub mod syntax;
 

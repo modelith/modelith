@@ -263,7 +263,7 @@ fn broken_rule_file_is_reported_with_its_place_and_exits_with_1() {
     let text = stdout(&out);
     assert!(
         text.starts_with(&format!(
-            ".modelith/plugins/{PLUGIN}/rules.yaml:8:7: エラー: 不明な項目「incomin」があります（rules[0].require: unknown field `incomin`"
+            ".modelith/plugins/{PLUGIN}/rules.yaml:8:7: エラー: 不明な項目「incomin」があります（場所：rules[0].require） ["
         )),
         "{text}"
     );

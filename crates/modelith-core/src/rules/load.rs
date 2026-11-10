@@ -713,12 +713,12 @@ fn compile_regex(pattern: &str, at: &str, errors: &mut Vec<String>) -> Option<Re
     }
 }
 
-/// serde の読み取りの失敗の文を、画面の言葉にする。よくある失敗は意味を先に書き、元の文を括弧に添える。
+/// serde の読み取りの失敗の文を、画面の言葉にする。英語の元の文は見せず（Q-4）、項目の場所（`rules[0].require` など）が分かれば添える。
 ///
 /// # 引数
 ///
 /// - `raw`：serde_json・serde_norway の失敗の文（末尾の ` at line … column …` は除く）
-/// - `format`：ファイルの形式（`JSON`・`YAML`。分からない失敗のときに書く）
+/// - `format`：ファイルの形式（`JSON`・`YAML`。書き方の誤りのときに書く）
 ///
 /// # 戻り値
 ///
@@ -728,11 +728,11 @@ fn compile_regex(pattern: &str, at: &str, errors: &mut Vec<String>) -> Option<Re
 ///
 /// ```text
 /// describe_serde_error("rules[0].require: unknown field `x`, expected one of … at line 8 column 7", "YAML")
-///   → "不明な項目「x」があります（rules[0].require: unknown field `x`, expected one of …）"
-/// describe_serde_error("missing field `severity`", "YAML") → "必要な項目「severity」がありません（missing field `severity`）"
-/// describe_serde_error("unknown variant `fatal`, …", "YAML") → "指定できない値「fatal」です（unknown variant `fatal`, …）"
+///   → "不明な項目「x」があります（場所：rules[0].require）"
+/// describe_serde_error("missing field `severity`", "YAML") → "必要な項目「severity」がありません"
+/// describe_serde_error("unknown variant `fatal`, …", "YAML") → "指定できない値「fatal」です"
 /// describe_serde_error("EOF while parsing an object at line 1 column 1", "JSON")
-///   → "書式にエラーがあるため読み込めません（JSON：EOF while parsing an object）"
+///   → "書式にエラーがあるため読み込めません（JSON：途中で終わっています。閉じる括弧や「"」が足りません）"
 /// ```
 pub(super) fn describe_serde_error(raw: &str, format: &str) -> String {
     let raw = raw.rfind(" at line ").map_or(raw, |i| &raw[..i]);
@@ -740,22 +740,28 @@ pub(super) fn describe_serde_error(raw: &str, format: &str) -> String {
         let rest = &raw[raw.find(after)? + after.len()..];
         rest.find('`').map(|end| rest[..end].to_owned())
     };
+    // 「rules[0].require: unknown field …」の頭の、項目の場所（空白と「`」を含まない）
+    let place = raw
+        .split_once(": ")
+        .map(|(p, _)| p)
+        .filter(|p| !p.is_empty() && !p.contains([' ', '`']))
+        .map_or(String::new(), |p| format!("（場所：{p}）"));
     if let Some(key) = quoted("unknown field `") {
-        format!("不明な項目「{key}」があります（{raw}）")
+        format!("不明な項目「{key}」があります{place}")
     } else if let Some(key) = quoted("missing field `") {
-        format!("必要な項目「{key}」がありません（{raw}）")
+        format!("必要な項目「{key}」がありません{place}")
     } else if let Some(value) = quoted("unknown variant `") {
-        format!("指定できない値「{value}」です（{raw}）")
+        format!("指定できない値「{value}」です{place}")
     } else if raw.contains("invalid rule id") {
-        format!(
-            "ルールの ID は、英小文字・数字・「-」で書いてください（例：req-has-satisfier。{raw}）"
-        )
+        "ルールの ID は、英小文字・数字・「-」で書いてください（例：req-has-satisfier）".to_owned()
     } else if raw.contains("invalid plugin id") {
-        format!(
-            "プラグインの ID は、英小文字・数字・「-」を「.」で区切って書いてください（例：jp.example.rules。{raw}）"
-        )
+        "プラグインの ID は、英小文字・数字・「-」を「.」で区切って書いてください（例：jp.example.rules）"
+            .to_owned()
     } else {
-        format!("書式にエラーがあるため読み込めません（{format}：{raw}）")
+        format!(
+            "書式にエラーがあるため読み込めません（{format}：{}）{place}",
+            crate::read_error::read_reason(raw)
+        )
     }
 }
 

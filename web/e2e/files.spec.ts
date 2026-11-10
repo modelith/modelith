@@ -222,7 +222,8 @@ test("C-11: この版の知らない機能を含む配置ファイルは、開�
   await openAllView(page, layout);
   await expect(page.locator("#toast")).toContainText("新しい版の Modelith で使った機能（edge-shapes）");
   await moveAlphaAndSave(page);
-  // Assert（未保存の印（●）も付けず、配置ファイルは読んだときのまま）
+  // Assert（未保存の印（●）も付けず、配置ファイルは読んだときのまま。保存の知らせで、配置を保存していないことも伝える。#243）
+  await expect(page.locator("#toast")).toHaveText("「a.sysml」を保存しました。図の配置は、ファイルを守るため保存していません");
   await expect(page.locator("#docName")).toHaveText("a.sysml");
   expect(await readFile(page, "a.layout.json")).toBe(layout);
 });

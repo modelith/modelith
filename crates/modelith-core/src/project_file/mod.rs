@@ -138,7 +138,10 @@ pub fn parse(text: &str) -> Parsed {
         Err(e) => {
             return failed(error(
                 locator.of_offset(0),
-                &format!("設定を読み込めませんでした（{e}）"),
+                &format!(
+                    "設定を読み込めませんでした（{}）",
+                    crate::read_error::read_reason(&e.to_string())
+                ),
             ));
         }
     };
@@ -354,12 +357,12 @@ fn problem(severity: Severity, at: (u32, u32), message: &str) -> Problem {
 ///
 /// # 戻り値
 ///
-/// 誤り 1 件。位置は UTF-16 の列に直し、文の最後の括弧に serde_json の理由（位置を除く）を添える。
+/// 誤り 1 件。位置は UTF-16 の列に直し、文の最後の括弧に理由を日本語で添える（serde_json の英語の文は見せない。Q-4）。
 ///
 /// # 例
 ///
 /// ```text
-/// syntax_problem(…, "{\n  \"a\": 1,\n}", e) → 誤り 3:1「書式にエラーがあるため読み込めません（JSON：trailing comma）」
+/// syntax_problem(…, "{\n  \"a\": 1,\n}", e) → 誤り 3:1「書式にエラーがあるため読み込めません（JSON：最後の項目の後ろに、余計な「,」があります）」
 /// ```
 fn syntax_problem(locator: &Locator, text: &str, e: &serde_json::Error) -> Problem {
     let line_start: usize = text
@@ -368,10 +371,7 @@ fn syntax_problem(locator: &Locator, text: &str, e: &serde_json::Error) -> Probl
         .map(str::len)
         .sum();
     let at = locator.of_offset(line_start + e.column().saturating_sub(1));
-    let full = e.to_string();
-    let reason = full
-        .strip_suffix(&format!(" at line {} column {}", e.line(), e.column()))
-        .unwrap_or(&full);
+    let reason = crate::read_error::read_reason(&e.to_string());
     error(
         at,
         &format!("書式にエラーがあるため読み込めません（JSON：{reason}）"),

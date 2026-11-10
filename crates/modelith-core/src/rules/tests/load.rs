@@ -206,7 +206,7 @@ fn unknown_key_in_manifest_is_named() {
     let all = problems(&plugin);
     assert_eq!(all.len(), 1, "{all:?}");
     assert!(
-        all[0].contains("不明な項目「licence」があります（unknown field `licence`"),
+        all[0].ends_with("不明な項目「licence」があります"),
         "{all:?}"
     );
 }
@@ -519,7 +519,7 @@ fn unknown_key_in_require_is_named_at_its_line() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/rules.yaml:8:7 不明な項目「incomin」があります（rules[0].require: unknown field `incomin`, expected one of `incoming`, `outgoing`, `name`, `phase`, `ports`, `not`）"
+            "{DIR}/rules.yaml:8:7 不明な項目「incomin」があります（場所：rules[0].require）"
         )]
     );
 }
@@ -716,7 +716,7 @@ fn a_broken_rule_does_not_hide_the_good_ones() {
 
 #[test]
 fn describe_serde_error_puts_the_meaning_first() {
-    // Arrange（同値クラス：不明な項目・欠けた項目・知らない値・その他）
+    // Arrange（同値クラス：不明な項目・欠けた項目・知らない値・その他。英語の元の文は見せない。Q-4、#243）
     let raws = [
         "a: unknown field `x`, expected `y` at line 2 column 3",
         "missing field `rules`",
@@ -732,10 +732,10 @@ fn describe_serde_error_puts_the_meaning_first() {
     assert_eq!(
         got,
         [
-            "不明な項目「x」があります（a: unknown field `x`, expected `y`）",
-            "必要な項目「rules」がありません（missing field `rules`）",
-            "指定できない値「fatal」です（unknown variant `fatal`, expected one of `error`）",
-            "書式にエラーがあるため読み込めません（JSON：EOF while parsing a value）",
+            "不明な項目「x」があります（場所：a）",
+            "必要な項目「rules」がありません",
+            "指定できない値「fatal」です",
+            "書式にエラーがあるため読み込めません（JSON：途中で終わっています。閉じる括弧や「\"」が足りません）",
         ]
     );
 }

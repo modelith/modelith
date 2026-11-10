@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isEmptyLayout, keepExtras, layoutExtras, NO_EXTRAS, parseLayoutFile, serializeLayout, writeLock } from "./layout-file";
+import { isEmptyLayout, keepExtras, layoutExtras, layoutNotSavedNote, NO_EXTRAS, parseLayoutFile, serializeLayout, writeLock } from "./layout-file";
 import type { Layout } from "./layout";
 
 const L: Layout = {
@@ -200,5 +200,19 @@ describe("keepExtras（ADR-0023 §6 の往復）", () => {
     // Assert
     expect(layoutExtras(once)).toEqual(layoutExtras(base));
     expect(twice).toBe(once);
+  });
+});
+
+describe("形式の書き方と、保存しなかった配置の知らせ（C-11、#243）", () => {
+  it("形式が数でない（\"1\"）なら、対応しない版の数とは別の文にする（異常系）", () => {
+    // Act / Assert
+    expect(parseLayoutFile('{"modelith":"layout","format":"1","views":{}}').error).toBe("配置ファイルの形式の書き方が違います");
+  });
+
+  it("保存しない配置ファイルのときだけ、保存の知らせに一言添える", () => {
+    // Act / Assert
+    expect(layoutNotSavedNote("")).toBe("");
+    expect(layoutNotSavedNote(serializeLayout(L))).toBe("");
+    expect(layoutNotSavedNote('{"modelith":"layout","format":2,"views":{}}')).toBe("。図の配置は、ファイルを守るため保存していません");
   });
 });

@@ -44,3 +44,18 @@ export function errorText(e: unknown): string {
   if (e instanceof DOMException || BUILT_IN_ERROR_NAMES.has(e.name) || !e.message) return UNKNOWN_ERROR_TEXT;
   return e.message;
 }
+
+/**
+ * 保存に失敗したときの理由の文。ファイルが見つからない（他のアプリに消された・移された）ときは、「名前を付けて保存」で保存し直せることを添える（F-FILE-2、#243）。
+ *
+ * @param e 投げられた値
+ * @returns 日本語の理由の文（句点なし）
+ * @example
+ * saveErrorText(Object.assign(new Error("x"), { name: "NotFoundError" }))
+ *   // → "ファイルが見つかりません。移動したか、削除された可能性があります。「名前を付けて保存」で保存し直せます"
+ * saveErrorText(new Error("フォルダが開かれていません")) // → "フォルダが開かれていません"（errorText と同じ）
+ */
+export function saveErrorText(e: unknown): string {
+  const text = errorText(e);
+  return e instanceof Error && e.name === "NotFoundError" ? `${text}。「名前を付けて保存」で保存し直せます` : text;
+}

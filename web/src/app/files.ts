@@ -10,7 +10,7 @@ import { hasFolderEdits, hasFolderFiles, ProviderRegistry, type DirEntry, type F
 import { AutoSaver, browserTimer } from "../workspace/autosave";
 import { kvDraftStore } from "../workspace/drafts";
 import { filesChange } from "../workspace/project-files";
-import { afterRestore, findFile, kvSessionStore, planStart, sampleDraft, type Session } from "../workspace/session";
+import { afterRestore, findFile, keptDraftsNotice, kvSessionStore, planStart, sampleDraft, type Session } from "../workspace/session";
 import { layoutNameFor, PROJECT_FILE, suggestName, Workspace, type Doc, type StartWith } from "../workspace/workspace";
 import { fit } from "./canvas";
 import { ask } from "./dialog";
@@ -946,6 +946,7 @@ async function resumeAsked(): Promise<void> {
  * 設定「起動時にサンプルを開く」が有効なら、下書きを戻したうえでサンプルを表示する（手を付けていないサンプルがあればそれを使う）。
  * フォルダを開く許可が残っていれば、フォルダを開き直して続きを表示する。許可が要るなら「前回の続きを開く」を示して待つ。
  * 戻し終えたら、今の状態を前回の続きとして書き始める（待つ間は書かない）。
+ * 前回の下書きに、この版の知らない形の記録があれば、消さずに残すことを知らせる（C-11）。
  */
 async function start(): Promise<void> {
   const session = kvSessionStore(store).load();
@@ -953,6 +954,8 @@ async function start(): Promise<void> {
   const access = local && session?.folder && !sampleAtStart ? await local.recentAccess() : "none";
   const plan = planStart(session, sampleAtStart, access);
   const drafts = ws.restoreDrafts();
+  const kept = keptDraftsNotice(ws.draftsKept);
+  if (kept) toast(kept);
   if (plan === "ask" && session && local) {
     resumeAsk = { session, folder: (await local.recentFolder()) ?? "", drafts };
     showNoDoc();

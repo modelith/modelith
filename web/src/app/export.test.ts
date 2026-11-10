@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { build, parse } from "../core";
 import { flowContentOf } from "./action-flow";
-import { drawioEdgeStyle, drawioFlowCell, drawioStateCell, mxfileXml } from "./export";
+import { drawioEdgeStyle, drawioFlowCell, drawioStateCell, drawioText, mxfileXml } from "./export";
 import { stateContentOf } from "./state-machine";
 
 describe("drawioEdgeStyle（F-EXP-2）", () => {
@@ -114,5 +114,24 @@ describe("mxfileXml（.drawio のファイルの包み方、F-EXP-2）", () => {
     const xml = mxfileXml(`A & "B" <'C'>`, "");
     // Assert
     expect(xml).toContain('<diagram id="v" name="A &amp; &quot;B&quot; &lt;&#39;C&#39;&gt;">');
+  });
+});
+
+describe("drawioText（html=1 のセルの値、F-EXP-2）", () => {
+  it("ふつうの名前は、そのまま書く（正常系）", () => {
+    // Act・Assert
+    expect(drawioText("Kettle 1")).toBe("Kettle 1");
+  });
+
+  it("名前の < & は 2 重に文字参照にし、draw.io が HTML として解釈しないようにする（異常系。#229）", () => {
+    // Arrange
+    const name = "<b>pa</b> & 'x'";
+    // Act
+    const v = drawioText(name);
+    // Assert（XML の属性として読むと HTML の文字参照になり、HTML として描くと元の名前に戻る）
+    expect(v).toBe("&amp;lt;b&amp;gt;pa&amp;lt;/b&amp;gt; &amp;amp; &#39;x&#39;");
+    const unref = (t: string): string =>
+      t.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+    expect(unref(unref(v))).toBe(name);
   });
 });

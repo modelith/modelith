@@ -63,6 +63,10 @@ export interface DraftState {
   drafts: Draft[];
   /** すべての文書を閉じて終えたか（F-FILE-14）。 */
   closedAll: boolean;
+  /** 読んだときに、使わずに残した記録の数（この版の知らない形のもの。C-11）。読むときだけ入る。 */
+  unused?: number;
+  /** 下書きの一覧そのものがこの版の知らない形で、書き換えずに残すなら true（この版の下書きは残せない。C-11）。読むときだけ入る。 */
+  locked?: boolean;
 }
 
 /** 下書きの保存先（ブラウザでは localStorage）。save は置けたかを返す（保存領域がいっぱいなら false。F-FILE-11）。 */
@@ -379,9 +383,13 @@ export class Workspace {
     return this.draftsLost;
   }
 
+  /** 前回の下書きのうち、この版の知らない形で使わずに残したものの数と、一覧を書き換えずに残すか（restoreDrafts で決まる。C-11）。 */
+  draftsKept: { unused: number; locked: boolean } = { unused: 0, locked: false };
+
   /**
    * 前回の下書きから無題の文書を戻し、起動したときに何を表示するかを決める（F-FILE-11・F-FILE-14）。
    * 中身の無い下書き（以前の版が残したもの）は戻さない。戻したら変更を知らせる。
+   * この版の知らない形の記録は戻さず、その数を `draftsKept` に残す（画面で知らせるため。C-11）。
    *
    * @returns 下書きを戻したら "drafts"。戻すものが無く、前回すべての文書を閉じて終えたなら "nothing"、それ以外は "sample"
    * @example
@@ -390,7 +398,8 @@ export class Workspace {
    * ws.restoreDrafts() // → "sample"（初めて開いた・下書きが壊れている・中身の無い下書きしか無い）
    */
   restoreDrafts(): StartWith {
-    const { drafts, closedAll } = this.drafts.load();
+    const { drafts, closedAll, unused, locked } = this.drafts.load();
+    this.draftsKept = { unused: unused ?? 0, locked: locked ?? false };
     const kept = drafts.filter(hasContent);
     for (const d of kept) this.add({ ref: null, name: d.name, text: d.text, savedText: d.text, version: null, ...this.noLayoutHome(d.layout ?? "") });
     if (!kept.length) return closedAll ? "nothing" : "sample";

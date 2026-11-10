@@ -1665,6 +1665,40 @@ fn set_attribute_rewrites_name_type_and_value_keeping_modifiers() {
 }
 
 #[test]
+fn set_attribute_keeps_multiplicity_and_specializations() {
+    // Arrange（インスペクタに出さない多重度と特殊化も書き戻す。#223）
+    let text = "package P {\n    part def A {\n        attribute a : Real;\n        attribute g[2] : Real;\n        attribute f :> a;\n        attribute h[0..*] ordered :>> k;\n    }\n}\n";
+    let cases = [
+        (
+            r#"{"op":"setAttribute","key":"A","attr":"g","name":"g","type":"Real","value":"7"}"#,
+            "attribute g[2] : Real = 7;",
+        ),
+        (
+            r#"{"op":"setAttribute","key":"A","attr":"g","name":"gg","type":"Real","value":""}"#,
+            "attribute gg[2] : Real;",
+        ),
+        (
+            r#"{"op":"setAttribute","key":"A","attr":"f","name":"f","type":"","value":"3"}"#,
+            "attribute f :> a = 3;",
+        ),
+        (
+            r#"{"op":"setAttribute","key":"A","attr":"f","name":"f","type":"Real","value":""}"#,
+            "attribute f : Real :> a;",
+        ),
+        (
+            r#"{"op":"setAttribute","key":"A","attr":"h","name":"h","type":"","value":"1"}"#,
+            "attribute h[0..*] ordered :>> k = 1;",
+        ),
+    ];
+    for (json, want) in cases {
+        // Act
+        let (after, _) = run(text, json);
+        // Assert
+        assert!(after.contains(want), "{json}\n{after}");
+    }
+}
+
+#[test]
 fn set_attribute_is_refused_for_bad_or_used_names_and_stray_characters() {
     // 同値分割：空の名前・既にある名前・型や値に ; { } 改行・見つからない属性・本体のある属性
     let text = "package P { part def A { attribute m; attribute n; attribute b { } } }";

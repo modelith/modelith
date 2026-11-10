@@ -15,7 +15,8 @@ test("F-EDIT-2・C-1: パレットで要求を置くとテキストに追加さ�
   await page.locator('[data-act="del"]').click(); // 確認のためもう一度
   // Assert
   expect(added).toContain("requirement def NewRequirement {");
-  expect(await editorText(page)).not.toContain("NewRequirement");
+  // 削除は非同期にテキストへ反映されるので、反映を待って確かめる
+  await expect.poll(() => editorText(page)).not.toContain("NewRequirement");
 });
 
 test.describe("要求をつなぐ関係の追加（F-EDIT-2）", () => {

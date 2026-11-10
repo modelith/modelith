@@ -802,18 +802,12 @@ pub(super) fn rename_refs(d: &Doc<'_>, f: &Found, nn: &str) -> Change {
         hits.push(i);
     }
     hits.sort_unstable();
-    // 宣言の名前と基本名の参照は必要なら引用名に（宣言は基本名に戻せる）、ほかの引用名の参照は引用符の中だけを書き換える
-    let quoted_inner = sysml_name(nn);
-    let quoted_inner = quoted_inner.trim_matches('\'');
+    // 宣言も参照も、新しい名前を必要なときだけ引用名で書く（基本名に戻すときは引用符も外す。#244）
     let edits: Vec<(usize, usize, String)> = hits
         .iter()
         .map(|&i| {
-            let (kind, at, s) = ts[i];
-            if kind == SyntaxKind::QUOTED_NAME && Some(i) != head {
-                (at + 1, s.len() - 2, quoted_inner.to_owned())
-            } else {
-                (at, s.len(), sysml_name(nn))
-            }
+            let (_, at, s) = ts[i];
+            (at, s.len(), sysml_name(nn))
         })
         .collect();
     let mut out = d.text.to_owned();

@@ -163,7 +163,7 @@ fn rename_definition_changes_every_reference_but_not_comments_or_longer_names() 
     // Assert
     assert_eq!(
         after,
-        "package P {\n    part def Motor; // Engine の説明\n    part def Car { part e : Motor; }\n    part def EngineX;\n    part def 'Q' { part q : 'Motor'; }\n}"
+        "package P {\n    part def Motor; // Engine の説明\n    part def Car { part e : Motor; }\n    part def EngineX;\n    part def 'Q' { part q : Motor; }\n}"
     );
     assert_eq!(out.select.as_deref(), Some("Motor"));
     assert_eq!(flashed(&after, &out), "part def Motor");
@@ -246,7 +246,7 @@ fn rename_flash_follows_earlier_renamed_references() {
 
 #[test]
 fn rename_writes_non_basic_names_as_quoted_names() {
-    // Arrange（同値分割：日本語・空白を含む・数字で始まる・予約語。引用名の参照は引用符の中だけを変える。短い名前は変えない）
+    // Arrange（同値分割：日本語・空白を含む・数字で始まる・予約語。引用名の参照も、新しい名前の引用名で書く。短い名前は変えない）
     let text = "package P {\n    requirement def <'Kettle'> Kettle;\n    part def C { part k : Kettle; part q : 'Kettle'; }\n}";
     // Act
     let (jp, out) = run(
@@ -271,7 +271,7 @@ fn rename_writes_non_basic_names_as_quoted_names() {
 
 #[test]
 fn rename_from_a_quoted_name_back_to_a_basic_name() {
-    // Arrange（引用名の定義と使用を、基本名に戻す。宣言は基本名で書き、ほかの引用名の参照は引用符の中だけを変える）
+    // Arrange（引用名の定義と使用を、基本名に戻す。宣言も参照も基本名で書き、引用符を外す（#244））
     let text = "package P { part def '電気 ケトル'; part def C { part '中の 部品' : '電気 ケトル'; flow from '中の 部品'.p to x.q; } }";
     // Act
     let (def, _) = run(
@@ -285,11 +285,11 @@ fn rename_from_a_quoted_name_back_to_a_basic_name() {
     // Assert
     assert_eq!(
         def,
-        "package P { part def Kettle; part def C { part '中の 部品' : 'Kettle'; flow from '中の 部品'.p to x.q; } }"
+        "package P { part def Kettle; part def C { part '中の 部品' : Kettle; flow from '中の 部品'.p to x.q; } }"
     );
     assert_eq!(
         usage,
-        "package P { part def '電気 ケトル'; part def C { part inner : '電気 ケトル'; flow from 'inner'.p to x.q; } }"
+        "package P { part def '電気 ケトル'; part def C { part inner : '電気 ケトル'; flow from inner.p to x.q; } }"
     );
 }
 

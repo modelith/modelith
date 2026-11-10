@@ -146,7 +146,9 @@ fn parse_reports_invalid_json_at_its_line_and_column() {
     assert_eq!(parsed.project, None);
     assert_eq!(
         problems_of(text),
-        vec!["Error 2:16 書式にエラーがあるため読み込めません（JSON：expected `,` or `}`）"]
+        vec![
+            "Error 2:16 書式にエラーがあるため読み込めません（JSON：項目の間の「,」か、閉じる「}」が足りません）"
+        ]
     );
 }
 
@@ -159,7 +161,9 @@ fn parse_reports_unclosed_object() {
     // Assert
     assert_eq!(
         problems,
-        vec!["Error 1:1 書式にエラーがあるため読み込めません（JSON：EOF while parsing an object）"]
+        vec![
+            "Error 1:1 書式にエラーがあるため読み込めません（JSON：途中で終わっています。閉じる括弧や「\"」が足りません）"
+        ]
     );
 }
 

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isEmptyLayout, keepExtras, layoutExtras, NO_EXTRAS, parseLayoutFile, serializeLayout, usedFeatures, writeLock } from "./layout-file";
+import { isEmptyLayout, keepExtras, layoutExtras, layoutNotSavedNote, NO_EXTRAS, parseLayoutFile, serializeLayout, usedFeatures, writeLock } from "./layout-file";
 import type { Layout } from "./layout";
 
 const L: Layout = {
@@ -262,5 +262,19 @@ describe("requires の線の調整（ADR-0023 §3・§7）", () => {
   it("線の調整を使わない配置には requires を書かない（今までと同じ中身）", () => {
     // Act / Assert
     expect(serializeLayout(plain)).not.toContain("requires");
+  });
+});
+
+describe("形式の書き方と、保存しなかった配置の知らせ（C-11、#243）", () => {
+  it("形式が数でない（\"1\"）なら、対応しない版の数とは別の文にする（異常系）", () => {
+    // Act / Assert
+    expect(parseLayoutFile('{"modelith":"layout","format":"1","views":{}}').error).toBe("配置ファイルの形式の書き方が違います");
+  });
+
+  it("保存しない配置ファイルのときだけ、保存の知らせに一言添える", () => {
+    // Act / Assert
+    expect(layoutNotSavedNote("")).toBe("");
+    expect(layoutNotSavedNote(serializeLayout(L))).toBe("");
+    expect(layoutNotSavedNote('{"modelith":"layout","format":2,"views":{}}')).toBe("。図の配置は、ファイルを守るため保存していません");
   });
 });

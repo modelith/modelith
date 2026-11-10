@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConflictError } from "../files/types";
-import { errorText, UNKNOWN_ERROR_TEXT } from "./error-text";
+import { errorText, saveErrorText, UNKNOWN_ERROR_TEXT } from "./error-text";
 
 /** 文にラテン文字の語（英語の message）が混じっていないか（日本語の文だけを見せることを確かめる）。 */
 const hasEnglishWord = (text: string): boolean => /[A-Za-z]{3,}/.test(text);
@@ -80,5 +80,22 @@ describe("errorText：Modelith のエラーはメッセージをそのまま使�
     const text = errorText(e);
     // Assert
     expect(text).toBe("models/a.sysml は読み込んだ後に変更されています");
+  });
+});
+
+describe("saveErrorText：保存の失敗の理由（F-FILE-2、#243）", () => {
+  it("ファイルが見つからないときは、「名前を付けて保存」で保存し直せることを添える", () => {
+    // Arrange
+    const e = Object.assign(new Error("not found"), { name: "NotFoundError" });
+    // Act / Assert
+    expect(saveErrorText(e)).toBe("ファイルが見つかりません。移動したか、削除された可能性があります。「名前を付けて保存」で保存し直せます");
+  });
+
+  it("ほかの理由は errorText と同じ（同値分割）", () => {
+    // Arrange
+    const denied = Object.assign(new Error("x"), { name: "NotAllowedError" });
+    // Act / Assert
+    expect(saveErrorText(denied)).toBe(errorText(denied));
+    expect(saveErrorText("disk full")).toBe(UNKNOWN_ERROR_TEXT);
   });
 });

@@ -19,7 +19,7 @@ import { flushEdit } from "./editor";
 import { download } from "./export";
 import { dropHistory, recordHistory, useHistory } from "./history";
 import { layoutFromJson, type Layout } from "./layout";
-import { isEmptyLayout, keepExtras, parseLayoutFile, serializeLayout, writeLock } from "./layout-file";
+import { isEmptyLayout, keepExtras, layoutNotSavedNote, parseLayoutFile, serializeLayout, writeLock } from "./layout-file";
 import { clearSel, S } from "./state";
 import { addPlugin, initPlugins, openPlugins, pluginExplorerHtml, reloadPlugins, type PickedPluginFolder } from "./plugin-panel";
 import { pluginFolderPath } from "./plugins";
@@ -27,6 +27,7 @@ import { idbBrowserPlugins, idbPluginData } from "../plugins/browser-store";
 import { importedDocName } from "../plugins/transfer";
 import { projectNotice, projectTitle } from "./project";
 import { coreClient, loadLayout, onLayoutChange, onTextChange, setText, settled, toast, toastFailure } from "./sync";
+import { saveErrorText } from "./error-text";
 import { opsIdle } from "./intent";
 
 const AUTOSAVE_KEY = "modelith-autosave";
@@ -293,10 +294,13 @@ async function save(key: string, as = false): Promise<void> {
     const outcome = as ? await ws.saveAs(key, browser) : await ws.save(key, browser);
     if (outcome === "conflict") return await resolveConflict(key);
     if (outcome !== "saved") return;
-    toast(ws.canWriteInPlace(doc) ? `「${doc.name}」を保存しました` : `「${doc.name}」をダウンロードしました`);
+    const note = layoutNotSavedNote(doc.savedLayout);
+    toast(ws.canWriteInPlace(doc) ? `「${doc.name}」を保存しました${note}` : `「${doc.name}」をダウンロードしました${note}`);
     if (ws.layoutUnsaved(doc)) await offerFolderForLayout(key);
   } catch (e) {
-    toastFailure("保存できませんでした", e);
+    // 他のアプリに消されたファイルは、「名前を付けて保存」で保存し直せることも伝える（F-FILE-2、#243）
+    console.warn("保存できませんでした:", e);
+    toast(`保存できませんでした：${saveErrorText(e)}`);
   }
 }
 

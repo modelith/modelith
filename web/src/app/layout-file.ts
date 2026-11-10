@@ -101,6 +101,7 @@ export function serializeLayout(layout: Layout, extras: LayoutExtras = NO_EXTRAS
  * readRaw("")                                          // → "empty"
  * readRaw("{}")                                        // → "empty"（中身の無いオブジェクト）
  * readRaw("{ broken")                                  // → { error: "配置ファイルを読めません（JSON の形が壊れています）" }
+ * readRaw('{"modelith":"layout","format":"1","views":{}}') // → { error: "配置ファイルの形式の書き方が違います" }
  */
 function readRaw(text: string): { top: Record<string, unknown>; views: Record<string, unknown> } | { error: string } | "empty" {
   if (!text.trim()) return "empty";
@@ -116,6 +117,8 @@ function readRaw(text: string): { top: Record<string, unknown>; views: Record<st
   if (!o || typeof o !== "object" || o.modelith !== "layout" || typeof o.views !== "object" || o.views === null) {
     return { error: "配置ファイルの形が違います" };
   }
+  // 数でない形式（"1" など）は、対応しない版の数と取り違えないよう別の文にする（#243）
+  if (typeof o.format !== "number") return { error: "配置ファイルの形式の書き方が違います" };
   if (o.format !== LAYOUT_FORMAT) return { error: `配置ファイルの形式（${String(o.format)}）に対応していません` };
   return { top: o as Record<string, unknown>, views: o.views as Record<string, unknown> };
 }
@@ -166,6 +169,17 @@ export function writeLock(text: string): string | null {
   if (!unknown.length) return null;
   return `配置ファイルに、新しい版の Modelith で使った機能（${unknown.join("・")}）が入っています。ファイルを守るため、この版では図の配置を保存しません`;
 }
+
+/**
+ * 保存の知らせに添える、図の配置を保存しなかったことの一言（C-11、#243）。保存してはいけない配置ファイル（writeLock）のときだけ添える。
+ *
+ * @param savedLayout 読んだときの配置ファイルの中身
+ * @returns 添える文（先頭に「。」）。保存してよい配置なら空文字列
+ * @example
+ * layoutNotSavedNote("")                                             // → ""
+ * layoutNotSavedNote('{"modelith":"layout","format":2,"views":{}}') // → "。図の配置は、ファイルを守るため保存していません"
+ */
+export const layoutNotSavedNote = (savedLayout: string): string => (writeLock(savedLayout) ? "。図の配置は、ファイルを守るため保存していません" : "");
 
 /**
  * 配置ファイルの中身に、読んだときのファイルにあった、この版の知らない項目を書き戻す（ADR-0023 §3）。

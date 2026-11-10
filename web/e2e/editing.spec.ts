@@ -169,7 +169,20 @@ test.describe("説明の編集（F-EDIT-12）", () => {
     // Assert
     await expect.poll(() => editorText(page)).toContain("        doc /* 3 分以内に\n           1 L を沸かす */\n");
     await expect(page.locator("#toast")).toHaveText("「BoilReq」の要求の文章を変えました");
-    await expect(page.locator("#insp .doc .note p")).toHaveText("3 分以内に 1 L を沸かす");
+    await expect.poll(() => page.locator("#insp .doc .note p").innerText()).toBe("3 分以内に\n1 L を沸かす"); // 行の区切りまで比べる（toHaveText は空白をまとめる）
+  });
+
+  test("F-EDIT-12: 空の行は空の行のまま書き、インスペクタでも段落を分けて見せる。「*/」は「* /」にして知らせる", async ({ page }) => {
+    // Arrange
+    await selectIn(page, "BoilReq");
+    // Act
+    await page.locator('[data-act="docEdit"]').click();
+    await page.locator("#docIn").fill("段落 1\n\n段落 2 */ の後");
+    await page.locator('[data-act="docOk"]').click();
+    // Assert
+    await expect.poll(() => editorText(page)).toContain("        doc /* 段落 1\n\n           段落 2 * / の後 */\n");
+    await expect(page.locator("#toast")).toHaveText("「BoilReq」の要求の文章を変えました。「*/」はテキストに書けないため「* /」にしました");
+    await expect.poll(() => page.locator("#insp .doc .note p").innerText()).toBe("段落 1\n\n段落 2 * / の後"); // 行の区切りまで比べる（toHaveText は空白をまとめる）
   });
 
   test("F-EDIT-12: 説明の無い要素に説明を足せる", async ({ page }) => {

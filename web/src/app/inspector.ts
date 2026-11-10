@@ -347,7 +347,7 @@ function nodeHtml(n: ModelNode): string {
  */
 function docHtml(n: ModelNode): string {
   const label = docLabel(n);
-  const doc = n.entry.doc ?? "";
+  const doc = n.entry.docText ?? n.entry.doc ?? "";
   if (S.docEdit) {
     return (
       `<div class="docbox doc"><div class="note"><small>${label}（空にすると消えます）</small></div>` +

@@ -6,7 +6,7 @@ import { ask } from "./dialog";
 import { perform } from "./intent";
 import { flowName } from "./action-flow";
 import { renamedStateKeys, stateName } from "./state-machine";
-import { kindLabel } from "./labels";
+import { docChangedMessage, kindLabel } from "./labels";
 import { addToView, editableView } from "./view-ops";
 import { shownDocName } from "./files";
 import { nodeH, W } from "./geometry";
@@ -207,11 +207,11 @@ export const OPS = {
    * await OPS.setDoc(R, "古い")          // → true（何も変えない）
    */
   async setDoc(n: ModelNode, text: string): Promise<boolean> {
-    if (text.trim() === (n.entry.doc ?? "")) return true;
+    if (text.trim() === (n.entry.docText ?? n.entry.doc ?? "")) return true;
     const r = await perform({ op: "setDoc", key: n.key, text, ctx: ctxKey() });
     if (!r) return false;
     setText(r.text, { changeAt: r.at, flash: r.flash });
-    toast(text.trim() ? `「${n.name}」の${docLabel(n)}を変えました` : `「${n.name}」の${docLabel(n)}を消しました`);
+    toast(docChangedMessage(n.name, docLabel(n), text));
     return true;
   },
 

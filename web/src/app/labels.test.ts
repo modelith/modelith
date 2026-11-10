@@ -1,7 +1,7 @@
 // 画面に出す名前（ADR-0014、docs/development/ui-writing.md）。
 import { describe, expect, it } from "vitest";
 import { standardViewName, stdViewLabel } from "../core";
-import { attrText, diagramName, savedViewHint, tabTitle, v2ViewNote, viewHint } from "./labels";
+import { attrText, diagramName, docChangedMessage, savedViewHint, tabTitle, v2ViewNote, viewHint } from "./labels";
 import { VIEWS } from "./views";
 
 describe("diagramName（ビューの名前を「〜の図」と呼べる形にする）", () => {
@@ -214,5 +214,18 @@ describe("attrText（属性の表示）", () => {
   it("型も値も無ければ名前だけ（境界値）", () => {
     // Act / Assert
     expect(attrText({ name: "重さ", type: "" })).toBe("重さ");
+  });
+});
+
+describe("docChangedMessage（説明を書き換えたときのトースト。F-EDIT-12、#244）", () => {
+  it("書き換え・消す・「*/」を含む文で、文を変える（同値分割）", () => {
+    // Act
+    const changed = docChangedMessage("R", "要求の文章", "3 分で沸かす");
+    const removed = docChangedMessage("A", "説明", "  ");
+    const replaced = docChangedMessage("A", "説明", "a */ b");
+    // Assert
+    expect(changed).toBe("「R」の要求の文章を変えました");
+    expect(removed).toBe("「A」の説明を消しました");
+    expect(replaced).toBe("「A」の説明を変えました。「*/」はテキストに書けないため「* /」にしました");
   });
 });

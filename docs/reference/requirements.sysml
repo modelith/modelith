@@ -91,7 +91,7 @@ package ModelithRequirements {
         requirement def <'F-EDIT-12'> EditDetailsReq {
             doc /* テキストを書かずに、インスペクタで要素の説明（要求なら要求の文章。テキストの doc）を書き換え・足し・消すことができる。
                    文が 2 行以上でも、行の区切りを保ってテキストに書く。定義の属性（名前・型・値）も、足す・書き換える・消すことができ、
-                   書き換えても constant などの修飾と値の書き方（:=・default）は保つ（ADR-0001） */
+                   書き換えても constant などの修飾と値の書き方（:=・default）、インスペクタに出さない多重度（[2]）と特殊化（:> a）は保つ（ADR-0001） */
         }
         requirement def <'F-EDIT-4'> UndoReq {
             doc /* 元に戻す・やり直すができる。履歴はファイルごとに持ち、200 段階まで */

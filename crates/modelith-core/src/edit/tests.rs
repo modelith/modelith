@@ -931,12 +931,18 @@ fn update_message_rewrites_name_and_type_keeping_then() {
         "{typed}"
     );
     assert!(bare.contains("then message from b to a;"), "{bare}");
+    // 日本語の名前は引用名で書く。「'」は書けない（#244）
+    let (jp, _) = run(
+        SEQ,
+        r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"沸かす","type":""}"#,
+    );
+    assert!(jp.contains("then message '沸かす' from b to a;"), "{jp}");
     assert!(
         refused(
             SEQ,
-            r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"1x","type":""}"#
+            r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"it's","type":""}"#
         )
-        .contains("英字")
+        .contains("「'」")
     );
 }
 

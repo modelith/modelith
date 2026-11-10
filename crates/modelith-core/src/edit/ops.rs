@@ -8,7 +8,6 @@ use super::{Change, Doc, Intent, Refusal, more};
 use crate::project::{RelKind, Span, text::is_basic_name};
 use crate::syntax::{SyntaxKind, tokenize};
 
-pub(super) const BAD_NAME: &str = "名前は英字か _ で始め、英字・数字・_ だけで付けてください";
 /// 名前を変えるときに使えない文字を含む名前を断る文。
 pub(super) const BAD_RENAME: &str = "名前に「'」「\\」や改行は使えません";
 

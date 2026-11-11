@@ -276,6 +276,24 @@ fn rename_definition_in_a_package_still_renames_other_packages() {
 }
 
 #[test]
+fn rename_definition_leaves_the_same_name_in_other_packages() {
+    // Arrange（同じ名前の定義が、入れ子の package と、別の package にある。名前を書いた場所から解決して、選んだ定義を指すものだけを変える。#266）
+    let text = "package P {\n    part def S;\n    part def Q { part s : S; }\n    package Inner { part def S; part x : S; }\n    part z : Inner::S;\n}\npackage O { part def S; part y : S; }\n";
+    // Act
+    let (outer, _) = run(text, r#"{"op":"rename","key":"S","name":"T"}"#);
+    let (inner, _) = run(text, r#"{"op":"rename","key":"S@Inner","name":"U"}"#);
+    // Assert
+    assert_eq!(
+        outer,
+        "package P {\n    part def T;\n    part def Q { part s : T; }\n    package Inner { part def S; part x : S; }\n    part z : Inner::S;\n}\npackage O { part def S; part y : S; }\n"
+    );
+    assert_eq!(
+        inner,
+        "package P {\n    part def S;\n    part def Q { part s : S; }\n    package Inner { part def U; part x : U; }\n    part z : Inner::U;\n}\npackage O { part def S; part y : S; }\n"
+    );
+}
+
+#[test]
 fn rename_is_refused_for_bad_or_used_names_and_noop_for_same_name() {
     // 同値分割：使えない名前・既にある名前・同じ名前
     let text = "package P { part def A; part def B; }";

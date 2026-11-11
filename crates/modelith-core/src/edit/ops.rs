@@ -705,6 +705,10 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
     let seen = def_reach(d, f.entry, old);
     let refers = |i: usize, at: usize| {
         let after_dot = i > 0 && ts[i - 1].0 == SyntaxKind::DOT;
+        if e.is_def && !after_dot {
+            // 定義は、名前を書いた場所から解決して、その定義を指すものだけを変える（ほかの package の同じ名前を変えない。#266）
+            return names_entry(d, &ts, i) == Some(f.entry);
+        }
         seen(&ts, i) && (e.is_def || (owner.contains(&at) && !after_dot))
     };
     let mut hits: Vec<(usize, usize)> = Vec::new(); // (位置, 消す長さ)
@@ -749,6 +753,55 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
         select: Some(nn.to_owned()),
         flash: Some(flash),
     })
+}
+
+/// 名前のトークンが指す宣言を、書いた場所から解決する（SysML 8.2.2.5 の名前の解決。`model::resolve_refs`）。
+/// 前に `X::` が続けば修飾名として解決する。探し始める場所は、トークンを囲む一番内側の宣言。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `ts`：テキストのトークンの列（`tokens`）
+/// - `k`：名前のトークンの番号
+///
+/// # 戻り値
+///
+/// 指す宣言の番号。見つからなければ None。
+///
+/// # 例
+///
+/// ```text
+/// // "package P { part def S; package Q { part def S; part x : S; } part y : S; part z : Q::S; }" のとき
+/// names_entry(d, ts, x の型の S)    → Some(Q の中の S)
+/// names_entry(d, ts, y の型の S)    → Some(P の中の S)
+/// names_entry(d, ts, "Q::S" の S)   → Some(Q の中の S)
+/// ```
+fn names_entry(d: &Doc<'_>, ts: &[(SyntaxKind, usize, &str)], k: usize) -> Option<usize> {
+    let significant = |j: usize| !ts[j].0.is_trivia() && ts[j].0 != SyntaxKind::REGULAR_COMMENT;
+    let mut segs = vec![ts[k].2];
+    let mut j = k;
+    while let Some(c) = (0..j).rev().find(|&x| significant(x)) {
+        if ts[c].0 != SyntaxKind::COLON2 {
+            break;
+        }
+        let Some(q) = (0..c).rev().find(|&x| significant(x)) else {
+            break;
+        };
+        if !matches!(ts[q].0, SyntaxKind::IDENT | SyntaxKind::QUOTED_NAME) {
+            break;
+        }
+        segs.push(ts[q].2);
+        j = q;
+    }
+    segs.reverse();
+    let at = ts[k].1;
+    let ctx = (0..d.p.entries.len())
+        .filter(|&x| (d.b(d.e(x).start)..d.b(d.e(x).end)).contains(&at))
+        .max_by_key(|&x| d.b(d.e(x).start));
+    crate::model::resolve_refs(&d.p, &[(segs.join("::"), ctx)])
+        .into_iter()
+        .next()
+        .flatten()
 }
 
 /// 名前の変更で、名前のトークンがその宣言を指すかを確かめる関数を作る（#220）。

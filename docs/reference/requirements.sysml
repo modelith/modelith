@@ -248,7 +248,7 @@ package ModelithRequirements {
                    プロジェクトのフォルダの外を読まないよう、modelith.json とプラグインのファイルのシンボリックリンクはたどらず、読めないファイルとして知らせる */
         }
         requirement def <'F-PLUG-3'> PluginErrorReq {
-            doc /* 読めないマニフェストやルール（未知の項目・対応しない apiVersion・この本体の版を含まない engines.modelith・正規表現の誤り）を黙って無視せず、どのファイルの何が悪いかを示す */
+            doc /* 読めないマニフェストやルール（未知の項目・対応しない apiVersion・この本体の版を含まない engines.modelith・engines.modelith の書き方の誤り（読める部分だけで別の意味に読まない）・正規表現の誤り）を黙って無視せず、どのファイルの何が悪いかを示す */
         }
         requirement def <'F-PLUG-4'> ScriptPluginReq {
             doc /* TypeScript のプラグインが足したコマンド・インポート・エクスポートを、画面から使える。インポートした結果は新しいファイルとして開き、既存のファイルを黙って書き換えない。

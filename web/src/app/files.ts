@@ -8,7 +8,7 @@ import { hasFsAccess, LocalFolderProvider, MAX_TREE_FILES, type FsApi } from "..
 import { hasFolderFiles, ProviderRegistry, type DirEntry, type FileProvider } from "../files/types";
 import { AutoSaver, browserTimer } from "../workspace/autosave";
 import { kvDraftStore } from "../workspace/drafts";
-import { afterRestore, keptDraftsNotice, kvSessionStore, planStart, sampleDraft, type Session } from "../workspace/session";
+import { afterRestore, keptDraftsNotice, kvSessionStore, lostDraftsNotice, planStart, sampleDraft, type Session } from "../workspace/session";
 import { layoutNameFor, PROJECT_FILE, suggestName, Workspace, type Doc, type StartWith } from "../workspace/workspace";
 import { fit } from "./canvas";
 import { ask } from "./dialog";
@@ -470,12 +470,12 @@ async function makeProject(): Promise<void> {
 let lostDraftsWarned = false;
 
 /**
- * 下書きを置けなくなったとき（ブラウザの保存領域がいっぱい）に、1 回だけ知らせる（F-FILE-11）。
+ * 下書きを置けなくなったとき（ブラウザの保存領域がいっぱい・一覧が新しい版の形）に、1 回だけ知らせる（F-FILE-11）。
  * 置けている間は何もしない。ワークスペースの変更の通知で呼ぶ。
  */
 function warnLostDrafts(): void {
   const lost = ws.hasLostDrafts();
-  if (lost && !lostDraftsWarned) toast("下書きを保存できません（ブラウザの保存領域がいっぱいです）。「名前を付けて保存」で保存してください");
+  if (lost && !lostDraftsWarned) toast(lostDraftsNotice(ws.draftsKept.locked));
   lostDraftsWarned = lost;
 }
 

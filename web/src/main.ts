@@ -12,7 +12,7 @@ import { stageLabel } from "./app/stage";
 import { initCtxMenu } from "./app/ctxmenu";
 import { initDiagramList } from "./app/diagram-list";
 import { $, isFormField, store } from "./app/dom";
-import { globalShortcut } from "./app/keyboard";
+import { FieldHistory, globalShortcut } from "./app/keyboard";
 import { modalOpen } from "./app/modal";
 import { initEditor } from "./app/editor";
 import { initWordHelp } from "./app/word-help";
@@ -150,6 +150,7 @@ function initToolbar(): void {
     // ダイアログの間と、入力欄の中の元に戻す・すべて選ぶは、画面全体の近道にしない（Q-8。#233・#234）。
     // テキスト欄（#ed）の元に戻す・やり直すは、モデルの履歴で行うので入力欄に数えない（F-EDIT-4）
     const editor = ev.target instanceof HTMLElement && ev.target.id === "ed";
+    if (fieldUndo(ev, k, editor)) return;
     if (!globalShortcut(k, isFormField(ev.target) && !editor, modalOpen())) return;
     if (k === "a" && editor) return;
     if (k === "a") {
@@ -165,6 +166,61 @@ function initToolbar(): void {
     }
   });
 }
+
+/** 入力欄（テキスト欄を除く）ごとの、元に戻す・やり直すの記録（Q-8。#266）。 */
+const fieldHistories = new WeakMap<HTMLInputElement | HTMLTextAreaElement, FieldHistory>();
+
+/**
+ * 記録を持つ入力欄か（文字を入れる input と textarea。テキスト欄 #ed はモデルの履歴で戻すので除く）。
+ *
+ * @param t イベントの対象
+ * @returns 記録を持つ入力欄なら、その要素。そうでなければ null
+ * @example
+ * historyField(document.querySelector("#treeSearch")) // → その input
+ * historyField(document.querySelector("#ed"))         // → null（テキスト欄）
+ * historyField(document.body)                         // → null
+ */
+function historyField(t: EventTarget | null): HTMLInputElement | HTMLTextAreaElement | null {
+  if (t instanceof HTMLTextAreaElement) return t.id === "ed" ? null : t;
+  if (t instanceof HTMLInputElement && /^(text|search|url|email|tel|number|)$/.test(t.type)) return t;
+  return null;
+}
+
+/**
+ * 入力欄の中の Ctrl+Z・Ctrl+Shift+Z・Ctrl+Y を、その欄の記録で行う（ブラウザの取り消しに任せると、欄に戻すものが無いとき
+ * テキスト欄の入力まで戻してしまうため。Q-8。#266）。戻すものが無ければ何もしない。
+ *
+ * @param ev キーの押下
+ * @param k 押したキー（小文字）
+ * @param editor 入力先がテキスト欄か
+ * @returns 入力欄の中の取り消し・やり直しとして扱ったら true（画面全体の近道にはしない）
+ * @example
+ * fieldUndo(絞り込みの欄での Ctrl+Z, "z", false) // → true（欄の前の値に戻す。戻すものが無ければ何もしない）
+ * fieldUndo(図の上での Ctrl+Z, "z", false)       // → false（画面全体の元に戻すにする）
+ * fieldUndo(テキスト欄での Ctrl+Z, "z", true)    // → false
+ */
+function fieldUndo(ev: KeyboardEvent, k: string, editor: boolean): boolean {
+  const f = editor ? null : historyField(ev.target);
+  if (!f || (k !== "z" && k !== "y")) return false;
+  ev.preventDefault();
+  const h = fieldHistories.get(f);
+  const v = !h ? null : k === "y" || ev.shiftKey ? h.redo() : h.undo();
+  if (v !== null) {
+    f.value = v;
+    f.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  return true;
+}
+
+// 入力欄に入ったら記録を始め、入力のたびに値を記録する（取り消しで戻した値は、同じ値なので記録されない）
+document.addEventListener("focusin", (ev) => {
+  const f = historyField(ev.target);
+  if (f && !fieldHistories.has(f)) fieldHistories.set(f, new FieldHistory(f.value));
+});
+document.addEventListener("input", (ev) => {
+  const f = historyField(ev.target);
+  if (f) fieldHistories.get(f)?.record(f.value);
+}, true);
 
 // 解析と図の操作に使う Rust のコア（wasm）を Worker で動かし、使える状態になってから画面を組み立てる（ADR-0015・ADR-0016）。
 // コアが止まった・返事をしないときは作り直す（Q-7）。待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う。

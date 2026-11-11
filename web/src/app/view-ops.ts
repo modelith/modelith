@@ -70,7 +70,8 @@ function suggestName(base: string): string {
  * 名前を付けて新しい図を作成する（図のメニュー・ツールバー・サイドバーの「新しい図を作成」。F-VIEW-8）。
  * 名前と図の種類をダイアログで尋ね、「今の図のまま」なら表示中の自動の図の要素と配置のまま、一般の図なら空の図を、
  * ほかの種類なら描く対象を選ばせて（無ければ新しく作って）、コアに意図 `saveView` を渡してテキストに view と expose を書く。
- * 作成した図のタブを開いてトーストで知らせる。ダイアログでやめた・コアが断ったときは何も変えない。package が無ければトーストで断る。
+ * 作成した図のタブを開いてトーストで知らせる。ダイアログでやめたときは何も変えない。コアが名前を断ったら、入れた名前と種類のままダイアログを開き直す。
+ * package が無ければトーストで断る。
  */
 export async function createDiagram(): Promise<void> {
   const pkg = S.P.entries.find((e) => e.kind === "package" && inOpenFile(e));
@@ -84,44 +85,61 @@ export async function createDiagram(): Promise<void> {
     ...(asIs ? [{ id: "current", label: `今の図のまま（${curView().label}）`, note: "表示中の図の要素と配置のまま作成します" }] : []),
     ...DIAGRAM_KINDS.map((k) => ({ id: k.id, label: k.label, note: k.note, confirm: k.def ? "次へ" : "作成" })),
   ];
-  const first = options[0]?.id ?? "general";
-  const r = await ask(
-    "新しい図を作成",
-    "図の名前と種類を選んでください。作成した図は、サイドバーの「図」と＋メニューの「作成した図」からいつでも開けます。",
-    [
-      { id: "cancel", label: "やめる" },
-      { id: "ok", label: "作成", kind: "primary" },
-    ],
-    { value: suggestName(asIs ? diagramName(curView().label) : "新しい図"), label: "図の名前" },
-    undefined,
-    { label: "図の種類", value: first, options },
-  );
-  if (r?.id !== "ok") return;
-  const name = r.value.trim();
-  if (r.option === "current") return saveCurrent(name);
-  const kind = DIAGRAM_KINDS.find((k) => k.id === r.option);
-  if (!kind) return;
-  const targets = kind.def ? await pickTarget(name, kind) : [];
-  if (!targets) return;
-  const ins = await perform({ op: "saveView", name, kind: kind.id, targets });
-  if (!ins) return;
-  setText(ins.text, { changeAt: ins.at, flash: ins.flash });
-  await settled();
-  openModelView(name);
-  toast(kind.def ? `図「${name}」を作成しました` : `空の図「${name}」を作成しました。モデルのツリーから要素を入れてください`);
+  let option = options[0]?.id ?? "general";
+  let value = suggestName(asIs ? diagramName(curView().label) : "新しい図");
+  // 描く対象は、図の種類ごとに一度だけ選ぶ（名前を断られて尋ね直しても、新しく作った定義を重ねない）
+  const picked = new Map<string, string[]>();
+  for (;;) {
+    const r = await ask(
+      "新しい図を作成",
+      "図の名前と種類を選んでください。作成した図は、サイドバーの「図」と＋メニューの「作成した図」からいつでも開けます。",
+      [
+        { id: "cancel", label: "やめる" },
+        { id: "ok", label: "作成", kind: "primary" },
+      ],
+      { value, label: "図の名前" },
+      undefined,
+      { label: "図の種類", value: option, options },
+    );
+    if (r?.id !== "ok") return;
+    // コアが名前を断ったら（既にある図・パッケージ・要素と同じ名前など）、入れた名前と種類のまま尋ね直す（#266）
+    value = r.value;
+    option = r.option ?? option;
+    const name = r.value.trim();
+    if (option === "current") {
+      if (await saveCurrent(name)) return;
+      continue;
+    }
+    const kind = DIAGRAM_KINDS.find((k) => k.id === option);
+    if (!kind) return;
+    const targets = picked.get(kind.id) ?? (kind.def ? await pickTarget(name, kind) : []);
+    if (!targets) return;
+    picked.set(kind.id, targets);
+    const ins = await perform({ op: "saveView", name, kind: kind.id, targets });
+    if (!ins) continue;
+    setText(ins.text, { changeAt: ins.at, flash: ins.flash });
+    await settled();
+    openModelView(name);
+    toast(kind.def ? `図「${name}」を作成しました` : `空の図「${name}」を作成しました。モデルのツリーから要素を入れてください`);
+    return;
+  }
 }
 
 /**
  * 表示中の自動の図を、要素と配置のまま名前の付いた図にする（「今の図のまま」。F-VIEW-8）。
  *
  * @param name 図の名前
+ * @returns 作成したら true。コアが断ったら false（理由はトーストで示す）
+ * @example
+ * await saveCurrent("overview") // → true（図「overview」を作成して開く）
+ * await saveCurrent("P")        // → false（パッケージと同じ名前）
  */
-async function saveCurrent(name: string): Promise<void> {
+async function saveCurrent(name: string): Promise<boolean> {
   const kind = KIND_OF[S.view] ?? "general";
   const c = CC();
   const targets = kind === "general" ? c.nodes.map((n) => n.key) : c.ctx ? [c.ctx.key] : [];
   const ins = await perform({ op: "saveView", name, kind, targets });
-  if (!ins) return;
+  if (!ins) return false;
   // 見えている配置のまま保存する（内部ブロック図・シーケンス図・アクションの流れの図・状態遷移の図は、対象ごとの配置をそのまま使う）
   if (kind === "general") S.layout[`view:${name}`] = structuredClone(curLayout());
   setText(ins.text, { changeAt: ins.at, flash: ins.flash });
@@ -129,6 +147,7 @@ async function saveCurrent(name: string): Promise<void> {
   await settled();
   openModelView(name);
   toast(`図「${name}」を作成しました。サイドバーの「図」からいつでも開けます`);
+  return true;
 }
 
 /**

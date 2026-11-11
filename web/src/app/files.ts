@@ -10,7 +10,7 @@ import { hasFolderEdits, hasFolderFiles, ProviderRegistry, type DirEntry, type F
 import { AutoSaver, browserTimer } from "../workspace/autosave";
 import { kvDraftStore } from "../workspace/drafts";
 import { filesChange } from "../workspace/project-files";
-import { afterRestore, findFile, keptDraftsNotice, kvSessionStore, planStart, sampleDraft, type Session } from "../workspace/session";
+import { afterRestore, findFile, keptDraftsNotice, kvSessionStore, lostDraftsNotice, planStart, sampleDraft, type Session } from "../workspace/session";
 import { layoutNameFor, PROJECT_FILE, suggestName, Workspace, type Doc, type StartWith } from "../workspace/workspace";
 import { fit } from "./canvas";
 import { ask } from "./dialog";
@@ -757,12 +757,12 @@ async function makeProject(): Promise<void> {
 let lostDraftsWarned = false;
 
 /**
- * 下書きを置けなくなったとき（ブラウザの保存領域がいっぱい）に、1 回だけ知らせる（F-FILE-11）。
+ * 下書きを置けなくなったとき（ブラウザの保存領域がいっぱい・一覧が新しい版の形）に、1 回だけ知らせる（F-FILE-11）。
  * 置けている間は何もしない。ワークスペースの変更の通知で呼ぶ。
  */
 function warnLostDrafts(): void {
   const lost = ws.hasLostDrafts();
-  if (lost && !lostDraftsWarned) toast("下書きを保存できません（ブラウザの保存領域がいっぱいです）。「名前を付けて保存」で保存してください");
+  if (lost && !lostDraftsWarned) toast(lostDraftsNotice(ws.draftsKept.locked));
   lostDraftsWarned = lost;
 }
 
@@ -818,7 +818,7 @@ function renderFiles(): void {
       const base = d.ref ? (ws.canWriteInPlace(d) ? d.ref.path : `${d.ref.name}（ダウンロードで保存）`) : "保存先なし（ブラウザに下書き保存）";
       // 仮に開いたファイルは名前を斜体にし、開いたままにする方法を添える（F-FILE-17）
       const where = d.preview ? `${base}\n${PREVIEW_HINT}` : base;
-      return `<div class="fi${d.key === active?.key ? " sel" : ""}${d.preview ? " pv" : ""}" data-doc="${esc(d.key)}" title="${esc(where)}" style="--d:0"><span class="ic">${d.ref ? "▤" : "✎"}</span><span class="nm">${esc(d.name)}</span>${staleMark(d)}${dirtyMark(d)}${layoutMark(d)}<button class="x" data-close="${esc(d.key)}" aria-label="閉じる">×</button></div>`;
+      return `<div class="fi${d.key === active?.key ? " sel" : ""}${d.preview ? " pv" : ""}" data-doc="${esc(d.key)}" title="${esc(where)}" style="--d:0" tabindex="0"${d.key === active?.key ? ' aria-current="true"' : ""}><span class="ic">${d.ref ? "▤" : "✎"}</span><span class="nm">${esc(d.name)}</span>${staleMark(d)}${dirtyMark(d)}${layoutMark(d)}<button class="x" data-close="${esc(d.key)}" aria-label="閉じる">×</button></div>`;
     })
     .join("");
   let h = `<div class="sec"><span class="grow">開いているファイル</span><button data-cmd="new" title="新しいファイル">＋</button></div>${docs || `<div class="msg">開いているファイルはありません。</div>`}`;
@@ -1013,7 +1013,7 @@ function folderHeader(): string {
  * @example
  * // models フォルダ（開いている）の中に a.sysml がある
  * folderRows(entries, 0, new Map())
- * // → '<div class="fi" data-dir="models" style="--d:0">…models…</div><div class="fi" data-file="…" style="--d:1" …>…a.sysml…</div>'
+ * // → '<div class="fi" data-dir="models" … tabindex="0" style="--d:0">…models…</div><div class="fi" data-file="…" … tabindex="0" style="--d:1" …>…a.sysml…</div>'
  * folderRows(entries, 0, new Map([["models/a.sysml", { errors: 1, warnings: 0 }]]))
  * // → '<div class="fi err" data-dir="models" …>…</div><div class="fi err" data-file="…" …>…a.sysml…<span class="cnt err" …>1</span></div>'
  * folderRows([], 0, new Map()) // → ""
@@ -1025,12 +1025,12 @@ function folderRows(entries: DirEntry[], depth: number, statuses: ReadonlyMap<st
       if (e.kind === "dir") {
         const open = !collapsed.has(e.path);
         const mark = folderStatus(statuses, e.path).errors ? " err" : "";
-        return `<div class="fi${mark}" data-dir="${esc(e.path)}" data-path="${esc(e.path)}" tabindex="-1" style="--d:${depth}"><span class="ic">${open ? "▾" : "▸"}</span><span class="nm">${esc(e.name)}</span></div>` + (open ? folderRows(e.children, depth + 1, statuses) : "");
+        return `<div class="fi${mark}" data-dir="${esc(e.path)}" data-path="${esc(e.path)}" tabindex="0" style="--d:${depth}"><span class="ic">${open ? "▾" : "▸"}</span><span class="nm">${esc(e.name)}</span></div>` + (open ? folderRows(e.children, depth + 1, statuses) : "");
       }
       const doc = ws.list().find((d) => d.ref?.provider === e.ref.provider && d.ref.id === e.ref.id);
       const sel = !!doc && doc.key === active?.key;
       const st = statuses.get(e.ref.path);
-      return `<div class="fi${sel ? " sel" : ""}${statusClass(st)}" data-file="${esc(e.ref.id)}" data-path="${esc(e.ref.path)}" tabindex="-1" style="--d:${depth}" title="${esc(e.ref.path)}"><span class="ic">▤</span><span class="nm">${esc(e.ref.name)}</span>${st ? statusBadge(st) : ""}${doc ? staleMark(doc) + dirtyMark(doc) : ""}</div>`;
+      return `<div class="fi${sel ? " sel" : ""}${statusClass(st)}" data-file="${esc(e.ref.id)}" data-path="${esc(e.ref.path)}" tabindex="0" style="--d:${depth}" title="${esc(e.ref.path)}"><span class="ic">▤</span><span class="nm">${esc(e.ref.name)}</span>${st ? statusBadge(st) : ""}${doc ? staleMark(doc) + dirtyMark(doc) : ""}</div>`;
     })
     .join("");
 }
@@ -1615,6 +1615,13 @@ function initExplorer(): void {
   $("#sideViews").onclick = () => showSide("views");
   const side = store.get(SIDE_KEY);
   showSide(side === "model" || side === "views" ? side : "files");
+  // ファイル・フォルダ・開いている文書の行は、Enter と Space でも押せる（Q-8。#266）
+  $("#explorer").addEventListener("keydown", (ev) => {
+    const row = ev.target instanceof HTMLElement && ev.target.classList.contains("fi") ? ev.target : null;
+    if (!row || (ev.key !== "Enter" && ev.key !== " ")) return;
+    ev.preventDefault();
+    row.click();
+  });
   $("#explorer").addEventListener("click", (ev) => {
     const close = closest(ev, "[data-close]");
     if (close) {
@@ -1819,7 +1826,11 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
     if (outcome === "conflict" && askingFresh.has(key)) return; // 編集し始めたときのダイアログで尋ねている（F-FILE-18）
     if (outcome === "conflict") toast(`「${ws.get(key)?.name ?? ""}」は他のアプリで変更されたため、自動保存しませんでした。保存（Ctrl+S）で選べます`);
     // 失敗しても文書は未保存のまま（●）なので、知らせるだけにして、保存（Ctrl+S）で試し直してもらう（F-FILE-6）
-    else if (typeof outcome === "object") toastFailure(`「${ws.get(key)?.name ?? ""}」を自動保存できませんでした`, outcome.failed);
+    else if (typeof outcome === "object") {
+      // 手動の保存と同じく、他のアプリに消されたファイルは「名前を付けて保存」で保存し直せることも伝える（F-FILE-2・F-FILE-6。#266）
+      console.warn("自動保存できませんでした:", outcome.failed);
+      toast(`「${ws.get(key)?.name ?? ""}」を自動保存できませんでした：${saveErrorText(outcome.failed)}`);
+    }
   });
   onTextChange((text) => editShown((key) => ws.setText(key, text)));
   onLayoutChange((layout) => {

@@ -567,6 +567,19 @@ fn delete_removes_relations_and_exposes_that_point_to_the_element() {
 }
 
 #[test]
+fn delete_removes_unqualified_exposes_that_point_to_the_element() {
+    // Arrange（修飾の無い expose。別の package の同じ名前を指す expose は残す。#266）
+    let text = "package P {\n    requirement def R;\n    part def M;\n    view v1 {\n        expose R;\n        expose M;\n    }\n    view v2 { expose Q::R; }\n}\npackage Q { requirement def R; }\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["R"]}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def M;\n    view v1 {\n        expose M;\n    }\n    view v2 { expose Q::R; }\n}\npackage Q { requirement def R; }\n"
+    );
+}
+
+#[test]
 fn delete_removes_only_its_own_end_of_a_dependency_with_many_ends() {
     // Arrange（相手が複数ある依存。消す要素を指す相手だけを外し、ほかの関係は残す。一方の側が空になるなら文ごと消す。#266）
     let text = "package P {\n    requirement def A;\n    requirement def B;\n    requirement def C;\n    requirement def D;\n    dependency from A to B, C, D;\n    #derivation dependency from A, B to D;\n}\n";

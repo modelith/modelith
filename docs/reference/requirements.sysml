@@ -106,7 +106,7 @@ package ModelithRequirements {
         }
         requirement def <'F-EDIT-8'> NoSilentDropReq {
             doc /* 正しい SysML v2 の宣言を黙って捨てたり、別の意味に取り違えたりしない。まだ扱えない構文は「まだ扱えない」と知らせる（ADR-0013）。
-                   引用名（'a b'）で書いた参照は、遷移・順序・接続・メッセージの端でも、引用符の中身を名前として解決する（8.2.2.3） */
+                   引用名（'a b'）で書いた参照は、遷移・順序・接続（内部ブロック図の部品の端を含む）・メッセージの端でも、引用符の中身を名前として解決する（8.2.2.3） */
         }
         requirement def <'F-EDIT-7'> NewPackageGuideReq {
             doc /* package の無いファイルで図から要素を置こうとしたら、断らずに新しい package を作るよう案内し、名前を決めて作ったうえで要素を置く */

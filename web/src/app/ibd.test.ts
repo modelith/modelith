@@ -1,7 +1,7 @@
 // 内部ブロック図の中身（InterconnectionView）。要素のキーと線の ID が、Rust のコアの図の操作と同じであることも確かめる（ADR-0016）。
 import { describe, expect, it } from "vitest";
 import { build, edit, parse, type Model, type ModelNode } from "../core";
-import { ibdContentOf } from "./ibd";
+import { ibdContentOf, refSegs } from "./ibd";
 
 /**
  * テキストからモデルと、内部ブロック図の対象を作る。
@@ -139,5 +139,52 @@ describe("ibdContentOf（内部ブロック図の中身）", () => {
     // Assert
     expect(results.length).toBeGreaterThan(0);
     expect(results.every((r) => !("refused" in r))).toBe(true);
+  });
+});
+
+describe("refSegs（特徴の連鎖の段。#266）", () => {
+  it.each([
+    ["a.b", ["a", "b"]],
+    ["'a 1'.p", ["a 1", "p"]],
+    ["'x.y'.z", ["x.y", "z"]],
+    ["a.'in put'", ["a", "in put"]],
+    ["", [""]],
+  ])("%s → %j", (s, want) => {
+    // Act・Assert
+    expect(refSegs(s)).toEqual(want);
+  });
+});
+
+describe("ibdContentOf：引用名の部品（8.2.2.3。#266）", () => {
+  it("引用名の部品を端にした接続・流れ・結び付け・n 項の接続も、線にする", () => {
+    // Arrange
+    const text =
+      "package P { part def E { port o; port 'in put'; } part def C { part 'the lamp' : E; part bat : E; part 'x.y' : E; " +
+      "connect bat.o to 'the lamp'.'in put'; flow from 'the lamp' to bat; bind 'x.y'.o = bat.o; connect ('the lamp', bat, 'x.y'); } }";
+    const { M, c } = setup(text, "C");
+    // Act
+    const { nodes, edges } = ibdContentOf(M, c);
+    // Assert
+    expect(nodes.map((n) => n.key)).toEqual(["u:the lamp", "u:bat", "u:x.y", "j:#1"]);
+    expect(edges.map((e) => [e.id, e.fromPort, e.toPort])).toEqual([
+      ["flow|u:bat|u:the lamp|#1", "port:o", "port:in put"],
+      ["flow|u:the lamp|u:bat|#1", undefined, undefined],
+      ["bind|u:x.y|u:bat|=#1", "port:o", "port:o"],
+      ["connect|j:#1|u:the lamp|#1", undefined, undefined],
+      ["connect|j:#1|u:bat|#1", undefined, undefined],
+      ["connect|j:#1|u:x.y|#1", undefined, undefined],
+    ]);
+  });
+
+  it("引用名の部品の線を、同じ ID でコアから削除できる（ADR-0016）", () => {
+    // Arrange
+    const text = "package P { part def E; part def C { part 'the lamp' : E; part bat : E; flow from 'the lamp' to bat; } }";
+    const { M, c } = setup(text, "C");
+    const id = ibdContentOf(M, c).edges[0]?.id ?? "";
+    // Act
+    const out = edit(text, { op: "deleteEdge", id, ctx: "C" });
+    // Assert
+    expect(id).toBe("flow|u:the lamp|u:bat|#1");
+    expect(out).not.toHaveProperty("refused");
   });
 });

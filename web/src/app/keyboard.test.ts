@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { globalShortcut, nextMenuIndex, nextMenuItem, nextTabIndex, rovingStop, wrapFocus } from "./keyboard";
+import { FieldHistory, globalShortcut, nextMenuIndex, nextMenuItem, nextTabIndex, rovingStop, wrapFocus } from "./keyboard";
 
 describe("wrapFocus（Q-8：ダイアログの中で Tab を回す）", () => {
   it("最後の要素で Tab を押すと、先頭へ回す（境界：末尾）", () => {
@@ -289,5 +289,41 @@ describe("globalShortcut（Q-8：画面全体の近道を動かすか。#233・#
 
   it.each(["z", "y", "a", "s", "o"])("ダイアログを開いている間は、%s を動かさない（異常系）", (key) => {
     expect(globalShortcut(key, false, true)).toBe(false);
+  });
+});
+
+describe("FieldHistory（入力欄の中の元に戻す。Q-8。#266）", () => {
+  it("入力した順に戻し、戻した順にやり直す", () => {
+    // Arrange
+    const h = new FieldHistory("a");
+    h.record("ab");
+    h.record("abc");
+    // Act・Assert
+    expect(h.undo()).toBe("ab");
+    expect(h.undo()).toBe("a");
+    expect(h.redo()).toBe("ab");
+    expect(h.redo()).toBe("abc");
+  });
+
+  it("戻すもの・やり直すものが無ければ null（境界値）", () => {
+    // Arrange
+    const h = new FieldHistory("");
+    // Act・Assert
+    expect(h.undo()).toBeNull();
+    expect(h.redo()).toBeNull();
+  });
+
+  it("同じ値は記録せず、新しく入力したらやり直しの記録を捨てる", () => {
+    // Arrange
+    const h = new FieldHistory("a");
+    h.record("a");
+    h.record("ab");
+    h.undo();
+    // Act
+    h.record("ax");
+    // Assert
+    expect(h.redo()).toBeNull();
+    expect(h.undo()).toBe("a");
+    expect(h.undo()).toBeNull();
   });
 });

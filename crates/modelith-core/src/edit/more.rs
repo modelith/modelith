@@ -1,6 +1,6 @@
 //! メッセージ・フェーズ・ポート・保存された図の操作（暫定コアの `ops.ts`・`pins.ts`・`view-ops.ts`・`view-text.ts` と同じ書き方）。
 
-use super::ops::{BAD_NAME, Found, append_package, messages};
+use super::ops::{BAD_NAME, Found, append_package, keyword_problem, messages};
 use super::text::{Splice, indent_at, insert_into, insert_splice, remove_range};
 use super::{Change, Doc, Refusal};
 use crate::project::{Expose, RelKind, Scope, text::is_basic_name};
@@ -164,6 +164,9 @@ pub(super) fn update_message(
 ) -> Result<Change, Refusal> {
     if !name.is_empty() && !is_basic_name(name) {
         return Err(BAD_NAME.to_owned());
+    }
+    if let Some(why) = keyword_problem(name) {
+        return Err(why);
     }
     let c = d.context(ctx)?;
     let (i, ms) = message_at(d, c, id)?;
@@ -573,6 +576,9 @@ pub(super) fn make_port(
     if !is_basic_name(name) {
         return Err("ポート名は英字か _ で始め、英字・数字・_ だけで付けてください".to_owned());
     }
+    if let Some(why) = keyword_problem(name) {
+        return Err(why);
+    }
     if !matches!(dir, "in" | "out" | "inout") {
         return Err(format!("ポートの向き「{dir}」は扱えません"));
     }
@@ -796,7 +802,8 @@ impl Doc<'_> {
             .join("::")
     }
 
-    /// e だけを出している expose（中身をまとめて出す expose は含めない）。`::*`・`::**`・`[ ]` の絞り込みが無く、対象が e の修飾名と同じものを集める。
+    /// e だけを出している expose（中身をまとめて出す expose は含めない）。`::*`・`::**`・`[ ]` の絞り込みが無く、対象が e の修飾名と同じもの、
+    /// または図の中から解決して e を指すもの（修飾の無い `expose A;` など）を集める。
     ///
     /// # 引数
     ///
@@ -813,6 +820,8 @@ impl Doc<'_> {
     /// // d.text = "package P {\n    part def A;\n    part def B;\n    view v {\n        expose P::A;\n    }\n}\n" のとき
     /// exposes_only_for(v の番号, A の番号) → [expose P::A]
     /// exposes_only_for(v の番号, B の番号) → []
+    /// // expose A; と書いたとき
+    /// exposes_only_for(v の番号, A の番号) → [expose A]
     /// ```
     pub(super) fn exposes_only_for(&self, view: usize, i: usize) -> Vec<&Expose> {
         let plain = self.name_path(i).join("::");
@@ -820,7 +829,16 @@ impl Doc<'_> {
             .exposes
             .iter()
             .flatten()
-            .filter(|x| !x.members && !x.recursive && x.filter.is_none() && x.target == plain)
+            .filter(|x| !x.members && !x.recursive && x.filter.is_none())
+            .filter(|x| {
+                // 修飾名で書いたものに加え、図の中から解決して e を指すもの（`expose A;` など。#266）
+                x.target == plain
+                    || crate::model::resolve_refs(&self.p, &[(x.target.clone(), Some(view))])
+                        .first()
+                        .copied()
+                        .flatten()
+                        == Some(i)
+            })
             .collect()
     }
 
@@ -929,7 +947,7 @@ fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], inden
 ///
 /// # 戻り値
 ///
-/// 書いた後のテキストと、選ぶ名前・光らせる範囲（足した view）。名前が空・既にある図や同じ package の直下の要素の名前・知らない描き方・要素が無い（または package が無い）ときは理由の文（`Err`）。
+/// 書いた後のテキストと、選ぶ名前・光らせる範囲（足した view）。名前が空・既にある図や同じ package の直下の要素の名前・パッケージの名前・知らない描き方・要素が無い（または package が無い）ときは理由の文（`Err`）。
 ///
 /// # 例
 ///
@@ -939,6 +957,7 @@ fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], inden
 /// save_view(Doc("package P { part def A; view v; }"), "v", "general", [A]) → Err("「v」という図は既にあります。別の名前にしてください")
 /// save_view(Doc("package P { part def A; view v; }"), "w", "general", [])  → Err("図に要素が無いため、保存できません")
 /// save_view(Doc("package P { part def A; view v; }"), "A", "general", [A]) → Err("「A」という名前の要素が既にあります。…")
+/// save_view(Doc("package P { part def A; }"), "P", "general", [A])         → Err("「P」はパッケージの名前なので、…")
 /// ```
 pub(super) fn save_view(
     d: &Doc<'_>,
@@ -964,6 +983,12 @@ pub(super) fn save_view(
     if d.e(pkg).children.iter().any(|&c| d.e(c).name == name) {
         return Err(format!(
             "「{name}」という名前の要素が既にあります。図には別の名前を付けてください"
+        ));
+    }
+    // パッケージと同じ名前の図は、`P::A` の `P` が図の中を探すようになり、ほかの図の expose が見つからなくなる（#266）
+    if (0..d.p.entries.len()).any(|i| d.e(i).kind == "package" && d.e(i).name == name) {
+        return Err(format!(
+            "「{name}」はパッケージの名前なので、図には別の名前を付けてください"
         ));
     }
     let indent = format!("{}    ", indent_at(d.text, d.b(d.e(pkg).start)));

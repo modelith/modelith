@@ -68,10 +68,14 @@ function suggestName(base: string): string {
 /**
  * 表示中の自動の図から、名前の付いた新しい図を作成する（図のメニューとツールバーの「新しい図を作成」。F-VIEW-8）。名前をダイアログで尋ね、コアに意図 `saveView` を渡して
  * テキストに view と expose を書き（setText）、見えている配置を写して配置を確定し、作成した図のタブを開いてトーストで知らせる。
- * 既に作成した図を表示中なら何もしない。package か図の要素が無ければトーストで断る。ダイアログでやめた・コアが断ったときは何も変えない。
+ * 既に作成した図を表示中なら、理由をトーストで示して作らない。package か図の要素が無ければトーストで断る。ダイアログでやめたときは何も変えない。
+ * コアが名前を断ったら（既にある図・パッケージ・要素と同じ名前など）、理由をトーストで示し、入れた名前のままダイアログを開き直す（#266）。
  */
 export async function saveAsView(): Promise<void> {
-  if (S.modelView) return;
+  if (S.modelView) {
+    toast("作成した図を表示しているため、ここからは新しい図を作成できません。自動で描く図を開いてから作成してください");
+    return;
+  }
   const pkg = S.P.entries.find((e) => e.kind === "package");
   const kind = KIND_OF[S.view] ?? "general";
   const c = CC();
@@ -80,14 +84,19 @@ export async function saveAsView(): Promise<void> {
     toast("図に要素が無いため、新しい図を作成できません");
     return;
   }
-  const r = await ask("新しい図を作成", "今の図の要素と配置のまま、名前の付いた図を作成します。作成した図は、＋メニューの「作成した図」からいつでも開けます。", [
-    { id: "cancel", label: "やめる" },
-    { id: "ok", label: "作成", kind: "primary" },
-  ], { value: suggestName(diagramName(curView().label)), label: "図の名前" });
-  if (r?.id !== "ok") return;
-  const name = r.value.trim();
-  const ins = await perform({ op: "saveView", name, kind, targets });
-  if (!ins) return;
+  let value = suggestName(diagramName(curView().label));
+  let name = "";
+  let ins: Awaited<ReturnType<typeof perform>> = null;
+  while (!ins) {
+    const r = await ask("新しい図を作成", "今の図の要素と配置のまま、名前の付いた図を作成します。作成した図は、＋メニューの「作成した図」からいつでも開けます。", [
+      { id: "cancel", label: "やめる" },
+      { id: "ok", label: "作成", kind: "primary" },
+    ], { value, label: "図の名前" });
+    if (r?.id !== "ok") return;
+    value = r.value;
+    name = r.value.trim();
+    ins = await perform({ op: "saveView", name, kind, targets });
+  }
   // 見えている配置のまま保存する（内部ブロック図・シーケンス図・アクションの流れの図・状態遷移の図は、対象ごとの配置をそのまま使う）
   if (kind === "general") S.layout[`view:${name}`] = structuredClone(curLayout());
   setText(ins.text, { changeAt: ins.at, flash: ins.flash });

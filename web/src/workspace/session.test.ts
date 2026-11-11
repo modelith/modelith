@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DirEntry, FileRef, RecentAccess } from "../files/types";
-import { afterRestore, findFile, keptDraftsNotice, kvSessionStore, parseSession, planStart, restoreOrder, sampleDraft, sessionFrom, type Session, type StartPlan } from "./session";
+import { afterRestore, findFile, keptDraftsNotice, kvSessionStore, lostDraftsNotice, parseSession, planStart, restoreOrder, sampleDraft, sessionFrom, type Session, type StartPlan } from "./session";
 
 const ref = (path: string, id = `dir:1/${path}`): FileRef => ({ provider: "local", id, name: path.split("/").pop() ?? path, path });
 const ENTRIES: DirEntry[] = [
@@ -204,5 +204,20 @@ describe("keptDraftsNotice（C-11）", () => {
 
   it("一覧を書き換えずに残すときは、この版の下書きが残らないことも知らせる（異常系）", () => {
     expect(keptDraftsNotice({ unused: 0, locked: true })).toContain("この版で作った無題の文書は下書きに残りません");
+  });
+});
+
+describe("lostDraftsNotice（F-FILE-11）", () => {
+  it("保存領域がいっぱいなら、そう知らせる", () => {
+    // Act・Assert
+    expect(lostDraftsNotice(false)).toContain("保存領域がいっぱい");
+  });
+
+  it("前回の下書きが新しい版の形なら、保存領域の話をせずに理由を示す（#266）", () => {
+    // Act
+    const msg = lostDraftsNotice(true);
+    // Assert
+    expect(msg).toContain("新しい版の Modelith");
+    expect(msg).not.toContain("保存領域");
   });
 });

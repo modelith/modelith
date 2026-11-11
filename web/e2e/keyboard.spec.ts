@@ -1,6 +1,6 @@
 // キーボードだけでの操作（Q-8）。ダイアログ・メニュー・図のタブ・モデルツリーを、Chromium で操作する。
 import type { Page } from "@playwright/test";
-import { expect, openApp, test } from "./fixtures";
+import { editorText, expect, openApp, putFiles, test, typeAtEnd } from "./fixtures";
 
 /** 入力を受け取っている要素が、セレクタの要素の中にあるか。 */
 const focusInside = (page: Page, sel: string): Promise<boolean> =>
@@ -206,4 +206,52 @@ test("Q-8: テキストの色付けの層には Tab で止まらず、テキス�
   // Assert
   expect(stops).toContain("ed");
   expect(stops).not.toContain("hl");
+});
+
+test.describe("入力欄の中の元に戻す（#266）", () => {
+  test("Q-8: 入力欄の Ctrl+Z はその欄の中だけを戻し、戻すものが無くなってもテキスト欄の入力を戻さない", async ({ page }) => {
+    // Arrange（テキストに入力してから、絞り込みの欄に 2 文字入れる）
+    await openApp(page);
+    await typeAtEnd(page, "// typed\n");
+    const before = await editorText(page);
+    await page.locator("#sideModel").click();
+    const field = page.locator("#treeSearch");
+    await field.click();
+    await page.keyboard.type("ab");
+    // Act
+    await page.keyboard.press("ControlOrMeta+z");
+    const once = await field.inputValue();
+    await page.keyboard.press("ControlOrMeta+z");
+    await page.keyboard.press("ControlOrMeta+z"); // 戻すものが無い
+    await page.keyboard.press("ControlOrMeta+Shift+z");
+    // Assert
+    expect(once).toBe("a");
+    await expect(field).toHaveValue("a");
+    await expect(field).toBeFocused();
+    expect(await editorText(page)).toBe(before);
+  });
+});
+
+test.describe("エクスプローラー（#266）", () => {
+  test("Q-8: キーボードだけで、フォルダのファイルを開き、開いている文書を切り替え、選んでいない文書も閉じられる", async ({ page }) => {
+    // Arrange
+    await openApp(page);
+    await putFiles(page, { "a.sysml": "package A;\n", "b.sysml": "package B;\n" });
+    await page.locator('[data-cmd="openFolder"]').click();
+    // Act（a.sysml の行に入力を置き、Enter で開く。続けて b.sysml を Space で開く）
+    await page.locator('#explorer [data-file][title="a.sysml"]').focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#docName")).toHaveText("a.sysml");
+    await page.locator('#explorer [data-file][title="b.sysml"]').focus();
+    await page.keyboard.press(" ");
+    await expect(page.locator("#docName")).toHaveText("b.sysml");
+    // 選んでいない a.sysml の文書の行から、Tab で「閉じる」へ移って押す
+    const rowA = page.locator("#explorer [data-doc]:not(.sel)", { hasText: "a.sysml" });
+    await rowA.focus();
+    await page.keyboard.press("Tab");
+    // Assert
+    await expect(rowA.locator("[data-close]")).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#explorer [data-doc]", { hasText: "a.sysml" })).toHaveCount(0);
+  });
 });

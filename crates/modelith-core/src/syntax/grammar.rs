@@ -1443,6 +1443,21 @@ fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool, keep: Option<
             COLON2_GT => relationship(p, 1, REFERENCE_SUBSETTING),
             // `=> q.r`・`crosses q.r`（Crosses の OwnedCrossSubsetting、8.2.2.6）
             OP if p.nth_text(0) == "=>" => relationship(p, 1, CROSS_SUBSETTING),
+            // 名前の場所に、名前として使った予約語（`part def def;`・`view flow : V`）。黙って読み飛ばさずに知らせる（Q-5。#266）
+            KEYWORD
+                if name_slot
+                    && (p.nth_at(1, SEMI)
+                        || p.nth_at(1, L_BRACE)
+                        || p.nth_at(1, COLON)
+                        || p.nth_at(1, COLON_GT)
+                        || p.nth_at(1, COLON_GT2)) =>
+            {
+                let word = p.nth_text(0).to_owned();
+                p.error(format!(
+                    "「{word}」はテキストの書き方で使う言葉なので、名前に使えません（名前にするなら '{word}' と引用符で囲んでください）"
+                ));
+                p.bump();
+            }
             KEYWORD => match p.nth_text(0) {
                 "defined" if p.nth_at_kw(1, "by") => relationship(p, 2, FEATURE_TYPING),
                 "specializes" => relationship(p, 1, SUBCLASSIFICATION),

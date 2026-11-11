@@ -1682,3 +1682,26 @@ fn loop_without_its_body_or_in_is_an_error() {
         [SOURCE_FILE, WHILE_LOOP_NODE, EXPRESSION, PART_USAGE, NAME]
     );
 }
+
+#[test]
+fn reserved_word_used_as_a_declaration_name_is_an_error() {
+    // Arrange（同値分割：名前の場所の予約語（`;`・`{`・`:` が続く）、引用名、予約語でない名前。#266）
+    let bad = [
+        ("part def def;", 9),
+        ("package P { part def end; part def A; }", 21),
+        ("view flow : ActionFlowView { }", 5),
+        ("part def import { }", 9),
+    ];
+    let good = ["part def 'def';", "part def stage;", "part a : A;"];
+    for (text, at) in bad {
+        // Act
+        let errs = errors(text);
+        // Assert
+        assert_eq!(errs.len(), 1, "{text}: {errs:?}");
+        assert_eq!(errs[0].0, at, "{text}");
+        assert!(errs[0].1.contains("名前に使えません"), "{text}: {errs:?}");
+    }
+    for text in good {
+        assert_eq!(errors(text), [], "{text}");
+    }
+}

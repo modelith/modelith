@@ -83,19 +83,26 @@ test("F-PROJ-1: 一覧を更新すると、他で作られた modelith.json を�
   await expect(folderTitle(page)).toHaveText("給水システム");
 });
 
-test("F-PROJ-1: 読み込めない modelith.json は、行と理由を知らせ、フォルダ名を示す", async ({ page }) => {
+test("F-PROJ-1・Q-4: 読み込めない modelith.json は、行と列と理由を知らせ、フォルダ名を示す", async ({ page }) => {
   // Arrange・Act
   await openFolderWith(page, { "a.sysml": A, "modelith.json": '{\n  "name": 3\n}\n' });
   // Assert
-  await expect(page.locator("#toast")).toHaveText("プロジェクトの設定（modelith.json）を読み込めません。2 行目：プロジェクト名（name）は、文字列を \" \" で囲んで書いてください");
+  await expect(page.locator("#toast")).toHaveText("プロジェクトの設定（modelith.json）を読み込めません。2 行目 3 文字目：プロジェクト名（name）は、文字列を \" \" で囲んで書いてください");
   await expect(folderTitle(page)).toHaveText("PROJECT");
   await expect(page.locator('[data-cmd="makeProject"]')).toHaveCount(0); // 既にあるファイルは上書きしない
+});
+
+test("F-PROJ-1・Q-4: modelith.json にコメントがあれば、コメントは書けないことを知らせる（異常系。#266）", async ({ page }) => {
+  // Arrange・Act
+  await openFolderWith(page, { "a.sysml": A, "modelith.json": '{\n  // memo\n  "name": "x"\n}\n' });
+  // Assert
+  await expect(page.locator("#toast")).toHaveText("プロジェクトの設定（modelith.json）を読み込めません。2 行目 3 文字目：書式にエラーがあるため読み込めません（JSON：コメント（// や /* */）は書けません）");
 });
 
 test("F-PROJ-1: modelith.json の不明な項目は、削除せずに残すことを知らせる", async ({ page }) => {
   // Arrange・Act
   await openFolderWith(page, { "a.sysml": A, "modelith.json": '{ "name": "給水システム", "color": "red" }' });
   // Assert
-  await expect(page.locator("#toast")).toHaveText("プロジェクトの設定（modelith.json）の 1 行目：不明な項目「color」があります。削除せずに残します");
+  await expect(page.locator("#toast")).toHaveText("プロジェクトの設定（modelith.json）の 1 行目 21 文字目：不明な項目「color」があります。削除せずに残します");
   await expect(folderTitle(page)).toHaveText("給水システム");
 });

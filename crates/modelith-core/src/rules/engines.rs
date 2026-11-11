@@ -80,6 +80,7 @@ fn bad_range(range: &str) -> String {
 /// bounds("0.2.x")           → Some(((0, 2, 0), Some((0, 3, 0))))
 /// bounds(">=0.2.0-beta.1")  → Some(((0, 2, 0), None))
 /// bounds("1.y")             → None
+/// bounds(">=0.2.0-beta.1 || 0.1.x") → None（`||` は使えない）
 /// ```
 fn bounds(part: &str) -> Option<(Ver, Option<Ver>)> {
     let part = part.trim();
@@ -90,8 +91,14 @@ fn bounds(part: &str) -> Option<(Ver, Option<Ver>)> {
         .iter()
         .find_map(|op| part.strip_prefix(op).map(|r| (*op, r)))
         .unwrap_or(("^", part));
-    // プレリリースとビルドの印を外し、`x`・`X`・`*` の桁から後ろを書かなかったものにする
-    let rest = rest.trim().split(['-', '+']).next().unwrap_or("");
+    // プレリリースとビルドの印を外し、`x`・`X`・`*` の桁から後ろを書かなかったものにする。
+    // 印は semver の形（英数字と `-` の識別子を `.` でつないだもの）でなければ、書き方の誤りにする（`|| 0.1.x` などを黙って捨てない。#266）
+    let rest = rest.trim();
+    let cut = rest.find(['-', '+']).unwrap_or(rest.len());
+    if !marks_ok(&rest[cut..]) {
+        return None;
+    }
+    let rest = &rest[..cut];
     let digits: Vec<&str> = rest.split('.').collect();
     let wild = digits
         .iter()
@@ -143,6 +150,38 @@ fn bounds(part: &str) -> Option<(Ver, Option<Ver>)> {
             (low, Some(high))
         }
     })
+}
+
+/// 版の後ろのプレリリースとビルドの印（`-beta.1`・`+build.5`・`-rc.1+abc`）が、semver の形か。
+///
+/// # 引数
+///
+/// - `s`: 版の数の後ろ（無ければ空）
+///
+/// # 戻り値
+///
+/// 空か、`-` の後のプレリリースの印と `+` の後のビルドの印が、それぞれ英数字と `-` だけの識別子を `.` でつないだものなら true
+///
+/// # 例
+///
+/// ```text
+/// marks_ok("")                   → true
+/// marks_ok("-beta.1")            → true
+/// marks_ok("-rc.1+abc")          → true
+/// marks_ok("-beta.1 || 0.1.x")   → false   // 空白と | は使えない
+/// marks_ok("-")                  → false   // 識別子が無い
+/// ```
+fn marks_ok(s: &str) -> bool {
+    let ids = |x: &str| {
+        x.split('.')
+            .all(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+    };
+    let (pre, build) = match s.split_once('+') {
+        Some((p, b)) => (p, Some(b)),
+        None => (s, None),
+    };
+    let pre_ok = pre.is_empty() || pre.strip_prefix('-').is_some_and(ids);
+    pre_ok && build.is_none_or(ids)
 }
 
 /// 範囲が、この版を含むか。
@@ -271,6 +310,25 @@ mod tests {
                 Err(bad_range(range)),
                 "{range:?}"
             );
+        }
+    }
+
+    #[test]
+    fn malformed_prerelease_or_build_marks_are_errors() {
+        // Arrange（同値分割：semver の印は使える。空白・`||`・空の識別子は書き方の誤り。#266）
+        let good = [">=0.2.0-beta.1", "0.1.0-rc.1+abc", "^0.1.0+build.5"];
+        let bad = [
+            ">=0.2.0-beta.1 || 0.1.x",
+            "0.1.x-foo bar!!",
+            ">=0.1.0-",
+            ">=0.1.0-beta..1",
+        ];
+        // Act / Assert
+        for r in good {
+            assert!(range_allows(r, (0, 2, 0)).is_ok(), "{r}");
+        }
+        for r in bad {
+            assert!(range_allows(r, (0, 2, 0)).is_err(), "{r}");
         }
     }
 }

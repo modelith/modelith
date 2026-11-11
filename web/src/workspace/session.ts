@@ -285,3 +285,17 @@ export function keptDraftsNotice(kept: { unused: number; locked: boolean }): str
   if (kept.unused > 0) return `新しい版の Modelith が残した下書きが ${kept.unused} 件あり、この版では開けません。消さずに残します`;
   return null;
 }
+
+/**
+ * 無題の文書を下書きに残せなくなったときの知らせ（F-FILE-11）。理由は、一覧が新しい版の形のまま残っているか、保存領域がいっぱいか。
+ *
+ * @param locked 下書きの一覧が、この版の知らない形のまま残っているか（`Workspace.draftsKept.locked`）
+ * @returns トーストの文
+ * @example
+ * lostDraftsNotice(false) // → "下書きを保存できません（ブラウザの保存領域がいっぱいです）。「名前を付けて保存」で保存してください"
+ * lostDraftsNotice(true)  // → "この文書は下書きに残りません（新しい版の Modelith が残した下書きがあるため）。「名前を付けて保存」で保存してください"
+ */
+export function lostDraftsNotice(locked: boolean): string {
+  if (locked) return "この文書は下書きに残りません（新しい版の Modelith が残した下書きがあるため）。「名前を付けて保存」で保存してください";
+  return "下書きを保存できません（ブラウザの保存領域がいっぱいです）。「名前を付けて保存」で保存してください";
+}

@@ -169,6 +169,10 @@ const fieldHistories = new WeakMap<HTMLInputElement | HTMLTextAreaElement, Field
  *
  * @param t イベントの対象
  * @returns 記録を持つ入力欄なら、その要素。そうでなければ null
+ * @example
+ * historyField(document.querySelector("#treeSearch")) // → その input
+ * historyField(document.querySelector("#ed"))         // → null（テキスト欄）
+ * historyField(document.body)                         // → null
  */
 function historyField(t: EventTarget | null): HTMLInputElement | HTMLTextAreaElement | null {
   if (t instanceof HTMLTextAreaElement) return t.id === "ed" ? null : t;
@@ -184,6 +188,10 @@ function historyField(t: EventTarget | null): HTMLInputElement | HTMLTextAreaEle
  * @param k 押したキー（小文字）
  * @param editor 入力先がテキスト欄か
  * @returns 入力欄の中の取り消し・やり直しとして扱ったら true（画面全体の近道にはしない）
+ * @example
+ * fieldUndo(絞り込みの欄での Ctrl+Z, "z", false) // → true（欄の前の値に戻す。戻すものが無ければ何もしない）
+ * fieldUndo(図の上での Ctrl+Z, "z", false)       // → false（画面全体の元に戻すにする）
+ * fieldUndo(テキスト欄での Ctrl+Z, "z", true)    // → false
  */
 function fieldUndo(ev: KeyboardEvent, k: string, editor: boolean): boolean {
   const f = editor ? null : historyField(ev.target);

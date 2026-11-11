@@ -544,6 +544,53 @@ fn delete_removes_relations_and_exposes_that_point_to_the_element() {
 }
 
 #[test]
+fn delete_removes_only_its_own_end_of_a_dependency_with_many_ends() {
+    // Arrange（相手が複数ある依存。消す要素を指す相手だけを外し、ほかの関係は残す。一方の側が空になるなら文ごと消す。#266）
+    let text = "package P {\n    requirement def A;\n    requirement def B;\n    requirement def C;\n    requirement def D;\n    dependency from A to B, C, D;\n    #derivation dependency from A, B to D;\n}\n";
+    let cases = [
+        // 並びの最後
+        (
+            "D",
+            "package P {\n    requirement def A;\n    requirement def B;\n    requirement def C;\n    dependency from A to B, C;\n}\n",
+        ),
+        // 並びの途中
+        (
+            "C",
+            "package P {\n    requirement def A;\n    requirement def B;\n    requirement def D;\n    dependency from A to B, D;\n    #derivation dependency from A, B to D;\n}\n",
+        ),
+        // 並びの最初（依存する側からも外す）
+        (
+            "B",
+            "package P {\n    requirement def A;\n    requirement def C;\n    requirement def D;\n    dependency from A to C, D;\n    #derivation dependency from A to D;\n}\n",
+        ),
+        // 依存する側がすべて消える文は、文ごと消す
+        (
+            "A",
+            "package P {\n    requirement def B;\n    requirement def C;\n    requirement def D;\n    #derivation dependency from B to D;\n}\n",
+        ),
+    ];
+    for (key, want) in cases {
+        // Act
+        let (after, _) = run(text, &format!(r#"{{"op":"delete","keys":["{key}"]}}"#));
+        // Assert
+        assert_eq!(after, want, "{key}");
+    }
+}
+
+#[test]
+fn delete_many_removes_the_trailing_ends_of_a_dependency_together() {
+    // Arrange（境界値：並びの後ろの 2 つを一度に消す。#266）
+    let text = "package P {\n    part def A;\n    part def B;\n    part def C;\n    part def D;\n    dependency from A to B, C, D;\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["C","D"]}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def A;\n    part def B;\n    dependency from A to B;\n}\n"
+    );
+}
+
+#[test]
 fn delete_edge_with_unknown_id_is_refused() {
     assert!(refused("package P { }", r#"{"op":"deleteEdge","id":"x"}"#).contains("関係"));
 }

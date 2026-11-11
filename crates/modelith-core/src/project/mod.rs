@@ -2994,27 +2994,11 @@ fn dependencies(n: &SyntaxNode) -> Vec<RelKind> {
     let name = child(n, NAME)
         .map(|c| unquote(&compact(&c)).to_owned())
         .unwrap_or_default();
-    let (mut clients, mut suppliers) = (Vec::new(), Vec::new());
-    let mut after_to = false;
-    for e in n.children_with_tokens() {
-        match e {
-            rowan::NodeOrToken::Token(t) if t.kind() == KEYWORD && t.text() == "to" => {
-                after_to = true;
-            }
-            rowan::NodeOrToken::Node(c) if matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN) => {
-                if after_to {
-                    suppliers.push(compact(&c));
-                } else {
-                    clients.push(compact(&c));
-                }
-            }
-            _ => {}
-        }
-    }
+    let (clients, suppliers) = dependency_sides(n);
     let mut out = Vec::new();
-    for a in &clients {
-        for b in &suppliers {
-            let (a, b) = (a.clone(), b.clone());
+    for a in clients.iter().map(compact) {
+        for b in suppliers.iter().map(compact) {
+            let a = a.clone();
             out.push(if meta == "derivation" {
                 RelKind::Derive { a, b }
             } else {
@@ -3028,6 +3012,75 @@ fn dependencies(n: &SyntaxNode) -> Vec<RelKind> {
         }
     }
     out
+}
+
+/// 依存（8.2.2.3）の、依存する側とされる側の参照の節（`to` の前と後ろ）。
+///
+/// # 引数
+///
+/// - `n`：`DEPENDENCY` の節
+///
+/// # 戻り値
+///
+/// `(依存する側, される側)`。それぞれ書いた順の `QUALIFIED_NAME`・`FEATURE_CHAIN` の節。
+///
+/// # 例
+///
+/// ```text
+/// dependency_sides("dependency from A, B to C;") → ([A, B], [C])
+/// dependency_sides("dependency from A;")         → ([A], [])
+/// ```
+fn dependency_sides(n: &SyntaxNode) -> (Vec<SyntaxNode>, Vec<SyntaxNode>) {
+    let (mut clients, mut suppliers) = (Vec::new(), Vec::new());
+    let mut after_to = false;
+    for e in n.children_with_tokens() {
+        match e {
+            rowan::NodeOrToken::Token(t) if t.kind() == KEYWORD && t.text() == "to" => {
+                after_to = true;
+            }
+            rowan::NodeOrToken::Node(c) if matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN) => {
+                if after_to {
+                    suppliers.push(c);
+                } else {
+                    clients.push(c);
+                }
+            }
+            _ => {}
+        }
+    }
+    (clients, suppliers)
+}
+
+/// 依存の文 1 つを読み、依存する側とされる側の参照を、文の中の位置と一緒に返す（相手を 1 つだけ消すため）。
+///
+/// # 引数
+///
+/// - `stmt`：依存の文だけのテキスト（`#derivation dependency from A to B, C;` など）
+///
+/// # 戻り値
+///
+/// `[依存する側, される側]`。それぞれ書いた順の `(始まり, 終わり, 参照)`（文の中のバイト。参照は空白を除いた形）。
+/// 依存の文でなければ None。
+///
+/// # 例
+///
+/// ```text
+/// dependency_ends("dependency from A to B, C;") → Some([[(16, 17, "A")], [(21, 22, "B"), (24, 25, "C")]])
+/// dependency_ends("part a;")                    → None
+/// ```
+pub(crate) fn dependency_ends(stmt: &str) -> Option<[Vec<(usize, usize, String)>; 2]> {
+    let tree = crate::syntax::parse(stmt).syntax();
+    let n = tree.descendants().find(|c| c.kind() == DEPENDENCY)?;
+    let ends = |v: Vec<SyntaxNode>| {
+        v.iter()
+            .map(|c| {
+                let r = c.text_range();
+                (usize::from(r.start()), usize::from(r.end()), compact(c))
+            })
+            .collect::<Vec<_>>()
+    };
+    let (clients, suppliers) = dependency_sides(&n);
+    Some([ends(clients), ends(suppliers)])
 }
 
 /// 修飾の付いた `name : Type`（パラメータ）。修飾があるかは呼び出し側が確かめる。

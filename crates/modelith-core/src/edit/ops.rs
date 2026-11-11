@@ -809,6 +809,9 @@ fn def_reach<'a>(
     }
 }
 
+/// テキストの範囲（バイトの始まりと終わり）。
+type Range = (usize, usize);
+
 /// 要素を削除する。行全体を占めるなら行ごと消す。選んだ要素の中に選んだ要素があれば、外側だけを消す。
 /// 消す要素を指す関係の文と、作成した図の `expose` も一緒に消す（`dangling_spans`。#239）。
 /// 光らせる範囲は、最後に消した位置（テキストの前のほう）の 1 バイト。
@@ -840,7 +843,8 @@ fn delete(d: &Doc<'_>, keys: &[String], ctx: Option<&str>) -> Result<Change, Ref
         spans.push((d.b(e.start), d.b(e.end)));
         gone.push(i);
     }
-    spans.extend(dangling_spans(d, &gone));
+    let (dangling, exact) = dangling_spans(d, &gone);
+    spans.extend(dangling);
     spans.sort_unstable();
     spans.dedup();
     let outer: Vec<(usize, usize)> = spans
@@ -855,7 +859,13 @@ fn delete(d: &Doc<'_>, keys: &[String], ctx: Option<&str>) -> Result<Change, Ref
     let mut text = d.text.to_owned();
     let mut at = 0;
     for &(a, b) in outer.iter().rev() {
-        (text, at) = remove_range(&text, a, b);
+        if exact.contains(&(a, b)) {
+            // 文の途中の相手だけを外す範囲は、前後の空白を詰めずにそのまま外す
+            text.replace_range(a..b, "");
+            at = a;
+        } else {
+            (text, at) = remove_range(&text, a, b);
+        }
     }
     Ok(Change {
         text,
@@ -875,15 +885,18 @@ fn delete(d: &Doc<'_>, keys: &[String], ctx: Option<&str>) -> Result<Change, Ref
 ///
 /// # 戻り値
 ///
-/// 一緒に消す範囲（バイト。重なってよい）。
+/// `(一緒に消す範囲（バイト。重なってよい）, そのうち前後の空白を詰めずにそのまま外す範囲)`。
+/// 相手が複数ある依存の文から、消す要素の相手だけを外す範囲は、後ろにも入れる（#266）。
 ///
 /// # 例
 ///
 /// ```text
 /// // "package P { part def K; requirement def R; satisfy R by K; view v { expose P::K; } }" で K を消すとき
-/// dangling_spans(d, [K]) → ["satisfy R by K;" の範囲, "expose P::K;" の範囲]
+/// dangling_spans(d, [K]) → (["satisfy R by K;" の範囲, "expose P::K;" の範囲], {})
+/// // "dependency from A to B, K;" で K を消すとき
+/// dangling_spans(d, [K]) → ([", K" の範囲], {", K" の範囲})
 /// ```
-fn dangling_spans(d: &Doc<'_>, gone: &[usize]) -> Vec<(usize, usize)> {
+fn dangling_spans(d: &Doc<'_>, gone: &[usize]) -> (Vec<Range>, HashSet<Range>) {
     let keys: HashSet<&str> =
         d.m.nodes
             .iter()
@@ -892,13 +905,17 @@ fn dangling_spans(d: &Doc<'_>, gone: &[usize]) -> Vec<(usize, usize)> {
             .collect();
     // 線の範囲は文の `;` までを含み、関係の文は含まないので、始まりで突き合わせる
     let rel_starts: HashSet<usize> = d.p.rels.iter().map(|r| r.start).collect();
+    // 相手が複数ある依存の文で、残る相手があるものは、消す相手だけを文から外す
+    let (partial, kept) = dependency_parts(d, gone);
     let mut out: Vec<(usize, usize)> =
         d.m.edges
             .iter()
             .filter(|e| keys.contains(e.from.as_str()) || keys.contains(e.to.as_str()))
-            .filter(|e| rel_starts.contains(&e.src.start))
+            .filter(|e| rel_starts.contains(&e.src.start) && !kept.contains(&e.src.start))
             .map(|e| (d.b(e.src.start), d.b(e.src.end)))
             .collect();
+    let exact: HashSet<Range> = partial.iter().copied().collect();
+    out.extend(partial);
     for (v, _) in
         d.p.entries
             .iter()
@@ -911,6 +928,117 @@ fn dangling_spans(d: &Doc<'_>, gone: &[usize]) -> Vec<(usize, usize)> {
                     .iter()
                     .map(|x| (d.b(x.start), with_semicolon(d.text, d.b(x.end)))),
             );
+        }
+    }
+    (out, exact)
+}
+
+/// 相手が複数ある依存の文（`dependency from A to B, C;`・`#derivation dependency …`）のうち、
+/// 消す要素を指す相手を外しても関係が残る文について、外す相手の範囲（並びの「,」を含む）を返す（#266）。
+/// どちらかの側の相手がすべて消えるなら、文ごと消すので、ここでは扱わない。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `gone`：消す宣言の番号
+///
+/// # 戻り値
+///
+/// `(外す範囲（バイト）, 残す文の始まり（関係の位置）)`。
+///
+/// # 例
+///
+/// ```text
+/// // "dependency from A to B, C;" で C を消すとき
+/// dependency_parts(d, [C]) → ([", C" の範囲], {文の始まり})
+/// // "dependency from A to C;" で C を消すとき
+/// dependency_parts(d, [C]) → ([], {})   // 文ごと消す
+/// ```
+fn dependency_parts(d: &Doc<'_>, gone: &[usize]) -> (Vec<Range>, HashSet<usize>) {
+    let mut starts: Vec<usize> =
+        d.p.rels
+            .iter()
+            .filter(|r| matches!(r.kind, RelKind::Dependency { .. } | RelKind::Derive { .. }))
+            .map(|r| r.start)
+            .collect();
+    starts.sort_unstable();
+    starts.dedup();
+    let (mut out, mut kept) = (Vec::new(), HashSet::new());
+    for start in starts {
+        let Some(r) = d.p.rels.iter().find(|r| r.start == start) else {
+            continue;
+        };
+        let (a, b) = (d.b(r.start), with_semicolon(d.text, d.b(r.end)));
+        let Some(sides) = crate::project::dependency_ends(&d.text[a..b]) else {
+            continue;
+        };
+        let refs: Vec<(String, Option<usize>)> = sides
+            .iter()
+            .flatten()
+            .map(|(_, _, name)| (name.clone(), r.pe))
+            .collect();
+        let found = crate::model::resolve_refs(&d.p, &refs);
+        let mut found = found.into_iter();
+        let drops: Vec<Vec<bool>> = sides
+            .iter()
+            .map(|side| {
+                side.iter()
+                    .map(|_| found.next().flatten().is_some_and(|i| gone.contains(&i)))
+                    .collect()
+            })
+            .collect();
+        let any = drops.iter().flatten().any(|&x| x);
+        let side_emptied = drops.iter().any(|v| !v.is_empty() && v.iter().all(|&x| x));
+        if !any || side_emptied {
+            continue;
+        }
+        kept.insert(start);
+        for (side, drop) in sides.iter().zip(&drops) {
+            out.extend(
+                list_item_spans(side, drop)
+                    .into_iter()
+                    .map(|(x, y)| (a + x, a + y)),
+            );
+        }
+    }
+    (out, kept)
+}
+
+/// 「,」で区切った並びから、外す項目の範囲を、区切りの「,」と空白を含めて返す。
+/// 後ろに残す項目があれば次の項目の始まりまで、無ければ前の残す項目の終わりから外す（範囲は重なることがあり、呼び出し側が外側だけを使う）。
+///
+/// # 引数
+///
+/// - `items`：並びの項目の `(始まり, 終わり, 名前)`（書いた順）
+/// - `drop`：項目ごとに外すか
+///
+/// # 戻り値
+///
+/// 外す範囲（`items` と同じ位置の基準）。全部を外すときは使わない（呼び出し側が文ごと消す）。
+///
+/// # 例
+///
+/// ```text
+/// // "B, C" の B（0..1）と C（3..4）
+/// list_item_spans([B, C], [false, true]) → [(1, 4)]   // ", C"
+/// list_item_spans([B, C], [true, false]) → [(0, 3)]   // "B, "
+/// // "B, C, D"（0..1・3..4・6..7）で C と D を外す
+/// list_item_spans([B, C, D], [false, true, true]) → [(1, 4), (1, 7)]   // 外側の ", C, D" を使う
+/// ```
+fn list_item_spans(items: &[(usize, usize, String)], drop: &[bool]) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    for (i, it) in items.iter().enumerate() {
+        if !drop.get(i).copied().unwrap_or(false) {
+            continue;
+        }
+        let kept_after = (i + 1..items.len()).any(|j| !drop.get(j).copied().unwrap_or(false));
+        let kept_before = (0..i)
+            .rev()
+            .find(|&j| !drop.get(j).copied().unwrap_or(false));
+        match (items.get(i + 1), kept_before) {
+            (Some(next), _) if kept_after => out.push((it.0, next.0)),
+            (_, Some(j)) => out.push((items[j].1, it.1)),
+            _ => {}
         }
     }
     out

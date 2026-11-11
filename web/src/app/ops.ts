@@ -18,6 +18,7 @@ import { commitLayout, setText, settled, toast } from "./sync";
 import { CC, curLayout, nodeByKey, phaseLabel } from "./views";
 import type { Pos } from "./layout";
 import { isPackageName, packageNameFor } from "./new-package";
+import { renamedMessage } from "./rename-text";
 
 /**
  * 定義の中で、まだ使われていない子の名前を作る。base が使われていれば、後ろに 2 から順に番号を付ける。
@@ -198,9 +199,10 @@ export const OPS = {
       }
     }
     S.sel = moves[0]?.[1] ?? nk;
+    const before = S.text;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
-    toast(`「${n.name}」を「${nn}」に変更しました。このファイルの中で使っている箇所も変えました`);
+    toast(renamedMessage(n.name, nn, before, r.text));
     return true;
   },
 

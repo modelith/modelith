@@ -526,7 +526,7 @@ function renderFiles(): void {
   const docs = ws.list()
     .map((d) => {
       const where = d.ref ? (ws.canWriteInPlace(d) ? d.ref.path : `${d.ref.name}（ダウンロードで保存）`) : "保存先なし（ブラウザに下書き保存）";
-      return `<div class="fi${d.key === active?.key ? " sel" : ""}" data-doc="${esc(d.key)}" title="${esc(where)}" style="--d:0"><span class="ic">${d.ref ? "▤" : "✎"}</span><span class="nm">${esc(d.name)}</span>${staleMark(d)}${dirtyMark(d)}${layoutMark(d)}<button class="x" data-close="${esc(d.key)}" aria-label="閉じる">×</button></div>`;
+      return `<div class="fi${d.key === active?.key ? " sel" : ""}" data-doc="${esc(d.key)}" title="${esc(where)}" style="--d:0" tabindex="0"${d.key === active?.key ? ' aria-current="true"' : ""}><span class="ic">${d.ref ? "▤" : "✎"}</span><span class="nm">${esc(d.name)}</span>${staleMark(d)}${dirtyMark(d)}${layoutMark(d)}<button class="x" data-close="${esc(d.key)}" aria-label="閉じる">×</button></div>`;
     })
     .join("");
   let h = `<div class="sec"><span class="grow">開いているファイル</span><button data-cmd="new" title="新しいファイル">＋</button></div>${docs || `<div class="msg">開いているファイルはありません。</div>`}`;
@@ -709,7 +709,7 @@ function folderHeader(): string {
  * @example
  * // models フォルダ（開いている）の中に a.sysml がある
  * folderRows(entries, 0)
- * // → '<div class="fi" data-dir="models" style="--d:0">…models…</div><div class="fi" data-file="…" style="--d:1" …>…a.sysml…</div>'
+ * // → '<div class="fi" data-dir="models" style="--d:0" tabindex="0" aria-expanded="true">…models…</div><div class="fi" data-file="…" style="--d:1" … tabindex="0">…a.sysml…</div>'
  * folderRows([], 0) // → ""
  */
 function folderRows(entries: DirEntry[], depth: number): string {
@@ -718,11 +718,11 @@ function folderRows(entries: DirEntry[], depth: number): string {
     .map((e) => {
       if (e.kind === "dir") {
         const open = !collapsed.has(e.path);
-        return `<div class="fi" data-dir="${esc(e.path)}" style="--d:${depth}"><span class="ic">${open ? "▾" : "▸"}</span><span class="nm">${esc(e.name)}</span></div>` + (open ? folderRows(e.children, depth + 1) : "");
+        return `<div class="fi" data-dir="${esc(e.path)}" style="--d:${depth}" tabindex="0" aria-expanded="${open}"><span class="ic">${open ? "▾" : "▸"}</span><span class="nm">${esc(e.name)}</span></div>` + (open ? folderRows(e.children, depth + 1) : "");
       }
       const doc = ws.list().find((d) => d.ref?.provider === e.ref.provider && d.ref.id === e.ref.id);
       const sel = !!doc && doc.key === active?.key;
-      return `<div class="fi${sel ? " sel" : ""}" data-file="${esc(e.ref.id)}" style="--d:${depth}" title="${esc(e.ref.path)}"><span class="ic">▤</span><span class="nm">${esc(e.ref.name)}</span>${doc ? staleMark(doc) + dirtyMark(doc) : ""}</div>`;
+      return `<div class="fi${sel ? " sel" : ""}" data-file="${esc(e.ref.id)}" style="--d:${depth}" title="${esc(e.ref.path)}" tabindex="0"><span class="ic">▤</span><span class="nm">${esc(e.ref.name)}</span>${doc ? staleMark(doc) + dirtyMark(doc) : ""}</div>`;
     })
     .join("");
 }
@@ -907,6 +907,13 @@ function initExplorer(): void {
   $("#sideFiles").onclick = () => showSide("files");
   $("#sideModel").onclick = () => showSide("model");
   showSide(store.get(SIDE_KEY) === "model" ? "model" : "files");
+  // ファイル・フォルダ・開いている文書の行は、Enter と Space でも押せる（Q-8。#266）
+  $("#explorer").addEventListener("keydown", (ev) => {
+    const row = ev.target instanceof HTMLElement && ev.target.classList.contains("fi") ? ev.target : null;
+    if (!row || (ev.key !== "Enter" && ev.key !== " ")) return;
+    ev.preventDefault();
+    row.click();
+  });
   $("#explorer").addEventListener("click", (ev) => {
     const close = closest(ev, "[data-close]");
     if (close) {

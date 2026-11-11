@@ -1,6 +1,6 @@
 // キーボードだけでの操作（Q-8）。ダイアログ・メニュー・図のタブ・モデルツリーを、Chromium で操作する。
 import type { Page } from "@playwright/test";
-import { expect, openApp, test } from "./fixtures";
+import { editorText, expect, openApp, test, typeAtEnd } from "./fixtures";
 
 /** 入力を受け取っている要素が、セレクタの要素の中にあるか。 */
 const focusInside = (page: Page, sel: string): Promise<boolean> =>
@@ -206,4 +206,28 @@ test("Q-8: テキストの色付けの層には Tab で止まらず、テキス�
   // Assert
   expect(stops).toContain("ed");
   expect(stops).not.toContain("hl");
+});
+
+test.describe("入力欄の中の元に戻す（#266）", () => {
+  test("Q-8: 入力欄の Ctrl+Z はその欄の中だけを戻し、戻すものが無くなってもテキスト欄の入力を戻さない", async ({ page }) => {
+    // Arrange（テキストに入力してから、絞り込みの欄に 2 文字入れる）
+    await openApp(page);
+    await typeAtEnd(page, "// typed\n");
+    const before = await editorText(page);
+    await page.locator("#sideModel").click();
+    const field = page.locator("#treeSearch");
+    await field.click();
+    await page.keyboard.type("ab");
+    // Act
+    await page.keyboard.press("ControlOrMeta+z");
+    const once = await field.inputValue();
+    await page.keyboard.press("ControlOrMeta+z");
+    await page.keyboard.press("ControlOrMeta+z"); // 戻すものが無い
+    await page.keyboard.press("ControlOrMeta+Shift+z");
+    // Assert
+    expect(once).toBe("a");
+    await expect(field).toHaveValue("a");
+    await expect(field).toBeFocused();
+    expect(await editorText(page)).toBe(before);
+  });
 });

@@ -6,9 +6,31 @@ use super::more::sysml_name;
 use super::text::{Target, indent_at, insert_into, lower_first, remove_range};
 use super::{Change, Doc, Intent, Refusal, more};
 use crate::project::{RelKind, Span, text::is_basic_name};
-use crate::syntax::{SyntaxKind, tokenize};
+use crate::syntax::{SyntaxKind, is_keyword, tokenize};
 
 pub(super) const BAD_NAME: &str = "名前は英字か _ で始め、英字・数字・_ だけで付けてください";
+
+/// 名前が、テキストの書き方で使う言葉（SysML v2 の予約語）なら、断る理由の文を返す（予約語の名前はテキストを壊すため。#266）。
+///
+/// # 引数
+///
+/// - `name`：付けようとする名前（基本名）
+///
+/// # 戻り値
+///
+/// 予約語なら理由の文、そうでなければ None。
+///
+/// # 例
+///
+/// ```text
+/// keyword_problem("def")   → Some("「def」はテキストの書き方で使う言葉なので、名前に使えません")
+/// keyword_problem("Lamp")  → None
+/// keyword_problem("Part")  → None   // 大文字の違う語は予約語でない
+/// ```
+pub(super) fn keyword_problem(name: &str) -> Option<String> {
+    is_keyword(name)
+        .then(|| format!("「{name}」はテキストの書き方で使う言葉なので、名前に使えません"))
+}
 
 /// 追加する定義の名前（種類ごと）。
 const NEW_NAME: &[(&str, &str)] = &[
@@ -544,6 +566,9 @@ pub(super) fn append_package(text: &str, name: &str) -> Result<(String, Target),
             "パッケージ名は、英字か _ で始め、英字・数字・_ だけで付けてください".to_owned(),
         );
     }
+    if let Some(why) = keyword_problem(name) {
+        return Err(why);
+    }
     let cut = layout_comment_start(text).unwrap_or(text.len());
     let before = text[..cut].trim_end();
     let after = &text[cut..];
@@ -684,6 +709,9 @@ pub(super) fn tokens(text: &str) -> Vec<(SyntaxKind, usize, &str)> {
 fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
     if !is_basic_name(nn) {
         return Err(BAD_NAME.to_owned());
+    }
+    if let Some(why) = keyword_problem(nn) {
+        return Err(why);
     }
     let e = d.e(f.entry);
     let old = e.name.as_str();

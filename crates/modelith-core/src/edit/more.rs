@@ -1,6 +1,6 @@
 //! メッセージ・フェーズ・ポート・保存された図の操作（暫定コアの `ops.ts`・`pins.ts`・`view-ops.ts`・`view-text.ts` と同じ書き方）。
 
-use super::ops::{BAD_NAME, Found, append_package, messages};
+use super::ops::{BAD_NAME, Found, append_package, keyword_problem, messages};
 use super::text::{Splice, indent_at, insert_into, insert_splice, remove_range};
 use super::{Change, Doc, Refusal};
 use crate::project::{Expose, RelKind, Scope, text::is_basic_name};
@@ -164,6 +164,9 @@ pub(super) fn update_message(
 ) -> Result<Change, Refusal> {
     if !name.is_empty() && !is_basic_name(name) {
         return Err(BAD_NAME.to_owned());
+    }
+    if let Some(why) = keyword_problem(name) {
+        return Err(why);
     }
     let c = d.context(ctx)?;
     let (i, ms) = message_at(d, c, id)?;
@@ -572,6 +575,9 @@ pub(super) fn make_port(
 ) -> Result<Change, Refusal> {
     if !is_basic_name(name) {
         return Err("ポート名は英字か _ で始め、英字・数字・_ だけで付けてください".to_owned());
+    }
+    if let Some(why) = keyword_problem(name) {
+        return Err(why);
     }
     if !matches!(dir, "in" | "out" | "inout") {
         return Err(format!("ポートの向き「{dir}」は扱えません"));

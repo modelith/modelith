@@ -298,6 +298,11 @@ fn rename_is_refused_for_bad_or_used_names_and_noop_for_same_name() {
     // 同値分割：使えない名前・既にある名前・同じ名前
     let text = "package P { part def A; part def B; }";
     assert!(refused(text, r#"{"op":"rename","key":"A","name":"1A"}"#).contains("英字"));
+    // 予約語は、テキストを壊すので断る（#266）
+    for kw in ["def", "part", "end", "import", "true", "all"] {
+        let json = format!(r#"{{"op":"rename","key":"A","name":"{kw}"}}"#);
+        assert!(refused(text, &json).contains("名前に使えません"), "{kw}");
+    }
     assert!(
         refused(text, r#"{"op":"rename","key":"A","name":"B"}"#).contains("既に使われています")
     );

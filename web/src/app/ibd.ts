@@ -93,6 +93,35 @@ export function ownPorts(u: Entry): Port[] {
 }
 
 /**
+ * 特徴の連鎖（`a.b.c`）を段に分け、各段の引用符を外す。引用名の中の `.` では分けない（8.2.2.3・8.2.2.6。Rust の `ref_segs` と同じ。#266）。
+ *
+ * @param s 参照（`a.b`・`'a 1'.p`・`'x.y'.z` など）
+ * @returns 段（引用符を外したもの）の並び。`s` が空なら空の段 1 つ
+ * @example
+ * refSegs("a.b")       // → ["a", "b"]
+ * refSegs("'a 1'.p")   // → ["a 1", "p"]
+ * refSegs("'x.y'.z")   // → ["x.y", "z"]
+ * refSegs("")          // → [""]
+ */
+export function refSegs(s: string): string[] {
+  const unquote = (x: string): string => (x.length >= 2 && x.startsWith("'") && x.endsWith("'") ? x.slice(1, -1) : x);
+  const out: string[] = [];
+  let start = 0, quoted = false, escaped = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (escaped) escaped = false;
+    else if (c === "\\" && quoted) escaped = true;
+    else if (c === "'") quoted = !quoted;
+    else if (c === "." && !quoted) {
+      out.push(unquote(s.slice(start, i)));
+      start = i + 1;
+    }
+  }
+  out.push(unquote(s.slice(start)));
+  return out;
+}
+
+/**
  * 内部ブロック図の内容を作る。対象の部品を `u:部品名` のノードにし、対象の中の flow・connect・bind を、
  * 部品の間の線（ポートが分かれば接続点つき）にする。名前付きのフローのラベルは名前と型（`flowLabel`）、
  * 結び付けは種類 `bind` でラベル `=`（8.2.3.13 の binding-connection）。
@@ -185,7 +214,7 @@ export function ibdContentOf(M: Model, ctx: ModelNode): IbdContent {
   };
   /** 線の端の参照を、図の要素とポートにする。part は、関係を書いた部品の本体（対象そのものなら null）。 */
   const endOf = (path: string, part: Entry | null): End | null => {
-    const segs = path.split(".");
+    const segs = refSegs(path);
     if (!part) {
       const top = outer.get(segs[0] ?? "");
       if (!top) {

@@ -248,7 +248,7 @@ pub enum PluginChange {
 ///   → Ok("{\n  \"plugins\": {\n    \"jp.x\": {\n      \"version\": \"0.1.0\",\n      \"enabled\": true\n    }\n  }\n}\n")
 /// update_plugin(r#"{"plugins":{"jp.x":{}}}"#, "jp.x", SetEnabled { enabled: false }) → Ok(… "enabled": false …)
 /// update_plugin("{}", "jp.x", Remove) → Err("プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません")
-/// update_plugin("{", "jp.x", Remove)  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目：…")
+/// update_plugin("{", "jp.x", Remove)  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 2 文字目：…")
 /// ```
 pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<String, String> {
     let mut project = parsed_for_change(text)?;
@@ -295,7 +295,7 @@ pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<Stri
 /// ```text
 /// update_level("{}", "trace.verify", Some(Level::Error)) → Ok("{\n  \"plugins\": {},\n  \"levels\": {\n    \"trace.verify\": \"error\"\n  }\n}\n")
 /// update_level(r#"{"levels":{"unsupported":"off"}}"#, "unsupported", None) → Ok("{\n  \"plugins\": {}\n}\n")
-/// update_level("{", "unsupported", None) → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目：…")
+/// update_level("{", "unsupported", None) → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 2 文字目：…")
 /// ```
 pub fn update_level(text: &str, kind: &str, level: Option<Level>) -> Result<String, String> {
     let mut project = parsed_for_change(text)?;
@@ -324,7 +324,7 @@ pub fn update_level(text: &str, kind: &str, level: Option<Level>) -> Result<Stri
 ///
 /// ```text
 /// parsed_for_change("{}") → Ok(ProjectFile::default())
-/// parsed_for_change("{")  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目：…")
+/// parsed_for_change("{")  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 2 文字目：…")
 /// ```
 fn parsed_for_change(text: &str) -> Result<ProjectFile, String> {
     let parsed = parse(text);
@@ -333,7 +333,7 @@ fn parsed_for_change(text: &str) -> Result<ProjectFile, String> {
             .problems
             .iter()
             .find(|p| p.severity == Severity::Error)
-            .map(|p| format!("{} 行目：{}", p.line, p.message))
+            .map(|p| format!("{} 行目 {} 文字目：{}", p.line, p.column, p.message))
             .unwrap_or_default();
         format!("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。{reason}")
     })
@@ -508,6 +508,7 @@ fn problem(severity: Severity, at: (u32, u32), message: &str) -> Problem {
 ///
 /// ```text
 /// syntax_problem(…, "{\n  \"a\": 1,\n}", e) → 誤り 3:1「書式にエラーがあるため読み込めません（JSON：最後の項目の後ろに、余計な「,」があります）」
+/// syntax_problem(…, "{\n  // memo\n}", e)    → 誤り 2:3「書式にエラーがあるため読み込めません（JSON：コメント（// や /* */）は書けません）」
 /// ```
 fn syntax_problem(locator: &Locator, text: &str, e: &serde_json::Error) -> Problem {
     let line_start: usize = text
@@ -515,8 +516,15 @@ fn syntax_problem(locator: &Locator, text: &str, e: &serde_json::Error) -> Probl
         .take(e.line().saturating_sub(1))
         .map(str::len)
         .sum();
-    let at = locator.of_offset(line_start + e.column().saturating_sub(1));
-    let reason = crate::read_error::read_reason(&e.to_string());
+    let offset = line_start + e.column().saturating_sub(1);
+    let at = locator.of_offset(offset);
+    // JSON にはコメントを書けない。コメントの位置で止まったら、そう伝える（#266）
+    let rest = text.get(offset..).unwrap_or("").trim_start();
+    let reason = if rest.starts_with("//") || rest.starts_with("/*") {
+        "コメント（// や /* */）は書けません"
+    } else {
+        crate::read_error::read_reason(&e.to_string())
+    };
     error(
         at,
         &format!("書式にエラーがあるため読み込めません（JSON：{reason}）"),

@@ -144,3 +144,71 @@ export function globalShortcut(key: string, inField: boolean, modal: boolean): b
   if (modal) return false;
   return !(inField && (key === "z" || key === "y" || key === "a"));
 }
+
+/**
+ * 1 つの入力欄の中の、元に戻す・やり直すの記録（Q-8。#266）。
+ * ブラウザの取り消しは、欄の中に戻すものが無いとページの別の欄（テキスト欄）の入力まで戻すため、欄の中の取り消しはこの記録で行う。
+ *
+ * @example
+ * const h = new FieldHistory("a");
+ * h.record("ab"); h.record("abc");
+ * h.undo() // → "ab"
+ * h.undo() // → "a"
+ * h.undo() // → null（もう戻すものが無い。何もしない）
+ * h.redo() // → "ab"
+ */
+export class FieldHistory {
+  private past: string[] = [];
+  private future: string[] = [];
+
+  /**
+   * 記録を、欄の最初の値で始める。
+   *
+   * @param current 欄の今の値
+   */
+  constructor(private current: string) {}
+
+  /**
+   * 欄の値が変わったことを記録する（同じ値なら記録しない）。やり直しの記録は捨てる。
+   *
+   * @param value 変わった後の値
+   * @example
+   * new FieldHistory("a").record("ab") // → 戻すと "a" になる
+   */
+  record(value: string): void {
+    if (value === this.current) return;
+    this.past.push(this.current);
+    this.current = value;
+    this.future = [];
+  }
+
+  /**
+   * 1 つ前の値に戻す。
+   *
+   * @returns 戻した後の値。戻すものが無ければ null
+   * @example
+   * new FieldHistory("a").undo() // → null
+   */
+  undo(): string | null {
+    const prev = this.past.pop();
+    if (prev === undefined) return null;
+    this.future.push(this.current);
+    this.current = prev;
+    return prev;
+  }
+
+  /**
+   * 戻した値をやり直す。
+   *
+   * @returns やり直した後の値。やり直すものが無ければ null
+   * @example
+   * new FieldHistory("a").redo() // → null
+   */
+  redo(): string | null {
+    const next = this.future.pop();
+    if (next === undefined) return null;
+    this.past.push(this.current);
+    this.current = next;
+    return next;
+  }
+}

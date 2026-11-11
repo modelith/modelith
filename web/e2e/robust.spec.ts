@@ -31,6 +31,18 @@ test("F-FILE-6・Q-4: 自動保存に失敗したら（フォルダの許可が�
   expect(await readFile(page, "a.sysml")).toBe(A);
 });
 
+test("F-FILE-6・F-FILE-2: ほかのアプリに消されたファイルを自動保存できないときも、「名前を付けて保存」を案内する（異常系。#266）", async ({ page }) => {
+  // Arrange（書き込みが、ファイルが無いことで失敗するブラウザのふり）
+  await openWithAutoSave(page);
+  await page.evaluate(() => {
+    FileSystemFileHandle.prototype.createWritable = () => Promise.reject(new DOMException("gone", "NotFoundError"));
+  });
+  // Act
+  await typeAtEnd(page, "// auto\n");
+  // Assert
+  await expect(page.locator("#toast")).toHaveText("「a.sysml」を自動保存できませんでした：ファイルが見つかりません。移動したか、削除された可能性があります。「名前を付けて保存」で保存し直せます", { timeout: 3000 });
+});
+
 // ---- F-FILE-11
 /** ブラウザの保存領域（localStorage）を、残りが数十バイトになるまで埋める（大きい・小さい・1 文字の順に、入らなくなるまで）。 */
 async function fillStorage(page: Page): Promise<void> {

@@ -570,8 +570,51 @@ describe("kvDraftStore", () => {
     const saved = store.save({ drafts: [{ name: "b", text: "y" }], closedAll: false });
     // Assert
     expect(state).toEqual({ drafts: [], closedAll: false, unused: 0, locked: true });
+    expect(saved).toBe(false);
+    expect(kv.get("modelith-drafts-v1")).toBe(wrapped);
+  });
+
+  it("一覧が知らない形でも、置く下書きが無ければ置けたことにする（境界。#266）", () => {
+    // Arrange
+    const wrapped = JSON.stringify({ version: 2, drafts: [] });
+    const kv = new Map<string, string>([["modelith-drafts-v1", wrapped]]);
+    const store = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => !!kv.set(k, v) });
+    store.load();
+    // Act
+    const saved = store.save({ drafts: [], closedAll: true });
+    // Assert
     expect(saved).toBe(true);
     expect(kv.get("modelith-drafts-v1")).toBe(wrapped);
+  });
+
+  it("同じブラウザのほかのタブが置いた下書きを消さない（#266）", () => {
+    // Arrange（タブ A と B が同じ保存先を使う。B が先に下書きを置き、そのあと A が自分の下書きを置き直す）
+    const kv = new Map<string, string>();
+    const io = { get: (k: string) => kv.get(k) ?? null, set: (k: string, v: string) => !!kv.set(k, v) };
+    const a = kvDraftStore(io);
+    const b = kvDraftStore(io);
+    a.load();
+    b.load();
+    b.save({ drafts: [{ name: "b", text: "B" }], closedAll: false });
+    // Act
+    a.save({ drafts: [{ name: "a", text: "A" }], closedAll: false });
+    a.save({ drafts: [{ name: "a", text: "A2" }], closedAll: false });
+    // Assert
+    expect(JSON.parse(kv.get("modelith-drafts-v1") ?? "")).toEqual([
+      { name: "a", text: "A2" },
+      { name: "b", text: "B" },
+    ]);
+  });
+
+  it("このタブで閉じた下書きは、置き直すと外れる（正常系。#266）", () => {
+    // Arrange
+    const kv = new Map<string, string>([["modelith-drafts-v1", JSON.stringify([{ name: "a", text: "A" }, { title: "新しい版" }])]]);
+    const store = kvDraftStore({ get: (k) => kv.get(k) ?? null, set: (k, v) => !!kv.set(k, v) });
+    store.load();
+    // Act
+    store.save({ drafts: [], closedAll: true });
+    // Assert（知らない形の記録は残す）
+    expect(JSON.parse(kv.get("modelith-drafts-v1") ?? "")).toEqual([{ title: "新しい版" }]);
   });
 
   it("まだ何も置いていなければ、下書きは無く、すべて閉じて終えたことにもならない（境界）", () => {

@@ -372,7 +372,7 @@ fn update_plugin_refuses_a_broken_file_with_its_line() {
     // Assert
     assert_eq!(
         out,
-        Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。2 行目：プロジェクト名（name）は、文字列を \" \" で囲んで書いてください".to_owned())
+        Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。2 行目 3 文字目：プロジェクト名（name）は、文字列を \" \" で囲んで書いてください".to_owned())
     );
 }
 
@@ -530,8 +530,25 @@ fn update_level_refuses_a_broken_file_with_its_line() {
     let reason = r.expect_err("誤りのある設定は書き換えない");
     assert!(
         reason.starts_with(
-            "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目："
+            "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 "
         ),
         "{reason}"
     );
+}
+
+#[test]
+fn a_comment_is_reported_as_not_allowed() {
+    // Arrange（異常系：JSON にはコメントを書けない。行・列と、コメントが書けないことを示す。#266）
+    for text in ["{\n  // memo\n  \"name\": \"x\"\n}", "{\n  /* memo */\n}"] {
+        // Act
+        let got = problems_of(text);
+        // Assert
+        assert_eq!(
+            got,
+            vec![
+                "Error 2:3 書式にエラーがあるため読み込めません（JSON：コメント（// や /* */）は書けません）"
+            ],
+            "{text}"
+        );
+    }
 }

@@ -52,6 +52,8 @@ export function kvDraftStore(kv: KeyValue): DraftStore {
   let unknown: unknown[] = [];
   // 一覧そのものが知らない形（配列でない）なら、書き換えずに残す
   let locked = false;
+  // このタブが読んだ・置いた下書き（JSON の文字列）。置き直すとき、これ以外の下書きはほかのタブが置いたものとして残す（#266）
+  let mine = new Set<string>();
   return {
     /**
      * 置いてある下書きと、すべて閉じて終えたかを読む。
@@ -68,20 +70,29 @@ export function kvDraftStore(kv: KeyValue): DraftStore {
       const read = readAll(kv);
       locked = read.locked;
       unknown = read.all.filter((v) => !isDraft(v));
+      mine = new Set(read.all.filter(isDraft).map((d) => JSON.stringify(d)));
       return { drafts: read.all.filter(isDraft), closedAll: kv.get(CLOSED_ALL_KEY) === "1", unused: unknown.length, locked };
     },
     /**
-     * 下書きの一覧と、すべて閉じて終えたかを、まとめて置き換える。読んだときにあった知らない形の記録は、後ろに残す。
-     * 一覧そのものが知らない形だったときは、一覧を書き換えない（すべて閉じて終えたかだけを置く）。
+     * このタブの下書きの一覧と、すべて閉じて終えたかを置く。置く直前に保存先を読み直し、このタブが読んでも置いてもいない下書き
+     * （同じブラウザのほかのタブが置いたもの）と、知らない形の記録は、後ろに残す（#266）。
+     * 一覧そのものが知らない形のときは、一覧を書き換えない（すべて閉じて終えたかだけを置く）。
      *
-     * @param state 置く下書きの一覧（空なら空の一覧を置く）と、すべて閉じて終えたか
-     * @returns 下書きを置けたら true（一覧を書き換えずに残したときも true）。保存先に書けなかった（保存領域がいっぱい）なら false
+     * @param state 置く下書きの一覧（空なら、このタブの下書きを外す）と、すべて閉じて終えたか
+     * @returns 下書きを置けたら true。保存先に書けなかった（保存領域がいっぱい）か、一覧が知らない形で、置く下書きがあるのに置けなかったなら false
      * @example
      * save({ drafts: [{ name: "無題.sysml", text: "package P;" }], closedAll: false }) // → true
      * save({ drafts: [huge], closedAll: false })                                       // → false（保存領域がいっぱい）
+     * save({ drafts: [d], closedAll: false })                                          // → false（一覧が {"version":2,…} の形で置けない）
+     * save({ drafts: [], closedAll: true })                                            // → true（一覧が知らない形でも、置くものが無い）
      */
     save(state) {
-      const saved = locked || kv.set(KEY, JSON.stringify([...state.drafts, ...unknown]));
+      const now = readAll(kv);
+      locked = now.locked;
+      const others = now.all.filter((v) => isDraft(v) && !mine.has(JSON.stringify(v)));
+      unknown = now.all.filter((v) => !isDraft(v));
+      const saved = locked ? state.drafts.length === 0 : kv.set(KEY, JSON.stringify([...state.drafts, ...others, ...unknown]));
+      if (saved) mine = new Set(state.drafts.map((d) => JSON.stringify(d)));
       kv.set(CLOSED_ALL_KEY, state.closedAll ? "1" : "0");
       return saved;
     },

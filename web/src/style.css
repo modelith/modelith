@@ -293,7 +293,7 @@ svg#canvas{position:absolute;inset:0;width:100%;height:100%;user-select:none;-we
 .fi .dot{color:var(--ink);font-size:14px;line-height:1}
 .lu{flex:none;margin-left:6px;padding:0 5px;border:1px solid var(--err);border-radius:3px;color:var(--err);font-size:10px;line-height:15px;white-space:nowrap}
 .fi .x{border:0;background:transparent;padding:0 5px;color:var(--ink2);visibility:hidden}
-.fi:hover .x,.fi.sel .x{visibility:visible}
+.fi:hover .x,.fi.sel .x,.fi:focus-within .x{visibility:visible}
 .fi .ic{width:14px;flex:none;text-align:center;color:var(--ink2);font-size:11px}
 .docname{color:var(--ink);font-weight:500;margin-right:6px}
 .menu .pop .sep{height:1px;background:var(--rule);margin:4px 2px}

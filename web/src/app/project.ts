@@ -27,14 +27,14 @@ export function projectTitle(folderName: string, project: ProjectFile | null): s
  * @example
  * projectNotice([]) // → null
  * projectNotice([{ severity: "warning", line: 3, column: 3, message: "不明な項目「x」があります。削除せずに残します" }])
- * // → "プロジェクトの設定（modelith.json）の 3 行目：不明な項目「x」があります。削除せずに残します"
+ * // → "プロジェクトの設定（modelith.json）の 3 行目 3 文字目：不明な項目「x」があります。削除せずに残します"
  * projectNotice([warning, { severity: "error", line: 2, column: 5, message: "書式にエラーがあるため読み込めません（…）" }])
- * // → "プロジェクトの設定（modelith.json）を読み込めません。2 行目：書式にエラーがあるため読み込めません（…）（ほかに 1 件）"
+ * // → "プロジェクトの設定（modelith.json）を読み込めません。2 行目 5 文字目：書式にエラーがあるため読み込めません（…）（ほかに 1 件）"
  */
 export function projectNotice(problems: readonly ProjectProblem[]): string | null {
   const first = problems.find((p) => p.severity === "error") ?? problems[0];
   if (!first) return null;
   const head = first.severity === "error" ? "プロジェクトの設定（modelith.json）を読み込めません。" : "プロジェクトの設定（modelith.json）の ";
   const more = problems.length > 1 ? `（ほかに ${problems.length - 1} 件）` : "";
-  return `${head}${first.line} 行目：${first.message}${more}`;
+  return `${head}${first.line} 行目 ${first.column} 文字目：${first.message}${more}`;
 }

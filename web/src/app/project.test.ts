@@ -28,17 +28,17 @@ describe("projectNotice（F-PROJ-1）", () => {
     expect(notice).toBeNull();
   });
 
-  it("注意 1 件は、その行と文を出す", () => {
+  it("注意 1 件は、その行と列と文を出す（Q-4。#266）", () => {
     // Arrange・Act
     const notice = projectNotice([warning]);
     // Assert
-    expect(notice).toBe("プロジェクトの設定（modelith.json）の 3 行目：不明な項目「x」があります。削除せずに残します");
+    expect(notice).toBe("プロジェクトの設定（modelith.json）の 3 行目 3 文字目：不明な項目「x」があります。削除せずに残します");
   });
 
   it("誤りがあれば、後ろにあっても誤りを先に出し、残りの件数を添える", () => {
     // Arrange・Act
     const notice = projectNotice([warning, error]);
     // Assert
-    expect(notice).toBe("プロジェクトの設定（modelith.json）を読み込めません。2 行目：書式にエラーがあるため読み込めません（JSON：trailing comma）（ほかに 1 件）");
+    expect(notice).toBe("プロジェクトの設定（modelith.json）を読み込めません。2 行目 5 文字目：書式にエラーがあるため読み込めません（JSON：trailing comma）（ほかに 1 件）");
   });
 });

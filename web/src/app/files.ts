@@ -1021,7 +1021,11 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
   auto = new AutoSaver(ws, browserTimer, () => autoSave, (key, outcome) => {
     if (outcome === "conflict") toast(`「${ws.get(key)?.name ?? ""}」は他のアプリで変更されたため、自動保存しませんでした。保存（Ctrl+S）で選べます`);
     // 失敗しても文書は未保存のまま（●）なので、知らせるだけにして、保存（Ctrl+S）で試し直してもらう（F-FILE-6）
-    else if (typeof outcome === "object") toastFailure(`「${ws.get(key)?.name ?? ""}」を自動保存できませんでした`, outcome.failed);
+    else if (typeof outcome === "object") {
+      // 手動の保存と同じく、他のアプリに消されたファイルは「名前を付けて保存」で保存し直せることも伝える（F-FILE-2・F-FILE-6。#266）
+      console.warn("自動保存できませんでした:", outcome.failed);
+      toast(`「${ws.get(key)?.name ?? ""}」を自動保存できませんでした：${saveErrorText(outcome.failed)}`);
+    }
   });
   onTextChange((text) => {
     if (!shownKey) return;

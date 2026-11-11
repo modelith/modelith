@@ -941,6 +941,30 @@ test.describe("画面から図を作る（F-VIEW-8、ADR-0005）", () => {
     expect(await editorText(page)).toContain("view '全体の図' : GeneralView {");
   });
 
+  test("F-VIEW-8: 断られた名前（パッケージの名前）は、理由を示し、入れた名前のままダイアログを開き直す（異常系。#266）", async ({ page }) => {
+    // Arrange
+    await openAll(page);
+    // Act
+    await saveView(page, "P");
+    // Assert
+    await expect(page.locator("#toast")).toHaveText("「P」はパッケージの名前なので、図には別の名前を付けてください");
+    await expect(page.locator("#dialogTitle")).toHaveText("新しい図を作成");
+    await expect(page.locator("#dialogInput")).toHaveValue("P");
+    expect(await editorText(page)).not.toContain("view P");
+  });
+
+  test("F-VIEW-8: 作成した図を表示中に図のメニューの「新しい図を作成…」を押すと、作れない理由を示す（#266）", async ({ page }) => {
+    // Arrange
+    await openAll(page);
+    await saveView(page, "overview");
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/overview/);
+    // Act
+    await page.locator("#diagramMenu > summary").click();
+    await page.locator("#menuSaveView").click();
+    // Assert
+    await expect(page.locator("#toast")).toHaveText("作成した図を表示しているため、ここからは新しい図を作成できません。自動で描く図を開いてから作成してください");
+  });
+
   test("F-VIEW-8: 作成した図にパレットから置いた要素は、モデルに作られ、その図にも入る", async ({ page }) => {
     // Arrange
     await openAll(page);

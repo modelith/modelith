@@ -935,7 +935,7 @@ fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], inden
 ///
 /// # 戻り値
 ///
-/// 書いた後のテキストと、選ぶ名前・光らせる範囲（足した view）。名前が空・既にある図や同じ package の直下の要素の名前・知らない描き方・要素が無い（または package が無い）ときは理由の文（`Err`）。
+/// 書いた後のテキストと、選ぶ名前・光らせる範囲（足した view）。名前が空・既にある図や同じ package の直下の要素の名前・パッケージの名前・知らない描き方・要素が無い（または package が無い）ときは理由の文（`Err`）。
 ///
 /// # 例
 ///
@@ -945,6 +945,7 @@ fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], inden
 /// save_view(Doc("package P { part def A; view v; }"), "v", "general", [A]) → Err("「v」という図は既にあります。別の名前にしてください")
 /// save_view(Doc("package P { part def A; view v; }"), "w", "general", [])  → Err("図に要素が無いため、保存できません")
 /// save_view(Doc("package P { part def A; view v; }"), "A", "general", [A]) → Err("「A」という名前の要素が既にあります。…")
+/// save_view(Doc("package P { part def A; }"), "P", "general", [A])         → Err("「P」はパッケージの名前なので、…")
 /// ```
 pub(super) fn save_view(
     d: &Doc<'_>,
@@ -970,6 +971,12 @@ pub(super) fn save_view(
     if d.e(pkg).children.iter().any(|&c| d.e(c).name == name) {
         return Err(format!(
             "「{name}」という名前の要素が既にあります。図には別の名前を付けてください"
+        ));
+    }
+    // パッケージと同じ名前の図は、`P::A` の `P` が図の中を探すようになり、ほかの図の expose が見つからなくなる（#266）
+    if (0..d.p.entries.len()).any(|i| d.e(i).kind == "package" && d.e(i).name == name) {
+        return Err(format!(
+            "「{name}」はパッケージの名前なので、図には別の名前を付けてください"
         ));
     }
     let indent = format!("{}    ", indent_at(d.text, d.b(d.e(pkg).start)));

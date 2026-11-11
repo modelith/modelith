@@ -1187,6 +1187,15 @@ fn save_state_machine_writes_a_state_transition_view() {
 #[test]
 fn save_view_is_refused_without_name_targets_or_with_used_name() {
     let text = "package P { part def A; view v; }";
+    // パッケージと同じ名前（P::A が図の中を探すようになる。#266）
+    for pkg in ["P", "Q"] {
+        let json =
+            format!(r#"{{"op":"saveView","name":"{pkg}","kind":"general","targets":["A"]}}"#);
+        assert!(
+            refused(&format!("{text}\npackage Q;"), &json).contains("パッケージの名前"),
+            "{pkg}"
+        );
+    }
     // 同じ package の直下の要素と同じ名前（#240）
     assert!(
         refused(

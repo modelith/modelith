@@ -67,6 +67,12 @@ package ModelithRequirements {
         requirement def <'N-10'> ExtendNeed {
             doc /* 組織の決まりに沿った検査や、ほかのツールとのやり取りを、自分たちで足したい。足したものを、画面と CI で同じように使いたい */
         }
+        requirement def <'N-11'> CollaborateNeed {
+            doc /* AI（Claude・Codex など）や、ほかの人と、一緒に同じモデルを作りたい。自分の環境に置いたサーバでも使いたい */
+        }
+        requirement def <'N-12'> FeedbackNeed {
+            doc /* 使い方や不具合が開発者に届き、Modelith が良くなってほしい。ただし、何が送られるかを確かめ、止められるようにしたい */
+        }
     }
 
     // =================================================================
@@ -422,6 +428,46 @@ package ModelithRequirements {
             doc /* 保留：0.2.0 以降（ADR-0019。F-LINK-1 の後）。プロジェクトの中のファイルへのリンクが切れていたら、問題一覧に示す */
         }
 
+        // ---- AI との連携（ADR-0024。0.3.0 から） -----------------------
+        requirement def <'F-AI-1'> McpReadReq {
+            doc /* 予定：0.3.0。AI のクライアントが MCP で、フォルダ（プロジェクト）のファイル一覧・要素の一覧（種類・修飾名・定義の位置）・要素の中身・図の一覧と、問題一覧（チェックルールの結果を含む）を得られる */
+        }
+        requirement def <'F-AI-2'> McpWriteReq {
+            doc /* 予定：0.3.0。AI のクライアントが MCP で、画面と同じ編集の意図（要素や関係の追加・名前の変更・削除・説明）を、要素を修飾名で指して渡せる。
+                   書き換えは TextEdit としてテキストに入り（ADR-0001）、既定では差分を見せて利用者が受け入れてから書く。確かめずに書くかは設定で選ぶ */
+        }
+        requirement def <'F-AI-3'> HeadlessExportReq {
+            doc /* 予定：0.3.0。画面を開かずに、CLI と MCP から、.sysml と図の名前を指定して SVG・PNG・draw.io を書き出せる。画面と同じ図が出る */
+        }
+        requirement def <'F-AI-4'> CliDistributionReq {
+            doc /* 予定：0.3.0。CLI と MCP を、npm のパッケージ・リリースに付けた実行ファイル（macOS・Windows・Linux）・cargo install のどれでも入れられる。版は本体と同じ */
+        }
+
+        // ---- サーバ（ADR-0025。0.5.0 から） ----------------------------
+        requirement def <'F-SRV-1'> ServerStorageReq {
+            doc /* 予定：0.5.0。自分で動かしたサーバにプロジェクトを置き、プロジェクトの一覧から選んで開き、保存できる。ブラウザのタブごとに別のプロジェクトを開ける。
+                   サーバが無くても、ほかの機能はすべて使える（C-4） */
+        }
+        requirement def <'F-SRV-2'> ServerLoginReq {
+            doc /* 予定：0.5.0。サーバに、管理者が作るアカウントと OIDC でログインできる。既定の合言葉は無く、最初の管理者は 1 回だけ使える設定用のリンクで作る。
+                   合言葉は Argon2id で保存し、失敗が続けば止め、2 段階の確認（TOTP）を使える。OIDC を有効にしたら、合言葉でのログインを非常用の管理者だけに絞れる */
+        }
+        requirement def <'F-SRV-3'> ServerTransportReq {
+            doc /* 予定：0.5.0。サーバとの通信は既定で HTTPS・WSS にする。サーバはアプリも一緒に配り、外のネットワークに出られない環境では、社内の証明書・自己署名の証明書・暗号化しない HTTP（そのことを画面に示す）でも使える */
+        }
+        requirement def <'F-SRV-4'> ShareRolesReq {
+            doc /* 予定：0.6.0。プロジェクトにほかの人を、期限付きで 1 回だけ使えるリンクで招き、役割（持ち主・編集・閲覧）を付けられる。閲覧の人は書き換えられない */
+        }
+
+        // ---- 利用状況と不具合の報告（ADR-0026。0.3.0 から） ----------------
+        requirement def <'F-TEL-1'> UsageDataReq {
+            doc /* 予定：0.3.0。利用状況とエラーを、既定で Modelith の受け口に送る。初めて使うときに一度知らせ、「すべて送る」「エラーだけ」「送らない」から選べ、送る中身を画面で確かめられる。
+                   モデルの中身・名前・ファイル名・パスは送らず、端末に ID を残さない。まとめて日に 1 回送り、エラーだけは起きたときに送る。サーバは環境変数と DO_NOT_TRACK で止められる */
+        }
+        requirement def <'F-TEL-2'> BugReportReq {
+            doc /* 予定：0.3.0。「ヘルプ」の「不具合を報告」から、版と環境を書き込んだ報告の下書きを開き、中身を見てから送れる。モデルの中身は書き込まない */
+        }
+
         // ---- 品質 --------------------------------------------------
         requirement def <'Q-1'> ResponsiveReq {
             doc /* 解析中も入力や図の操作が止まらない（コアを Worker で動かす。ADR-0003） */
@@ -520,6 +566,16 @@ package ModelithRequirements {
         }
 
         // ---- 導出 --------------------------------------------------
+        #derivation dependency from McpReadReq to CollaborateNeed;
+        #derivation dependency from McpWriteReq to CollaborateNeed;
+        #derivation dependency from HeadlessExportReq to ExportNeed;
+        #derivation dependency from CliDistributionReq to CollaborateNeed;
+        #derivation dependency from ServerStorageReq to CollaborateNeed;
+        #derivation dependency from ServerLoginReq to CollaborateNeed;
+        #derivation dependency from ServerTransportReq to SafetyNeed;
+        #derivation dependency from ShareRolesReq to CollaborateNeed;
+        #derivation dependency from UsageDataReq to FeedbackNeed;
+        #derivation dependency from BugReportReq to FeedbackNeed;
         #derivation dependency from TextToDiagramReq to EditBothWaysNeed;
         #derivation dependency from DiagramToTextReq to EditBothWaysNeed;
         #derivation dependency from NewPackageGuideReq to EditBothWaysNeed;
@@ -665,6 +721,15 @@ package ModelithRequirements {
         part def AppShell {
             doc /* 起動・メニュー・ヘッダー・配信の設定（web/src/main.ts・vite.config.ts・Pages） */
         }
+        part def McpServer {
+            doc /* AI のクライアントとやり取りする MCP のサーバ（予定：0.3.0。ADR-0024） */
+        }
+        part def Server {
+            doc /* 自分で動かせる共同編集のサーバ（予定：0.5.0。modelith-server。ADR-0025） */
+        }
+        part def UsageReporter {
+            doc /* 利用状況とエラーの送信（予定：0.3.0。ADR-0026） */
+        }
 
         part def Modelith {
             part core : Core;
@@ -680,6 +745,9 @@ package ModelithRequirements {
             part plugins : PluginHost;
             part cli : Cli;
             part project : Project;
+            part mcp : McpServer;
+            part server : Server;
+            part usage : UsageReporter;
         }
 
         satisfy TextToDiagramReq by TextEditor;
@@ -788,6 +856,17 @@ package ModelithRequirements {
         satisfy StageNoticeReq by AppShell;
         satisfy ReleaseChannelReq by AppShell;
         satisfy ContentPolicyReq by AppShell;
+        satisfy McpReadReq by McpServer;
+        satisfy McpWriteReq by McpServer;
+        satisfy HeadlessExportReq by Cli;
+        satisfy HeadlessExportReq by McpServer;
+        satisfy CliDistributionReq by Cli;
+        satisfy ServerStorageReq by Server;
+        satisfy ServerLoginReq by Server;
+        satisfy ServerTransportReq by Server;
+        satisfy ShareRolesReq by Server;
+        satisfy UsageDataReq by UsageReporter;
+        satisfy BugReportReq by AppShell;
     }
 
     // =================================================================

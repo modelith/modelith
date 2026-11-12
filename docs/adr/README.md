@@ -29,3 +29,4 @@
 | [0023](0023-cross-version-file-compat.md) | 同じフォルダを複数の版で開いても、ファイルを壊さない | 採用 |
 | [0024](0024-ai-and-collaboration-foundation.md) | AI と共同編集の土台（外に出す操作と、変更の記録） | 提案 |
 | [0025](0025-server-boundary.md) | サーバの境目（何をサーバに置き、何を手元に残すか） | 提案 |
+| [0026](0026-usage-data.md) | 利用状況の送信 | 提案 |

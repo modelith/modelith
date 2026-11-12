@@ -830,6 +830,13 @@ pub(super) fn rename_refs(d: &Doc<'_>, f: &Found, nn: &str) -> Change {
             hits.push(i);
         }
     }
+    if !e.is_def {
+        // 特性は、持ち主の外からも `W::n`・`f.n`・引き継いだ先の `:>> n` で指される。書いた場所から解決して、この特性を指すものを足す（F-EDIT-3）
+        let rest: Vec<usize> = (0..ts.len())
+            .filter(|&i| is_name(i) && !hits.contains(&i))
+            .collect();
+        hits.extend(feature_refs(d, &ts, &rest, f.entry));
+    }
     let (hs, he) = (d.b(e.start), d.b(e.head_end));
     let head = (0..ts.len()).find(|&i| is_name(i) && (hs..he).contains(&ts[i].1));
     if let Some(i) = head
@@ -913,6 +920,72 @@ fn names_entry(d: &Doc<'_>, ts: &[(SyntaxKind, usize, &str)], k: usize) -> Optio
         .into_iter()
         .next()
         .flatten()
+}
+
+/// 名前のトークンのうち、特性 `target` を指すもの（再定義をたどって行き着くものも含む）を選ぶ（F-EDIT-3）。
+/// 前に `f.`・`W::` が続くトークンは、その連鎖・修飾名ごと、トークンを囲む一番内側の宣言から解決する。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `ts`：テキストのトークンの列（`tokens`）
+/// - `cands`：調べる名前のトークンの番号
+/// - `target`：名前を変える特性の宣言の番号
+///
+/// # 戻り値
+///
+/// `target` を指すトークンの番号。
+///
+/// # 例
+///
+/// ```text
+/// // "part def W { attribute n; } part def B { part f : W { attribute :>> n; } attribute t = f.n; attribute s = W::n; }" のとき
+/// feature_refs(d, ts, [":>> n" の n, "f.n" の n, "W::n" の n], W の n) → 3 つとも
+/// // "part def Z { attribute n; attribute q = n; }" の q の値の n は、Z の n を指すので選ばない
+/// ```
+fn feature_refs(
+    d: &Doc<'_>,
+    ts: &[(SyntaxKind, usize, &str)],
+    cands: &[usize],
+    target: usize,
+) -> Vec<usize> {
+    let significant = |j: usize| !ts[j].0.is_trivia() && ts[j].0 != SyntaxKind::REGULAR_COMMENT;
+    let reference = |k: usize| -> Option<String> {
+        let mut parts = vec![ts[k].2];
+        let mut j = k;
+        while let Some(sep) = (0..j).rev().find(|&x| significant(x)) {
+            if !matches!(ts[sep].0, SyntaxKind::DOT | SyntaxKind::COLON2) {
+                break;
+            }
+            let q = (0..sep).rev().find(|&x| significant(x))?;
+            // `(a).n` のように、名前でないものの特性は解決しない
+            if !matches!(ts[q].0, SyntaxKind::IDENT | SyntaxKind::QUOTED_NAME) {
+                return None;
+            }
+            parts.push(ts[sep].2);
+            parts.push(ts[q].2);
+            j = q;
+        }
+        parts.reverse();
+        Some(parts.concat())
+    };
+    // ほかのファイルの宣言は、表示中のファイルのトークンを囲まない（位置に触れると操作を断る印が付く）
+    let innermost = |at: usize| {
+        (0..d.p.entries.len())
+            .filter(|&x| crate::project::merge::file_of(d.e(x).start) == 0)
+            .filter(|&x| (d.b(d.e(x).start)..d.b(d.e(x).end)).contains(&at))
+            .max_by_key(|&x| d.b(d.e(x).start))
+    };
+    let picked: Vec<(usize, (String, Option<usize>))> = cands
+        .iter()
+        .filter_map(|&k| Some((k, (reference(k)?, innermost(ts[k].1)))))
+        .collect();
+    let refs: Vec<(String, Option<usize>)> = picked.iter().map(|(_, r)| r.clone()).collect();
+    crate::model::refers_to_feature(&d.p, &refs, target)
+        .into_iter()
+        .zip(&picked)
+        .filter_map(|(yes, (k, _))| yes.then_some(*k))
+        .collect()
 }
 
 /// 名前の変更で、名前のトークンがその宣言を指すかを確かめる関数を作る（#220）。

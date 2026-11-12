@@ -150,3 +150,224 @@ impl Builder<'_> {
         if known { Ok(None) } else { Err(()) }
     }
 }
+
+/// 参照のそれぞれが、特性 `target` を指すか（再定義 `:>>` をたどって `target` に行き着くものも含む）。
+/// 特性の名前を変えるとき、持ち主の外の参照（`W::n`・`f.n`・型や特殊化で引き継いだ先の `:>> n`）を探すのに使う（F-EDIT-3）。
+///
+/// # 引数
+///
+/// - `p`：解析結果
+/// - `refs`：`(書いた参照, 参照を書いた場所を囲む一番内側の宣言の番号)` の並び。参照は `n`・`W::n`・`f.n` の形
+/// - `target`：名前を変える特性の宣言の番号
+///
+/// # 戻り値
+///
+/// `refs` と同じ順の真偽値。指す先が見つからない参照は false。
+///
+/// # 例
+///
+/// ```text
+/// // "part def W { attribute n; } part def W2 :> W { attribute :>> n; } part def B { part f : W; attribute t = f.n; }" のとき
+/// refers_to_feature(p, [("W::n", B), ("f.n", t), ("n", W2 の n), ("n", t)], W の n)
+///   → [true, true, true, false]   // 最後は B から見える n が無い
+/// ```
+pub(crate) fn refers_to_feature(
+    p: &crate::project::ParseResult,
+    refs: &[(String, Option<usize>)],
+    target: usize,
+) -> Vec<bool> {
+    let b = Builder::new(p);
+    refs.iter()
+        .map(|(r, ctx)| {
+            b.designated(r, *ctx)
+                .into_iter()
+                .any(|i| b.redefines_to(i, target))
+        })
+        .collect()
+}
+
+impl Builder<'_> {
+    /// 参照が指す宣言の候補。連鎖（`f.n`）は 2 段目から先を型・特殊化の中までたどり、修飾名（`W::n`）は `lookup` で探す。
+    /// 修飾の無い名前は、書いた場所から外へ、各段の直下の中身、無ければその段が型・特殊化から引き継いだ特性を探す。
+    ///
+    /// # 引数
+    ///
+    /// - `reference`：書いた参照
+    /// - `ctx`：参照を書いた場所を囲む一番内側の宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// 指す宣言の番号の並び（引き継いだ特性は、複数の一般の定義から来ることがあるので複数）。見つからなければ空。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "part def W { attribute n; } part def W2 :> W { attribute k = n; }" のとき
+    /// designated("n", Some(k の番号))   → [W の n]   // W2 が引き継いだ n
+    /// designated("W::n", Some(k の番号)) → [W の n]
+    /// designated("x", Some(k の番号))   → []
+    /// ```
+    fn designated(&self, reference: &str, ctx: Option<usize>) -> Vec<usize> {
+        let segs = ref_segs(reference);
+        if let [first, rest @ ..] = segs.as_slice()
+            && !rest.is_empty()
+        {
+            return match self.lookup(first, ctx).map(|h| self.follow_chain(h, rest)) {
+                Some(ChainEnd::Found(i)) => vec![i],
+                _ => Vec::new(),
+            };
+        }
+        if reference.contains("::") {
+            return self.lookup(reference, ctx).into_iter().collect();
+        }
+        let nm = crate::project::text::unquote(reference);
+        let mut scope = ctx;
+        while let Some(x) = scope {
+            if let Some(c) = self.child_named(x, nm) {
+                return vec![c];
+            }
+            let inherited = self.inherited_named(x, nm);
+            if !inherited.is_empty() {
+                return inherited;
+            }
+            scope = self.e(x).pe;
+        }
+        Vec::new()
+    }
+
+    /// 宣言 `owner` が型・特殊化・部分集合・再定義の相手から引き継いだ特性のうち、名前 `nm` のもの（`owner` 自身の中身は含めない）。
+    ///
+    /// # 引数
+    ///
+    /// - `owner`：引き継ぐ側の宣言の番号
+    /// - `nm`：探す名前
+    ///
+    /// # 戻り値
+    ///
+    /// 一般の側の各段で見つかった特性の番号（近い段から）。無ければ空。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "part def W { attribute n; } part def W2 :> W; part def B { part f : W2; }" のとき
+    /// inherited_named(f の番号, "n") → [W の n]
+    /// inherited_named(W の番号, "n") → []   // 自身の中身は含めない
+    /// ```
+    fn inherited_named(&self, owner: usize, nm: &str) -> Vec<usize> {
+        let mut seen = HashSet::from([owner]);
+        let mut stack = self.generals_of(owner);
+        let mut out = Vec::new();
+        while let Some(x) = stack.pop() {
+            if !seen.insert(x) {
+                continue;
+            }
+            if let Some(c) = self.child_named(x, nm) {
+                out.push(c);
+            }
+            stack.extend(self.generals_of(x));
+        }
+        out
+    }
+
+    /// 宣言の一般の側（使用なら型の定義、定義なら特殊化の相手、使用の部分集合・再定義の相手）。
+    ///
+    /// # 引数
+    ///
+    /// - `x`：宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// 一般の側の宣言の番号の並び。見つからない相手は含めない。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "part def W; part def W2 :> W; part def B { part f : W2; }" のとき
+    /// generals_of(W2 の番号) → [W]
+    /// generals_of(f の番号)  → [W2]
+    /// generals_of(W の番号)  → []
+    /// ```
+    fn generals_of(&self, x: usize) -> Vec<usize> {
+        let e = self.e(x);
+        let mut out: Vec<usize> = Vec::new();
+        if !e.is_def {
+            out.extend(self.type_scope(x));
+        }
+        for s in &e.specs {
+            out.extend(self.spec_targets(x, s));
+        }
+        out
+    }
+
+    /// 宣言 `x` に書いた特殊化・部分集合・再定義の相手。修飾の無い名前の再定義（`:>> n`）は、持ち主が引き継いだ特性から探す
+    /// （持ち主の中の `x` 自身を指さないように）。
+    ///
+    /// # 引数
+    ///
+    /// - `x`：相手を書いた宣言の番号
+    /// - `s`：`x` の特殊化などの 1 つ
+    ///
+    /// # 戻り値
+    ///
+    /// 相手の宣言の番号の並び。見つからなければ空。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "part def W { attribute n; } part def W2 :> W { attribute :>> n; }" のとき
+    /// spec_targets(W2 の番号, ":> W")            → [W]
+    /// spec_targets(W2 の n の番号, ":>> n")       → [W の n]
+    /// ```
+    fn spec_targets(&self, x: usize, s: &crate::project::Spec) -> Vec<usize> {
+        let e = self.e(x);
+        if e.is_def {
+            return (s.op == "specializes")
+                .then(|| self.def_of(&s.path, e.pe))
+                .flatten()
+                .into_iter()
+                .collect();
+        }
+        let plain = !s.target.contains('.') && !s.target.contains("::");
+        match e.pe {
+            Some(pe) if s.op == "redefines" && plain => {
+                self.inherited_named(pe, crate::project::text::unquote(&s.target))
+            }
+            _ => self.resolve(&s.target, e.pe).into_iter().collect(),
+        }
+    }
+
+    /// 宣言 `i` が `target` そのものか、再定義（`:>>`）を何段かたどって `target` に行き着くか。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：調べる宣言の番号
+    /// - `target`：行き着くか確かめる宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// 行き着けば true。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "part def W { attribute n; } part def W2 :> W { attribute :>> n; } part def Z { attribute n; }" のとき
+    /// redefines_to(W2 の n, W の n) → true
+    /// redefines_to(Z の n, W の n)  → false
+    /// ```
+    fn redefines_to(&self, i: usize, target: usize) -> bool {
+        let mut seen = HashSet::new();
+        let mut stack = vec![i];
+        while let Some(x) = stack.pop() {
+            if x == target {
+                return true;
+            }
+            if !seen.insert(x) {
+                continue;
+            }
+            for s in self.e(x).specs.iter().filter(|s| s.op == "redefines") {
+                stack.extend(self.spec_targets(x, s));
+            }
+        }
+        false
+    }
+}

@@ -223,14 +223,14 @@ fn rename_state_changes_transition_sources_and_targets() {
 
 #[test]
 fn rename_usage_changes_references_in_values_and_specializations() {
-    // Arrange（属性の値の式・`:>` の参照も変える。`k.a` の `.` の後ろは別の要素の特性なので変えない）
+    // Arrange（属性の値の式・`:>` の参照も変える。`k.a` は k の型 D の a を指すので変える。#267）
     let text = "package P { part def D { attribute a : Real; attribute u : Real = a * 2; attribute f :> a; part k : D; attribute w = k.a; } }";
     // Act
     let (after, _) = run(text, r#"{"op":"rename","key":"u:a","ctx":"D","name":"z"}"#);
     // Assert
     assert_eq!(
         after,
-        "package P { part def D { attribute z : Real; attribute u : Real = z * 2; attribute f :> z; part k : D; attribute w = k.a; } }"
+        "package P { part def D { attribute z : Real; attribute u : Real = z * 2; attribute f :> z; part k : D; attribute w = k.z; } }"
     );
 }
 
@@ -1881,7 +1881,7 @@ fn set_attribute_keeps_multiplicity_and_specializations() {
 
 #[test]
 fn set_attribute_renames_the_references_to_the_attribute() {
-    // Arrange（値の式・`:>`・持ち主の中の参照も変える。`k.a` の `.` の後ろは別の要素の特性なので変えない。#231）
+    // Arrange（値の式・`:>`・持ち主の中の参照も変える。`k.a` は k の型 D の a を指すので変える。#231・#267）
     let text = "package P { part def D { attribute a : Real; attribute u : Real = a * 2; attribute f :> a; part k : D; attribute w = k.a; } }";
     // Act
     let (after, _) = run(
@@ -1891,7 +1891,49 @@ fn set_attribute_renames_the_references_to_the_attribute() {
     // Assert
     assert_eq!(
         after,
-        "package P { part def D { attribute z : Real = 3; attribute u : Real = z * 2; attribute f :> z; part k : D; attribute w = k.a; } }"
+        "package P { part def D { attribute z : Real = 3; attribute u : Real = z * 2; attribute f :> z; part k : D; attribute w = k.z; } }"
+    );
+}
+
+#[test]
+fn set_attribute_rename_follows_redefinitions_chains_and_qualified_names() {
+    // Arrange（型を W にした使用・W を特殊化した定義の `:>> n`、型が W の f の `f.n`、`W::n` は W の n を指す。#267）
+    let text = "package P {\n    part def W { attribute n : Integer = 32; }\n    part def B {\n        part f : W { attribute :>> n = 36; }\n        attribute t : Integer = f.n;\n        attribute s : Integer = W::n;\n    }\n    part def W2 :> W { attribute :>> n = 28; }\n}\n";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"setAttribute","key":"W","attr":"n","name":"m","type":"Integer","value":"32"}"#,
+    );
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def W { attribute m : Integer = 32; }\n    part def B {\n        part f : W { attribute :>> m = 36; }\n        attribute t : Integer = f.m;\n        attribute s : Integer = W::m;\n    }\n    part def W2 :> W { attribute :>> m = 28; }\n}\n"
+    );
+}
+
+#[test]
+fn rename_feature_leaves_the_same_name_of_unrelated_elements() {
+    // Arrange（同値分割：別の定義 Z の n・その参照 `Z::n`・型が Z の g の `g.n`・Z の中の `n` は、W の n を指さない。#267）
+    let text = "package P { part def W { attribute n; } part def Z { attribute n; attribute q = n; } part def B { part g : Z { attribute :>> n; } attribute t = g.n; attribute s = Z::n; } part def Z2 :> Z { attribute :>> n; } }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"u:n","ctx":"W","name":"m"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def W { attribute m; } part def Z { attribute n; attribute q = n; } part def B { part g : Z { attribute :>> n; } attribute t = g.n; attribute s = Z::n; } part def Z2 :> Z { attribute :>> n; } }"
+    );
+}
+
+#[test]
+fn rename_feature_follows_inherited_references_through_specializations() {
+    // Arrange（境界値：2 段の特殊化 W3 :> W2 :> W の中の `:>> n`、引き継いだ n を使う式、型が W3 の h の `h.n`）
+    let text = "package P { part def W { attribute n; } part def W2 :> W; part def W3 :> W2 { attribute :>> n; attribute k = n * 2; } part def B { part h : W3; attribute t = h.n; } }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"u:n","ctx":"W","name":"m"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def W { attribute m; } part def W2 :> W; part def W3 :> W2 { attribute :>> m; attribute k = m * 2; } part def B { part h : W3; attribute t = h.m; } }"
     );
 }
 

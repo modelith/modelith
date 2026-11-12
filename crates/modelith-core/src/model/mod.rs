@@ -15,6 +15,7 @@ mod states;
 mod types;
 mod views;
 
+pub(crate) use chains::refers_to_feature;
 pub(crate) use names::resolve_refs;
 pub use types::*;
 pub(crate) use views::metaclass_kind;

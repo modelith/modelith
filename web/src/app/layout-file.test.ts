@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { isEmptyLayout, keepExtras, layoutExtras, layoutNotSavedNote, NO_EXTRAS, parseLayoutFile, serializeLayout, usedFeatures, writeLock } from "./layout-file";
-import type { Layout } from "./layout";
+import type { Layout } from "../render/layout";
 
 const L: Layout = {
   trace: { pos: { B: [10, 20], A: [0, 0] }, pins: { A: { a2: ["r", 0.5], a1: ["l", 0.3] } }, ends: { "e|A|B": ["a1", null] } },

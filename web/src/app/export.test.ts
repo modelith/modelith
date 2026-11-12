@@ -1,9 +1,9 @@
 // draw.io へのエクスポートの線の形と図形、.drawio のファイルの包み方（F-EXP-2）。
 import { describe, expect, it } from "vitest";
 import { build, parse } from "../core";
-import { flowContentOf } from "./action-flow";
+import { flowContentOf } from "../render/action-flow";
 import { copyFailureText, drawioEdgeStyle, drawioFlowCell, drawioLineShape, drawioStateCell, drawioText, mxfileXml } from "./export";
-import { stateContentOf } from "./state-machine";
+import { stateContentOf } from "../render/state-machine";
 
 describe("drawioEdgeStyle（F-EXP-2）", () => {
   it.each([["specialize"], ["subset"], ["redefine"], ["reference"]])("%s は白抜きの三角の実線にする", (kind) => {

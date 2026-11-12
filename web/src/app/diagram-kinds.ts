@@ -1,7 +1,7 @@
 // 作成する図の種類と、図の名前の変更・削除の判断（F-VIEW-8・F-VIEW-11）。画面に触らない純粋な関数だけを置く。
 
 import type { ModelNode, ViewKind } from "../core";
-import type { Layout } from "./layout";
+import type { Layout } from "../render/layout";
 import type { Tab } from "./state";
 
 /** 「新しい図を作成」で選べる図の種類（F-VIEW-8）。`def` は描く対象の定義の種類（一般の図は対象を選ばない）。 */

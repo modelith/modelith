@@ -4,7 +4,7 @@
 import { inOpenFile, type Entry, type ModelNode, type ViewKind } from "../core";
 import { type AskOption, ask } from "./dialog";
 import { perform } from "./intent";
-import { diagramName } from "./labels";
+import { diagramName } from "../render/labels";
 import { DIAGRAM_KINDS, type DiagramKind, renameViewLayout, renameViewTabs, targetCandidates } from "./diagram-kinds";
 import { closeViewTabs, openModelView, saveTabs } from "./panels";
 import { S } from "./state";

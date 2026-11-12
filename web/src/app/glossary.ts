@@ -3,7 +3,7 @@
 // 語の表と、テキストの位置から語を探して説明を返す純粋な関数だけを置く（画面への出し方は word-help.ts）。
 
 import { standardViewName, stdViewLabel } from "../core";
-import { kindLabel } from "./labels";
+import { kindLabel } from "../render/labels";
 
 /** テキストの位置にある語と、その説明。 */
 export interface WordHelp {

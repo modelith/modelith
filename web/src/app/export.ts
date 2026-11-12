@@ -1,15 +1,15 @@
 // 画面の「エクスポート…」の中身（表示中の図の draw.io の XML・SVG）と、PNG・JPEG への変換、ファイルのダウンロード・画像のコピー。
 // 図の中身の作り方は diagram-export.ts にあり、ここは画面の状態（S）から図の内容・配置・描き方を集めて渡す。
 
-import type { DiagramImage } from "./diagram-export";
-import { drawioDocument, svgDocument } from "./diagram-export";
+import type { DiagramImage } from "../render/diagram-export";
+import { drawioDocument, svgDocument } from "../render/diagram-export";
 import { selectionContent } from "./export-range";
 import { S } from "./state";
 import { curLayout, curView, viewContent } from "./views";
 
 export {
   drawioEdgeStyle, drawioEventCell, drawioFlowCell, drawioLineShape, drawioStateCell, drawioText, mxfileXml, type DiagramImage,
-} from "./diagram-export";
+} from "../render/diagram-export";
 
 /**
  * 表示中の図を draw.io の XML にする（F-EXP-2）。中身は drawioDocument に任せる。

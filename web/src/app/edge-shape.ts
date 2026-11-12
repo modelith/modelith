@@ -1,7 +1,7 @@
 // 線の形の調整（F-VIEW-16）：配置（ViewLayout）の曲がり角と付け替えた端を書き換える。判断だけの純粋関数。
 // 画面の操作（つまみのドラッグ・ダブルクリック・インスペクタのボタン）は canvas.ts・inspector.ts が呼ぶ。
 
-import type { Anchors, PinPos, Pos, ViewLayout } from "./layout";
+import type { Anchors, PinPos, Pos, ViewLayout } from "../render/layout";
 
 /**
  * 線の曲がり角を動かす。

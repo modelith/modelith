@@ -1,7 +1,7 @@
 // アプリの状態。テキストが唯一の正本で、P（解析結果）・M（モデル）・layout はテキストから作り直す（ADR-0001）。
 
 import type { Model, ParseResult, PlacedDiagnostic, PortDir, RuleFinding } from "../core";
-import type { Layout, Side } from "./layout";
+import type { Layout, Side } from "../render/layout";
 import type { PluginNote } from "./plugins";
 import type { FileProblems } from "./project-problems";
 import type { GapFocus, GapKind } from "./trace-gap";

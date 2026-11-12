@@ -1,14 +1,14 @@
 // 表示中のタブ（画面の状態 S）の図を選ぶ。どの要素・関係を表示するかの決め方は view-content.ts にあり、ここは S から ViewTarget を作って渡すだけ。
 
 import type { Model, ModelEdge, ModelNode, ModelView } from "../core";
-import { emptyView, type ViewLayout } from "./layout";
+import { emptyView, type ViewLayout } from "../render/layout";
 import { S } from "./state";
-import { baseViewOf, contentOf, layoutKey, resolveTarget, viewDef, type ViewContent, type ViewDef, type ViewTarget } from "./view-content";
+import { baseViewOf, contentOf, layoutKey, resolveTarget, viewDef, type ViewContent, type ViewDef, type ViewTarget } from "../render/view-content";
 
 export {
   baseViewOf, defaultIbdContext, ibdContexts, phaseLabel, seqContexts, VIEWS, viewDef,
   type PackageFrame, type ViewContent, type ViewDef,
-} from "./view-content";
+} from "../render/view-content";
 
 /**
  * 表示中のタブのビューの定義を返す（S.view から引く）。

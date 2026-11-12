@@ -4,13 +4,13 @@
 import { FILE_STRIDE, lineStart, type ModelNode } from "../core";
 import { $, esc } from "./dom";
 import { NOTHING_IN_FILE, nothingInFile } from "./doc-tabs";
-import { boxesOf, pinPoint, pinsOf, type Box } from "./geometry";
+import { boxesOf, pinPoint, pinsOf, type Box } from "../render/geometry";
 import { relOptions } from "./relations";
 import { gapMarkTitles } from "./gap-guide";
 import { minimapPlace } from "./minimap-place";
 import { gapRelOptions } from "./trace-gap";
 import { S, type EndSpec } from "./state";
-import { CV, SEQ, seqGeom, seqMarkup, svgMarkup } from "./svg";
+import { CV, SEQ, seqGeom, seqMarkup, svgMarkup } from "../render/svg";
 import { CC, curLayout, curView, edgeById, nodeByKey, viewContent, visibleNodes } from "./views";
 
 /**

@@ -1337,7 +1337,7 @@ pub(super) struct EdgeAt {
     pub rel: Option<usize>,
 }
 
-/// 内部ブロック図・シーケンス図・アクションの流れの図の関係の ID（UI の `web/src/app/views.ts` と同じ ID）。
+/// 内部ブロック図・シーケンス図・アクションの流れの図の関係の ID（UI の `web/src/render/view-content.ts` と同じ ID）。
 /// アクション定義（`action def`）なら、アクションの流れの線（`flow::edges`。`succession|a:a|a:b|#1` など）。
 /// 状態定義（`state def`）なら、遷移の線（`states::edges`。`transition|s:a|s:b|Go#1` など）。
 /// シナリオ（`occurrence def`）なら、メッセージを書いた順に `msg|順番|名前`。

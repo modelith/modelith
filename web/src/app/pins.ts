@@ -3,8 +3,8 @@
 import type { ModelNode, Port, PortDir } from "../core";
 import { pruneShapes } from "./edge-shape";
 import { perform } from "./intent";
-import { pinsOf, type Pin } from "./geometry";
-import type { Ends, ViewLayout } from "./layout";
+import { pinsOf, type Pin } from "../render/geometry";
+import type { Ends, ViewLayout } from "../render/layout";
 import { S, type EndSpec } from "./state";
 import { commitLayout, setText, toast } from "./sync";
 import { CC, curLayout, nodeByKey } from "./views";

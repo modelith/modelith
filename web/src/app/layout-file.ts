@@ -1,7 +1,7 @@
 // 配置ファイル（model.sysml の隣の model.layout.json、ADR-0005）の読み書き。判断だけの純粋関数。
 // 差分とマージを読みやすくするため、キー順を固定し、要素ごとに 1 行で書く。
 
-import { emptyView, isLayoutJson, layoutFromJson, layoutToJson, type Layout } from "./layout";
+import { emptyView, isLayoutJson, layoutFromJson, layoutToJson, type Layout } from "../render/layout";
 
 /** 配置ファイルの形式の版。古い版が読み違える変更をしたときだけ上げる（ADR-0023 §3）。 */
 export const LAYOUT_FORMAT = 1;

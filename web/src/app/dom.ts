@@ -2,8 +2,8 @@
 
 import { channelName } from "../channel";
 
-// エスケープは DOM に触れないので escape.ts に置く（画面の外の図の書き出しと共用する）。今までどおり dom から読み込めるようにする
-export { esc } from "./escape";
+// エスケープは DOM に触れないので render/escape.ts に置く（画面の外の図の書き出しと共用する）。今までどおり dom から読み込めるようにする
+export { esc } from "../render/escape";
 
 /**
  * セレクタに合う最初の要素を返す。無ければ index.html との食い違いなので例外にする。

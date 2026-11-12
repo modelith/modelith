@@ -1,8 +1,8 @@
 // 線の形の調整（F-VIEW-16）：曲がり角を通る経路と、付け替えた端。
 import { describe, expect, it } from "vitest";
 import { build, parse } from "../core/rust";
-import { bendPoints, boxesOf, computeRoutes, longestLabel, segmentMids, type NodeBox } from "./geometry";
-import { emptyView, layoutFromJson, layoutToJson } from "./layout";
+import { bendPoints, boxesOf, computeRoutes, longestLabel, segmentMids, type NodeBox } from "../render/geometry";
+import { emptyView, layoutFromJson, layoutToJson } from "../render/layout";
 import { serializeLayout } from "./layout-file";
 import { hasShape, insertBend, moveBend, pruneShapes, removeBend, renameEdgeKeys, resetShape, setAnchor } from "./edge-shape";
 

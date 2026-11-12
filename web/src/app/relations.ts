@@ -1,9 +1,9 @@
 // 2 つの要素の間に追加できる関係を決める。
 
 import { inOpenFile, type Entry, type ModelNode } from "../core";
-import { canSucceed } from "./action-flow";
-import { canTransition } from "./state-machine";
-import { kindLabel } from "./labels";
+import { canSucceed } from "../render/action-flow";
+import { canTransition } from "../render/state-machine";
+import { kindLabel } from "../render/labels";
 import { S } from "./state";
 
 export type RelKind = "comp" | "satisfy" | "verify" | "frame" | "derive" | "flow" | "succession" | "transition";

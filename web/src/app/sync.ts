@@ -3,10 +3,10 @@
 import { CORE_STOPPED, lineOf, type CoreClient, type CoreSupervisorHooks, type Model, type ParseResult, type PlacedDiagnostic, type Problem, type RuleFinding } from "../core";
 import { $, esc } from "./dom";
 import { errorText } from "./error-text";
-import { placeView } from "./geometry";
+import { placeView } from "../render/geometry";
 import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
-import { emptyView, type Layout } from "./layout";
+import { emptyView, type Layout } from "../render/layout";
 import { serializeLayout } from "./layout-file";
 import { MAX_PROBLEM_ROWS, problemRows } from "./problem-rows";
 import { renderPalette, renderSub, renderTabs, renderTree } from "./panels";

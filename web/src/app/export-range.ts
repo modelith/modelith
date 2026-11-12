@@ -1,6 +1,6 @@
 // エクスポートの範囲「選んだ要素」（F-EXP-4）。図に描く中身を、選んだ要素とその中の要素、それらの間の線に絞る。入出力を持たない。
 
-import type { PackageFrame, ViewContent } from "./view-content";
+import type { PackageFrame, ViewContent } from "../render/view-content";
 
 /**
  * 選んだ要素と、その中に入れ子で描く要素（内部ブロック図の部品の中の部品など）のキーを集める。

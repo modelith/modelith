@@ -1,7 +1,7 @@
 // 作成する図の種類と、図の名前の変更・削除の判断（F-VIEW-8・F-VIEW-11）。
 import { describe, expect, it } from "vitest";
 import type { ModelNode } from "../core";
-import { emptyView, type Layout } from "./layout";
+import { emptyView, type Layout } from "../render/layout";
 import type { Tab } from "./state";
 import { DIAGRAM_KINDS, renameViewLayout, renameViewTabs, targetCandidates } from "./diagram-kinds";
 

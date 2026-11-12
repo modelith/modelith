@@ -1,5 +1,5 @@
 // 図のエクスポートの中身（draw.io の XML・SVG）。画面の状態（S）にも DOM にも触れず、図の内容と配置と描き方を引数で受け取る。
-// 画面の「エクスポート…」（export.ts）と、画面の外（Node）の図の書き出し（render/）で共用する（ADR-0024）。
+// 画面の「エクスポート…」（app/export.ts）と、画面の外（Node）の図の書き出し（render/index.ts）で共用する（ADR-0024）。
 
 import type { ModelNode, ModelSequenceEvent } from "../core";
 import { flowDetail, flowShape } from "./action-flow";

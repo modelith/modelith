@@ -224,7 +224,8 @@ package ModelithRequirements {
                    要素が無いことと、ほかの図をタブの「＋」から開けることを示し、「すべて」の図を開くボタンを添える */
         }
         requirement def <'F-VIEW-4'> CanvasReq {
-            doc /* 拡大縮小・移動・範囲選択・複数選択と整列・全体図（ミニマップ）・右クリックメニューを使える */
+            doc /* 拡大縮小・移動・範囲選択・複数選択と整列・全体図（ミニマップ）・右クリックメニューを使える。
+                   インスペクタを開くと全体図はその上に移り、幅 390px の画面でも拡大縮小のボタン（「全体図」まで）に重ならない */
         }
         requirement def <'F-VIEW-5'> TreeReq {
             doc /* モデルの要素をツリーで一覧・絞り込みし、選ぶと図とテキストの対応箇所を示す */
@@ -953,6 +954,13 @@ package ModelithRequirements {
                 verify PhoneTextReq;
             }
         }
+        verification def MinimapPlaceTest {
+            doc /* web/src/app/minimap-place.test.ts：インスペクタを開いたときの全体図の位置（インスペクタの上に持ち上げ、拡大縮小のボタンの列にかかるなら列の左に寄せる。その境目） */
+            objective {
+                verify CanvasReq;
+                verify NarrowScreenReq;
+            }
+        }
         verification def LocalFolderProviderTest {
             doc /* web/src/files/local-folder.test.ts：フォルダの一覧・読み書き・競合の検出・ファイルの作成（フォルダの外を指す名前と空の名前は断る）・前回のフォルダ・隣のファイル（配置ファイル）の読み書きと競合の検出（読んだ後に変わっていれば書かない・消えていれば作り直す）・1 つだけ開いたファイルをフォルダの中から探す・起動したときに許可を求めずに前回のフォルダの許可を確かめる（偽のファイルシステムで） */
             objective {
@@ -1141,12 +1149,13 @@ package ModelithRequirements {
             }
         }
         verification def ShellE2E {
-            doc /* web/e2e/shell.spec.ts：外部に通信しない・Content-Security-Policy が外部への通信とインラインのスクリプトを止める・ソースへのリンク・開発段階の表示・著作権とライセンスと商標の表示・狭い画面・ファイルのメニューの「エクスポート…」（既定の名前・入力した名前の SVG のダウンロード・draw.io を選ぶと拡張子が替わり mxfile のファイルになる・「やめる」では何もダウンロードしない）。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
+            doc /* web/e2e/shell.spec.ts：外部に通信しない・Content-Security-Policy が外部への通信とインラインのスクリプトを止める・ソースへのリンク・開発段階の表示・著作権とライセンスと商標の表示・狭い画面（インスペクタを開いたときの全体図と拡大縮小のボタンの重なりを、明るい／暗い配色で）・ファイルのメニューの「エクスポート…」（既定の名前・入力した名前の SVG のダウンロード・draw.io を選ぶと拡張子が替わり mxfile のファイルになる・「やめる」では何もダウンロードしない）。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
             objective {
                 verify PrivacyReq;
                 verify ContentPolicyReq;
                 verify SourceOfferReq;
                 verify NarrowScreenReq;
+                verify CanvasReq;
                 verify SvgExportReq;
                 verify DrawioExportReq;
                 verify StaticHostingReq;

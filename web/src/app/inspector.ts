@@ -10,7 +10,7 @@ import { hasShape, resetShape } from "./edge-shape";
 import { openProjectFile, otherFileText } from "./other-file";
 import { attrText, kindLabel } from "./labels";
 import type { Pin } from "./geometry";
-import { centerOn, render, scrollEditorTo } from "./render";
+import { centerOn, placeMinimap, render, scrollEditorTo } from "./render";
 import { OPS, MSGOPS, PHASEOPS, alignSel, deleteSel, selNodes, setPhaseSel, uniqueChild, type AlignMode } from "./ops";
 import { openTab, renderTree, setTab } from "./panels";
 import { DIR_LABEL, PINOPS, selPinInfo } from "./pins";
@@ -63,7 +63,7 @@ export function renderInspector(): void {
   if (area && typing !== undefined) area.value = typing;
   focusInput();
   renderTree();
-  $("#mini").style.bottom = box.hidden ? "" : box.offsetHeight + 22 + "px";
+  placeMinimap();
 }
 
 /**

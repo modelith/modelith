@@ -280,6 +280,7 @@ pub fn merge(focus: ParseResult, others: Vec<ParseResult>) -> ParseResult {
         out.rels.extend(o.rels.into_iter().map(|r| at.rel(r)));
         out.aliases.extend(o.aliases.into_iter().map(|mut a| {
             a.pe = a.pe.map(|i| i + at.entries);
+            a.start += at.pos;
             a
         }));
         out.import_list

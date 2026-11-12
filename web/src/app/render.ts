@@ -7,6 +7,7 @@ import { NOTHING_IN_FILE, nothingInFile } from "./doc-tabs";
 import { boxesOf, pinPoint, pinsOf, type Box } from "./geometry";
 import { relOptions } from "./relations";
 import { gapMarkTitles } from "./gap-guide";
+import { minimapPlace } from "./minimap-place";
 import { gapRelOptions } from "./trace-gap";
 import { S, type EndSpec } from "./state";
 import { CV, SEQ, seqGeom, seqMarkup, svgMarkup } from "./svg";
@@ -313,6 +314,23 @@ function miniGeom(): MiniGeom | null {
 }
 
 /**
+ * 全体図（ミニマップ）を、インスペクタの上に持ち上げ、狭い画面で拡大縮小のボタンにかかるならボタンの左に寄せる（全体図の style を書き換える。F-VIEW-4・Q-2）。
+ * インスペクタを描き直したときと、全体図を出したときに呼ぶ。
+ */
+export function placeMinimap(): void {
+  const mini = $("#mini"), insp = $("#insp"), wrap = $("#wrap"), zoom = $("#wrap .zoom");
+  const p = minimapPlace({
+    wrapH: wrap.clientHeight,
+    inspH: insp.hidden ? null : insp.offsetHeight,
+    miniH: mini.hidden ? 0 : mini.offsetHeight,
+    zoomBottom: zoom.offsetTop + zoom.offsetHeight,
+    zoomSpan: wrap.clientWidth - zoom.offsetLeft,
+  });
+  mini.style.bottom = p.bottom;
+  mini.style.right = p.right;
+}
+
+/**
  * ミニマップ（全体図）を描き直す。非表示に設定されていれば隠して S.mini を空にし、
  * 描くものが無ければ中身と表示範囲の枠を消す。描いたら縮尺を S.mini に記録し、表示範囲の枠を更新する（F-VIEW-4）。
  */
@@ -320,6 +338,7 @@ export function renderMinimap(): void {
   const el = $("#mini");
   el.hidden = !S.ui.mini;
   for (const id of ["#zMini", "#menuMini"]) $(id).setAttribute("aria-pressed", String(S.ui.mini));
+  placeMinimap();
   if (el.hidden) {
     S.mini = null;
     return;

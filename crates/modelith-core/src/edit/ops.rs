@@ -11,6 +11,28 @@ use crate::syntax::{SyntaxKind, is_keyword, tokenize};
 /// 名前を変えるときに使えない文字を含む名前を断る文。
 pub(super) const BAD_RENAME: &str = "名前に「'」「\\」や改行は使えません";
 
+/// 名前に、名前を変えるときに使えない文字（`'`・`\`・改行などの制御文字）があるか（`BAD_RENAME` で断る）。
+///
+/// # 引数
+///
+/// - `name`：付けようとする名前
+///
+/// # 戻り値
+///
+/// 使えない文字があれば true。
+///
+/// # 例
+///
+/// ```text
+/// has_bad_name_char("it's")   → true
+/// has_bad_name_char("a\nb")   → true
+/// has_bad_name_char("電気 ケトル") → false
+/// ```
+pub(super) fn has_bad_name_char(name: &str) -> bool {
+    name.chars()
+        .any(|c| c == '\'' || c == '\\' || c.is_control())
+}
+
 /// 名前が、テキストの書き方で使う言葉（SysML v2 の予約語）なら、断る理由の文を返す（予約語の名前はテキストを壊すため。#266）。
 ///
 /// # 引数
@@ -736,7 +758,7 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
     if nn.is_empty() {
         return Err("名前を入力してください".to_owned());
     }
-    if nn.chars().any(|c| c == '\'' || c == '\\' || c.is_control()) {
+    if has_bad_name_char(nn) {
         return Err(BAD_RENAME.to_owned());
     }
     let e = d.e(f.entry);
@@ -830,6 +852,13 @@ pub(super) fn rename_refs(d: &Doc<'_>, f: &Found, nn: &str) -> Change {
             hits.push(i);
         }
     }
+    if !e.is_def {
+        // 特性は、持ち主の外からも `W::n`・`f.n`・引き継いだ先の `:>> n` で指される。書いた場所から解決して、この特性を指すものを足す（F-EDIT-3）
+        let rest: Vec<usize> = (0..ts.len())
+            .filter(|&i| is_name(i) && !hits.contains(&i))
+            .collect();
+        hits.extend(feature_refs(d, &ts, &rest, f.entry));
+    }
     let (hs, he) = (d.b(e.start), d.b(e.head_end));
     let head = (0..ts.len()).find(|&i| is_name(i) && (hs..he).contains(&ts[i].1));
     if let Some(i) = head
@@ -913,6 +942,72 @@ fn names_entry(d: &Doc<'_>, ts: &[(SyntaxKind, usize, &str)], k: usize) -> Optio
         .into_iter()
         .next()
         .flatten()
+}
+
+/// 名前のトークンのうち、特性 `target` を指すもの（再定義をたどって行き着くものも含む）を選ぶ（F-EDIT-3）。
+/// 前に `f.`・`W::` が続くトークンは、その連鎖・修飾名ごと、トークンを囲む一番内側の宣言から解決する。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `ts`：テキストのトークンの列（`tokens`）
+/// - `cands`：調べる名前のトークンの番号
+/// - `target`：名前を変える特性の宣言の番号
+///
+/// # 戻り値
+///
+/// `target` を指すトークンの番号。
+///
+/// # 例
+///
+/// ```text
+/// // "part def W { attribute n; } part def B { part f : W { attribute :>> n; } attribute t = f.n; attribute s = W::n; }" のとき
+/// feature_refs(d, ts, [":>> n" の n, "f.n" の n, "W::n" の n], W の n) → 3 つとも
+/// // "part def Z { attribute n; attribute q = n; }" の q の値の n は、Z の n を指すので選ばない
+/// ```
+fn feature_refs(
+    d: &Doc<'_>,
+    ts: &[(SyntaxKind, usize, &str)],
+    cands: &[usize],
+    target: usize,
+) -> Vec<usize> {
+    let significant = |j: usize| !ts[j].0.is_trivia() && ts[j].0 != SyntaxKind::REGULAR_COMMENT;
+    let reference = |k: usize| -> Option<String> {
+        let mut parts = vec![ts[k].2];
+        let mut j = k;
+        while let Some(sep) = (0..j).rev().find(|&x| significant(x)) {
+            if !matches!(ts[sep].0, SyntaxKind::DOT | SyntaxKind::COLON2) {
+                break;
+            }
+            let q = (0..sep).rev().find(|&x| significant(x))?;
+            // `(a).n` のように、名前でないものの特性は解決しない
+            if !matches!(ts[q].0, SyntaxKind::IDENT | SyntaxKind::QUOTED_NAME) {
+                return None;
+            }
+            parts.push(ts[sep].2);
+            parts.push(ts[q].2);
+            j = q;
+        }
+        parts.reverse();
+        Some(parts.concat())
+    };
+    // ほかのファイルの宣言は、表示中のファイルのトークンを囲まない（位置に触れると操作を断る印が付く）
+    let innermost = |at: usize| {
+        (0..d.p.entries.len())
+            .filter(|&x| crate::project::merge::file_of(d.e(x).start) == 0)
+            .filter(|&x| (d.b(d.e(x).start)..d.b(d.e(x).end)).contains(&at))
+            .max_by_key(|&x| d.b(d.e(x).start))
+    };
+    let picked: Vec<(usize, (String, Option<usize>))> = cands
+        .iter()
+        .filter_map(|&k| Some((k, (reference(k)?, innermost(ts[k].1)))))
+        .collect();
+    let refs: Vec<(String, Option<usize>)> = picked.iter().map(|(_, r)| r.clone()).collect();
+    crate::model::refers_to_feature(&d.p, &refs, target)
+        .into_iter()
+        .zip(&picked)
+        .filter_map(|(yes, (k, _))| yes.then_some(*k))
+        .collect()
 }
 
 /// 名前の変更で、名前のトークンがその宣言を指すかを確かめる関数を作る（#220）。
@@ -1474,6 +1569,9 @@ fn connect(
             )
         }
         "verify" => {
+            if verifies(d, a.entry, b.entry) {
+                return Err(SAME_RELATION.to_owned());
+            }
             let has_objective =
                 d.p.rels
                     .iter()
@@ -1537,7 +1635,7 @@ fn connect(
     };
     // package の直下に書く関係（満たす・導出）は、同じ文が既にあれば足さない（同じ関係が 2 行になるため。#244）
     if matches!(rel, "satisfy" | "derive") && has_statement(d.text, &snippet) {
-        return Err("同じ関係が既にあります".to_owned());
+        return Err(SAME_RELATION.to_owned());
     }
     let (text, a, b) = insert_into(d.text, host, &snippet);
     Ok(Change {
@@ -1545,6 +1643,43 @@ fn connect(
         select: None,
         flash: Some((a, b)),
     })
+}
+
+/// 同じ関係が既にあるときに、関係の追加を断る理由の文（画面にそのまま出す。ADR-0014）。
+const SAME_RELATION: &str = "同じ関係が既にあります";
+
+/// 検証 `v` の中に、要求 `r` を検証する文（`verify R;`）が既にあるか。参照は書いた場所から解決して比べる（`verify P::R;` も同じ関係）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `v`：検証（verification def など）の宣言の番号
+/// - `r`：要求の宣言の番号
+///
+/// # 戻り値
+///
+/// 既にあれば true。
+///
+/// # 例
+///
+/// ```text
+/// // "package P { requirement def R; requirement def S; verification def V { objective { verify R; } } }" のとき
+/// verifies(d, V, R) → true
+/// verifies(d, V, S) → false
+/// ```
+fn verifies(d: &Doc<'_>, v: usize, r: usize) -> bool {
+    let refs: Vec<(String, Option<usize>)> =
+        d.p.rels
+            .iter()
+            .filter(|x| x.pe == Some(v))
+            .filter_map(|x| match &x.kind {
+                RelKind::Verify { req } if !req.is_empty() => Some((req.clone(), x.pe)),
+                _ => None,
+            })
+            .collect();
+    crate::model::resolve_refs(&d.p, &refs)
+        .into_iter()
+        .any(|x| x == Some(r))
 }
 
 /// テキストに、空白の違いを除いて同じ文があるか。コメントの中も数えるが、関係の重複を断るのに使うだけなので問題にならない。

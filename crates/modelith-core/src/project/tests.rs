@@ -831,11 +831,13 @@ fn alias_is_recorded_with_its_owner_and_qualified_target() {
                 name: "B".to_owned(),
                 target: "Q::A".to_owned(),
                 pe: Some(p),
+                start: 12,
             },
             Alias {
                 name: "C".to_owned(),
                 target: "D".to_owned(),
                 pe: Some(p),
+                start: 30,
             },
         ]
     );

@@ -704,7 +704,9 @@ fn alias_cycle_or_missing_target_is_not_found() {
         errors(&m),
         [
             "型「L」が見つかりません（l）",
-            "型「M」が見つかりません（m）"
+            "型「M」が見つかりません（m）",
+            "別名「L」の指す先「L」が見つかりません（alias）",
+            "別名「M」の指す先「Nope」が見つかりません（alias）"
         ]
     );
 }
@@ -956,14 +958,14 @@ fn specialization_line_removes_only_its_target() {
 }
 
 #[test]
-fn specialization_of_an_undrawn_or_missing_definition_is_not_a_problem() {
+fn specialization_of_an_undrawn_or_missing_definition_draws_no_line() {
     // Arrange（異常系：標準ライブラリ・見つからない相手・図に描かない定義・自分自身）
     let text = "package P { part def A :> Part; part def B :> Nope; view def V :> GeneralView; part def S :> S; }";
     // Act
     let (_, m) = run(text);
-    // Assert（線も問題も出さない）
+    // Assert（線は出さない。見つからない相手だけを問題にする。#267）
     assert!(m.edges.is_empty(), "{:?}", m.edges);
-    assert!(m.problems.is_empty(), "{:?}", m.problems);
+    assert_eq!(errors(&m), ["引き継ぐ定義「Nope」が見つかりません（B）"]);
 }
 
 #[test]
@@ -2372,4 +2374,87 @@ fn quoted_names_resolve_as_line_ends() {
         .map(|e| (e.from.as_str(), e.to.as_str()))
         .collect();
     assert!(f.contains(&("a:a 1", "a:b")), "{f:?}");
+}
+
+// ---- 特殊化・別名・import の見つからない相手（#267） ----
+
+#[test]
+fn missing_specialization_alias_and_import_targets_are_problems() {
+    // Arrange（異常系：どこにも無い相手）
+    let text = "package P { part def A :> Nope; alias T for Nope; import Nowhere::*; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(
+        errors(&m),
+        [
+            "引き継ぐ定義「Nope」が見つかりません（A）",
+            "別名「T」の指す先「Nope」が見つかりません（alias）",
+            "インポートする相手「Nowhere」が見つかりません（import）"
+        ]
+    );
+}
+
+#[test]
+fn found_specialization_alias_and_import_targets_are_not_problems() {
+    // Arrange（正常系：同じファイルの定義・package・修飾名・別名を指す別名・package の中身の import）
+    let text = "package P { part def B; package Q { part def C; } part def A :> B, Q::C; alias T for Q::C; alias U for T; import Q::*; import Q::C; import P::*; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn standard_library_names_are_never_missing() {
+    // Arrange（同値分割：標準ライブラリの型・標準ビュー定義・ライブラリのパッケージで修飾した名前・ライブラリから import した名前・
+    // 量と単位のパッケージの …Value・ライブラリのパッケージの import）
+    let text = "package P {
+        import ISQ::*;
+        private import ScalarValues::*;
+        import Metaobjects::SemanticMetadata;
+        import RiskMetadata::*;
+        import SI::kg;
+        part def A :> Part;
+        view def V :> GeneralView;
+        metadata def M :> SemanticMetadata;
+        metadata def N :> Metaobjects::SemanticMetadata;
+        attribute def L :> LengthValue;
+        attribute def R :> ScalarValues::Real;
+        alias Mass for ISQ::MassValue;
+        alias Lvl for RiskMetadata::LevelEnum;
+    }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn names_of_other_files_resolve_for_specialization_alias_and_import() {
+    // Arrange（F-FILE-15：フォルダの中のほかのファイルの package と、import で見える定義）
+    let focus = "package App { import Vehicles::*; part def Sports :> Car; part def Truck :> Vehicles::Car; alias C for Vehicles::Car; }";
+    // Act
+    let m = run_files(focus, &[VEHICLES]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn missing_names_in_other_files_are_left_out_and_unimported_names_are_missing() {
+    // Arrange（異常系：ほかのファイルにだけある見つからない相手は出さない。取り込んでいない名前の特殊化は見つからない）
+    let focus = "package App { part def Sports :> Car; }";
+    // Act
+    let m = run_files(
+        focus,
+        &[
+            VEHICLES,
+            "package B { part def X :> Nope; alias T for Nope; import Nowhere::*; }",
+        ],
+    );
+    // Assert
+    assert_eq!(
+        errors(&m),
+        ["引き継ぐ定義「Car」が見つかりません（Sports）"]
+    );
 }

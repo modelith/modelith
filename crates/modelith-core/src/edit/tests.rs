@@ -1998,6 +1998,19 @@ fn rename_feature_follows_inherited_references_through_specializations() {
 }
 
 #[test]
+fn rename_feature_stops_on_a_usage_that_redefines_its_own_general() {
+    // Arrange（異常系：p の一般の側が自分の中の q で、q が q を再定義する輪。たどり続けずに終わる）
+    let text = "package P { part def W { attribute n; } part p :> p.q { part q :>> q; attribute k = n; } }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"u:n","ctx":"W","name":"m"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def W { attribute m; } part p :> p.q { part q :>> q; attribute k = n; } }"
+    );
+}
+
+#[test]
 fn set_attribute_is_refused_for_bad_or_used_names_and_stray_characters() {
     // 同値分割：空の名前・既にある名前・型や値に ; { } 改行・見つからない属性・本体のある属性
     let text = "package P { part def A { attribute m; attribute n; attribute b { } } }";

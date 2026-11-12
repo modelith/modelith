@@ -151,6 +151,9 @@ impl Builder<'_> {
     }
 }
 
+/// 再定義の相手を探すために、引き継いだ特性を入れ子でたどる数の上限（輪になった再定義で止まらないように）。
+const MAX_INHERIT_DEPTH: usize = 8;
+
 /// 参照のそれぞれが、特性 `target` を指すか（再定義 `:>>` をたどって `target` に行き着くものも含む）。
 /// 特性の名前を変えるとき、持ち主の外の参照（`W::n`・`f.n`・型や特殊化で引き継いだ先の `:>> n`）を探すのに使う（F-EDIT-3）。
 ///
@@ -226,7 +229,7 @@ impl Builder<'_> {
             if let Some(c) = self.child_named(x, nm) {
                 return vec![c];
             }
-            let inherited = self.inherited_named(x, nm);
+            let inherited = self.inherited_named(x, nm, 0);
             if !inherited.is_empty() {
                 return inherited;
             }
@@ -241,21 +244,27 @@ impl Builder<'_> {
     ///
     /// - `owner`：引き継ぐ側の宣言の番号
     /// - `nm`：探す名前
+    /// - `depth`：再定義の相手を探すために入れ子でたどった数（最初は 0。上限を超えたら探さない）
     ///
     /// # 戻り値
     ///
-    /// 一般の側の各段で見つかった特性の番号（近い段から）。無ければ空。
+    /// 一般の側の各段で見つかった特性の番号（近い段から）。無ければ空（たどった数が上限を超えたときも）。
     ///
     /// # 例
     ///
     /// ```text
     /// // "part def W { attribute n; } part def W2 :> W; part def B { part f : W2; }" のとき
-    /// inherited_named(f の番号, "n") → [W の n]
-    /// inherited_named(W の番号, "n") → []   // 自身の中身は含めない
+    /// inherited_named(f の番号, "n", 0) → [W の n]
+    /// inherited_named(W の番号, "n", 0) → []   // 自身の中身は含めない
+    /// inherited_named(f の番号, "n", 9) → []   // 上限を超えた
     /// ```
-    fn inherited_named(&self, owner: usize, nm: &str) -> Vec<usize> {
+    fn inherited_named(&self, owner: usize, nm: &str, depth: usize) -> Vec<usize> {
+        // 自分の中の使用を一般の側にした使用（`part p :> p.q { part q :>> q; }`）は輪になるので、たどる数を限る
+        if depth > MAX_INHERIT_DEPTH {
+            return Vec::new();
+        }
         let mut seen = HashSet::from([owner]);
-        let mut stack = self.generals_of(owner);
+        let mut stack = self.generals_of(owner, depth);
         let mut out = Vec::new();
         while let Some(x) = stack.pop() {
             if !seen.insert(x) {
@@ -264,7 +273,7 @@ impl Builder<'_> {
             if let Some(c) = self.child_named(x, nm) {
                 out.push(c);
             }
-            stack.extend(self.generals_of(x));
+            stack.extend(self.generals_of(x, depth));
         }
         out
     }
@@ -274,6 +283,7 @@ impl Builder<'_> {
     /// # 引数
     ///
     /// - `x`：宣言の番号
+    /// - `depth`：`inherited_named` を入れ子でたどった数
     ///
     /// # 戻り値
     ///
@@ -283,18 +293,18 @@ impl Builder<'_> {
     ///
     /// ```text
     /// // "part def W; part def W2 :> W; part def B { part f : W2; }" のとき
-    /// generals_of(W2 の番号) → [W]
-    /// generals_of(f の番号)  → [W2]
-    /// generals_of(W の番号)  → []
+    /// generals_of(W2 の番号, 0) → [W]
+    /// generals_of(f の番号, 0)  → [W2]
+    /// generals_of(W の番号, 0)  → []
     /// ```
-    fn generals_of(&self, x: usize) -> Vec<usize> {
+    fn generals_of(&self, x: usize, depth: usize) -> Vec<usize> {
         let e = self.e(x);
         let mut out: Vec<usize> = Vec::new();
         if !e.is_def {
             out.extend(self.type_scope(x));
         }
         for s in &e.specs {
-            out.extend(self.spec_targets(x, s));
+            out.extend(self.spec_targets(x, s, depth));
         }
         out
     }
@@ -306,6 +316,7 @@ impl Builder<'_> {
     ///
     /// - `x`：相手を書いた宣言の番号
     /// - `s`：`x` の特殊化などの 1 つ
+    /// - `depth`：`inherited_named` を入れ子でたどった数
     ///
     /// # 戻り値
     ///
@@ -315,10 +326,10 @@ impl Builder<'_> {
     ///
     /// ```text
     /// // "part def W { attribute n; } part def W2 :> W { attribute :>> n; }" のとき
-    /// spec_targets(W2 の番号, ":> W")            → [W]
-    /// spec_targets(W2 の n の番号, ":>> n")       → [W の n]
+    /// spec_targets(W2 の番号, ":> W", 0)            → [W]
+    /// spec_targets(W2 の n の番号, ":>> n", 0)       → [W の n]
     /// ```
-    fn spec_targets(&self, x: usize, s: &crate::project::Spec) -> Vec<usize> {
+    fn spec_targets(&self, x: usize, s: &crate::project::Spec, depth: usize) -> Vec<usize> {
         let e = self.e(x);
         if e.is_def {
             return (s.op == "specializes")
@@ -330,7 +341,7 @@ impl Builder<'_> {
         let plain = !s.target.contains('.') && !s.target.contains("::");
         match e.pe {
             Some(pe) if s.op == "redefines" && plain => {
-                self.inherited_named(pe, crate::project::text::unquote(&s.target))
+                self.inherited_named(pe, crate::project::text::unquote(&s.target), depth + 1)
             }
             _ => self.resolve(&s.target, e.pe).into_iter().collect(),
         }
@@ -365,7 +376,7 @@ impl Builder<'_> {
                 continue;
             }
             for s in self.e(x).specs.iter().filter(|s| s.op == "redefines") {
-                stack.extend(self.spec_targets(x, s));
+                stack.extend(self.spec_targets(x, s, 0));
             }
         }
         false

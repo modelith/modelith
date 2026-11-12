@@ -147,8 +147,6 @@ Modelith を支援してくださっている方々です。毎月 $10 以上の
 
 <!-- サポーター（毎月 $10）: GitHub アカウント -->
 
-まだいません。最初のスポンサーになっていただけたら、とてもうれしいです。
-
 ## License
 
 Copyright (C) 2026 The Modelith Authors

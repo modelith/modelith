@@ -2,7 +2,7 @@
 
 import type { Family } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
-import { esc } from "./dom";
+import { esc } from "./escape";
 import {
   boundaryBoxes, BOUNDARY, boxesOf, LANE_HEAD, laneRects, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, regionSeparators, segmentMids, STATE_HEAD, stateSize, stateTitle,
   textWidth, type Box, type NodeBox, type Route,

@@ -24,6 +24,9 @@ export type ColorFn = (name: string) => string;
  */
 export const CV: ColorFn = (v) => `var(--${v})`;
 
+/** 線の形（画面の「直角」「曲線」）。 */
+export type EdgeStyle = "ortho" | "curve";
+
 export interface MarkupOpts {
   font?: string;
   mono?: string;
@@ -36,7 +39,7 @@ export interface MarkupOpts {
   selPin?: { node: string; pin: string } | null;
   pulse?: Set<string>;
   cands?: Set<string> | null;
-  edgeStyle?: "ortho" | "curve";
+  edgeStyle?: EdgeStyle;
   dim?: Set<string> | undefined;
   phases?: boolean;
   /** トレースの抜けのある要素のキー → 印（△）のツールチップ（F-TRACE-2）。 */

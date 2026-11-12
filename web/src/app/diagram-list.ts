@@ -4,10 +4,10 @@ import type { ModelView } from "../core";
 import { closeCtx, openCtx } from "./ctxmenu";
 import { $, esc } from "./dom";
 import { stdViewLabel } from "../core";
-import { savedViewHint } from "./labels";
+import { savedViewHint } from "../render/labels";
 import { openModelView } from "./panels";
 import { S } from "./state";
-import { viewIcon } from "./svg";
+import { viewIcon } from "../render/svg";
 import { createDiagram, deleteDiagram, renameDiagram } from "./view-ops";
 import { baseViewOf } from "./views";
 

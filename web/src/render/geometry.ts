@@ -4,7 +4,7 @@ import type { Entry, Expr, ModelEdge, ModelLane, ModelNode, Port, PortDir } from
 import { flowBodyLines, flowDetail, flowShape } from "./action-flow";
 import { isPseudoState, stateActionLines } from "./state-machine";
 import type { Pos, Side, ViewLayout } from "./layout";
-import type { ViewDef } from "./views";
+import type { ViewContent, ViewDef } from "./view-content";
 
 export const W = 224;
 export const HEAD = 44;
@@ -1537,6 +1537,46 @@ export function placeInLanes(nodes: readonly ModelNode[], lanes: readonly ModelL
       x += width(n) + LANE_GAP;
     }
   }
+}
+
+/**
+ * 図で座標の無い要素を自動で並べる（pos を書き換える。F-VIEW-3）。画面の ensureLayout と、画面の外の図の書き出しが共用する。
+ * 既に置かれた要素があれば、その一番下から 80 下に並べる。中の部品（内部ブロック図の入れ子）は外の部品の中に縦に積み、
+ * n 項の接続の点は、つながる要素の重心に、メモは注釈する要素の近くに置く。幅の狭い要素（アクションの流れの図の記号）は列の中央に置き、
+ * アクティビティ図に区画があれば、要素を受け持つ部品の列に置く。
+ * 状態遷移の図は、状態の入れ子と遷移の向きで並べる（placeStates）。シーケンス図では何もしない。
+ *
+ * @param c 図に出す要素と関係（contentOf の結果）
+ * @param v ビューの定義（段の決め方。id が "seq" なら何もしない）
+ * @param pos この図の配置の座標（要素のキー → 左上）。書き換える
+ * @param firstPhase モデルの最初の工程（@Phase の列挙の先頭。無ければ null）
+ * @example
+ * // ブロック定義図に A と B があり、A だけが (0, 0) に置かれている（高さ 44）
+ * placeView({ nodes: [A, B], edges: [] }, viewDef("structure"), pos, null) // pos.B → [0, 124]（A の下から 80 下）
+ * placeView(seqContent, viewDef("seq"), pos, null)                         // pos は変わらない（シーケンス図）
+ */
+export function placeView(c: ViewContent, v: ViewDef, pos: Record<string, Pos>, firstPhase: string | null): void {
+  if (v.id === "seq") return;
+  if (v.id === "stm") {
+    placeStates(c.nodes, c.edges, c.regions ?? [], pos);
+    return;
+  }
+  const { nodes, edges, lanes } = c;
+  const heightOf = (n: ModelNode): number => stackedHeight(n, nodes);
+  const missing = nodes.filter((n) => !pos[n.key] && !n.junction && !n.container && !n.note);
+  if (missing.length) {
+    const placed = nodes.flatMap((n) => {
+      const p = pos[n.key];
+      return p && !n.junction && !n.container ? [p[1] + heightOf(n)] : [];
+    });
+    const oy = placed.length ? Math.max(...placed) + 80 : 0;
+    autoPlace(missing, edges, pos, v, firstPhase, oy, heightOf, (n) => stackedWidth(n, nodes));
+    // アクティビティ図の区画（swimlane）があれば、置いたばかりの要素を区画の列に置き直す
+    if (lanes?.length) placeInLanes(nodes, lanes, pos, new Set(missing.map((n) => n.key)));
+  }
+  placeNested(nodes, pos);
+  placeJunctions(nodes, edges, pos);
+  placeNotes(nodes, edges, pos);
 }
 
 /** 内部ブロック図の枠の上のポートの四角の一辺。 */

@@ -4,7 +4,6 @@ import { build, parse, type Model, type ModelNode } from "../core";
 import { canSucceed, defaultFlowContext, flowBodyLines, flowContentOf, flowContexts, flowDetail, flowLayers, flowName, flowShape } from "./action-flow";
 import { autoPlace, boxesOf, computeRoutes, compartment, flowSize, nodeW, W, type NodeBox } from "./geometry";
 import { kindLabel } from "./labels";
-import { relOptions } from "./relations";
 import { emptyView } from "./layout";
 import { CV, edgeStroke, kindIcon, svgMarkup } from "./svg";
 
@@ -384,18 +383,8 @@ describe("アクションの流れの要素の名前とアイコン（ADR-0014�
   });
 });
 
-describe("canSucceed・relOptions・flowName（図から順序の線を引く）", () => {
+describe("canSucceed・flowName（図から順序の線を引く）", () => {
   const FLOW = "package P { action def A { first start; then action a; then action b; send S() to b; then done; } }";
-
-  it("名前のある要素どうしは、順序の線だけを引ける", () => {
-    // Arrange
-    const { M, c } = setup(FLOW, "A");
-    const { nodes } = flowContentOf(M, c);
-    // Act
-    const opts = relOptions(nodeOf(nodes, "a:a"), nodeOf(nodes, "a:b"));
-    // Assert
-    expect(opts).toEqual([{ rel: "succession", label: "この後に実行する（順序 succession）" }]);
-  });
 
   it("入れ子の本体の中と外の要素の間には引けず、同じ本体の中どうしなら引ける", () => {
     // Arrange

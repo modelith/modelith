@@ -1,7 +1,7 @@
 // 一般の図のメモ（comment、8.2.3.4）。注釈する要素が図にあれば、メモを図の要素として足し、要素へ破線を引く。
 
 import type { ModelEdge, ModelNode, ModelNote } from "../core";
-import type { ViewContent } from "./views";
+import type { ViewContent } from "./view-content";
 
 /**
  * 一般の図の内容に、図に出した要素を注釈するメモと、メモから要素への線（annotate）を足す。

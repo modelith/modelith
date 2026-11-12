@@ -1,15 +1,15 @@
 // 図の下に出るインスペクタ（選択中の要素・関係・接続点の情報と操作）。
 
 import { type Entry, lineOf, type ModelEdge, type ModelNode, type PortDir } from "../core";
-import { flowDetail, flowName } from "./action-flow";
-import { eventName } from "./sequence";
-import { isPseudoState, stateActionLines, stateName } from "./state-machine";
+import { flowDetail, flowName } from "../render/action-flow";
+import { eventName } from "../render/sequence";
+import { isPseudoState, stateActionLines, stateName } from "../render/state-machine";
 import { annotationsHtml } from "./annotations";
 import { $, closest, esc } from "./dom";
 import { hasShape, resetShape } from "./edge-shape";
 import { openProjectFile, otherFileText } from "./other-file";
-import { attrText, kindLabel } from "./labels";
-import type { Pin } from "./geometry";
+import { attrText, kindLabel } from "../render/labels";
+import type { Pin } from "../render/geometry";
 import { centerOn, placeMinimap, render, scrollEditorTo } from "./render";
 import { OPS, MSGOPS, PHASEOPS, alignSel, deleteSel, selNodes, setPhaseSel, uniqueChild, type AlignMode } from "./ops";
 import { openTab, renderTree, setTab } from "./panels";

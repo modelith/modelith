@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { standardViewName, stdViewLabel } from "../core";
 import { attrText, diagramName, docChangedMessage, savedViewHint, tabTitle, v2ViewNote, viewHint } from "./labels";
-import { VIEWS } from "./views";
+import { VIEWS } from "./view-content";
 
 describe("diagramName（ビューの名前を「〜の図」と呼べる形にする）", () => {
   it("「図」で終わらない名前には「の図」を付ける", () => {

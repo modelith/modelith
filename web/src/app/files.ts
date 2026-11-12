@@ -20,7 +20,7 @@ import { modalOpen } from "./modal";
 import { flushEdit } from "./editor";
 import { download } from "./export";
 import { dropHistory, recordHistory, useHistory } from "./history";
-import { layoutFromJson, type Layout } from "./layout";
+import { layoutFromJson, type Layout } from "../render/layout";
 import { isEmptyLayout, keepExtras, layoutNotSavedNote, parseLayoutFile, serializeLayout, writeLock } from "./layout-file";
 import { clearSel, S } from "./state";
 import { addPlugin, initPlugins, openPlugins, pluginExplorerHtml, reloadPlugins, type PickedPluginFolder } from "./plugin-panel";

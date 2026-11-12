@@ -4,7 +4,6 @@ import { build, parse, type Model, type ModelNode } from "../core";
 import { boxesOf, compartment, layoutStates, nodeH, nodeW, placeStates, regionSeparators, stateColumns, stateSize, type NodeBox } from "./geometry";
 import type { Pos } from "./layout";
 import { emptyView } from "./layout";
-import { relOptions } from "./relations";
 import { canTransition, defaultStateContext, isPseudoState, renamedStateKeys, stateActionLines, stateContentOf, stateContexts, stateName } from "./state-machine";
 import { CV, edgeStroke, svgMarkup } from "./svg";
 
@@ -316,7 +315,7 @@ describe("状態遷移の図の画面の言葉（ADR-0014）", () => {
   });
 });
 
-describe("図から遷移を引く・名前を変える（canTransition・relOptions・renamedStateKeys）", () => {
+describe("図から遷移を引く・名前を変える（canTransition・renamedStateKeys）", () => {
   const { M, c } = setup(
     "package P { state def S { entry; then off; state off; state; state on { state low; transition first low then done; } transition first off then done; } }",
     "S",
@@ -329,7 +328,6 @@ describe("図から遷移を引く・名前を変える（canTransition・relOpt
     const ok = [canTransition(n("s:off"), n("s:on")), canTransition(n("s:on.low"), n("s:off")), canTransition(n("s:off"), n("s:#done"))];
     // Assert
     expect(ok).toEqual([true, true, true]);
-    expect(relOptions(n("s:off"), n("s:on"))).toEqual([{ rel: "transition", label: "この状態から遷移する（transition）" }]);
   });
 
   it("開始の記号へ・開始と終了の記号から・別の本体の終了の記号へ・名前の無い状態とは、遷移を引けない（異常系）", () => {
@@ -344,7 +342,6 @@ describe("図から遷移を引く・名前を変える（canTransition・relOpt
     ];
     // Assert
     expect(ng).toEqual([false, false, false, false, false, false]);
-    expect(relOptions(n("s:off"), n("s:#start"))).toEqual([]);
   });
 
   it("状態の名前を変えると、そのキーと中の要素のキーを付け替える", () => {

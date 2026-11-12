@@ -30,7 +30,7 @@ import { loadingView, watchLoading } from "./app/loading";
 import { recoveryHtml, showStartupBox, startupErrorHtml } from "./app/recovery";
 import { highlight, render, renderMinimap } from "./app/render";
 import { S } from "./app/state";
-import { DEFS } from "./app/svg";
+import { DEFS } from "./render/svg";
 import { attachCore, coreHooks, onAnalyzed, relayout, settled, toast } from "./app/sync";
 import { installUnexpectedErrorHandlers } from "./app/unexpected";
 import { CC } from "./app/views";

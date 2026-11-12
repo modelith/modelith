@@ -2,6 +2,9 @@
 
 import { channelName } from "../channel";
 
+// エスケープは DOM に触れないので render/escape.ts に置く（画面の外の図の書き出しと共用する）。今までどおり dom から読み込めるようにする
+export { esc } from "../render/escape";
+
 /**
  * セレクタに合う最初の要素を返す。無ければ index.html との食い違いなので例外にする。
  *
@@ -16,19 +19,6 @@ export function $<T extends Element = HTMLElement>(sel: string): T {
   if (!el) throw new Error(`element not found: ${sel}`);
   return el;
 }
-
-/**
- * HTML・SVG の属性と本文に埋め込む文字列をエスケープする（& < > " の 4 文字）。文字列でない値は文字列にする。
- *
- * @param s 埋め込む値
- * @returns エスケープした文字列
- * @example
- * esc('<a href="x">&</a>') // → "&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;"
- * esc(42)                  // → "42"
- * esc("'")                 // → "'"（単引用符はそのまま）
- */
-export const esc = (s: unknown): string =>
-  String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 
 /**
  * イベントの発生元から、セレクタに合う最も近い祖先（自身を含む）を探す。

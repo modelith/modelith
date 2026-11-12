@@ -1,7 +1,8 @@
 // 画面に出す種類の名前（ADR-0014、docs/development/ui-writing.md）。
 // 利用者は SysML v2 の構文を覚えていないので、画面では図の言葉を使い、キーワードは補足にする。
 
-import { type Entry, stdViewLabel } from "../core";
+import type { Entry } from "../core";
+import { stdViewLabel } from "../core/views";
 
 const KIND_LABEL: Record<string, string> = {
   "part def": "部品定義", part: "部品", "attribute def": "属性定義", attribute: "属性", "port def": "ポート定義", port: "ポート",

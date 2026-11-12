@@ -1,7 +1,7 @@
 // 図の上のポインタ操作（選択・移動・線を引く・範囲選択・パン・ピンチ）と表示範囲の調整。
 
 import { $, closest } from "./dom";
-import { boxesOf, nearestBorder, pinPoint, W } from "./geometry";
+import { boxesOf, nearestBorder, pinPoint, W } from "../render/geometry";
 import { spaceKeyPans } from "./keyboard";
 import { renderInspector } from "./inspector";
 import { MSGOPS, OPS, selNodes, setSelection, toggleSel } from "./ops";
@@ -11,10 +11,10 @@ import { pinsFor } from "./pins";
 import { applyTf, boxOf, highlight, render, renderOverlay, scrollEditorTo } from "./render";
 import { cancelConnect, clearSel, S, type EndSpec } from "./state";
 import { insertBend, moveBend, removeBend, setAnchor } from "./edge-shape";
-import { packageBoxes, SEQ, seqGeom } from "./svg";
+import { packageBoxes, SEQ, seqGeom } from "../render/svg";
 import { commitLayout, toast } from "./sync";
 import { CC, curLayout, curView, edgeById, nodeByKey, viewContent, visibleNodes } from "./views";
-import type { Pos, Side } from "./layout";
+import type { Pos, Side } from "../render/layout";
 
 /**
  * 図の枠の要素（#wrap）を返す。

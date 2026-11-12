@@ -4,12 +4,12 @@ import { inOpenFile, type Entry, type ModelEdge, type ModelNode } from "../core"
 import { renameEdgeKeys } from "./edge-shape";
 import { ask } from "./dialog";
 import { perform } from "./intent";
-import { flowName } from "./action-flow";
-import { renamedStateKeys, stateName } from "./state-machine";
-import { docChangedMessage, kindLabel } from "./labels";
+import { flowName } from "../render/action-flow";
+import { renamedStateKeys, stateName } from "../render/state-machine";
+import { docChangedMessage, kindLabel } from "../render/labels";
 import { addToView, editableView } from "./view-ops";
 import { shownDocName } from "./files";
-import { nodeH, W } from "./geometry";
+import { nodeH, W } from "../render/geometry";
 import { docLabel, renderInspector, startRename } from "./inspector";
 import { attachEnds } from "./pins";
 import { KW_FOR, type RelKind } from "./relations";
@@ -17,7 +17,7 @@ import { highlight, render } from "./render";
 import { cancelConnect, clearSel, S } from "./state";
 import { commitLayout, dismissToast, setText, settled, toast } from "./sync";
 import { CC, curLayout, nodeByKey, phaseLabel } from "./views";
-import type { Pos } from "./layout";
+import type { Pos } from "../render/layout";
 import { isPackageName, packageNameFor } from "./new-package";
 import { renamedMessage } from "./rename-text";
 

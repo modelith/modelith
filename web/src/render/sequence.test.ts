@@ -1,7 +1,7 @@
 // シーケンス図（SequenceView、9.2.20.2.7・8.2.3.9）の中身と、その描き方。ライフライン・イベントのキーと線の ID は、Rust のコアが決めたものを使う（ADR-0016）。
 import { describe, expect, it } from "vitest";
 import { build, parse, type Model, type ModelNode } from "../core";
-import { drawioEventCell } from "./export";
+import { drawioEventCell } from "./diagram-export";
 import { eventName, seqContentOf } from "./sequence";
 import { CV, seqGeom, seqMarkup, seqRowY } from "./svg";
 

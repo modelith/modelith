@@ -8,7 +8,7 @@ import { cancelConnect, S } from "./state";
 import { problemCopyRows, reparse, notifyTextChange, setSync, toast } from "./sync";
 import { copiedText, problemsText } from "./problem-copy";
 import { showLevelsDialog } from "./levels-dialog";
-import { diagramName } from "./labels";
+import { diagramName } from "../render/labels";
 import { goToGap } from "./gap-guide";
 import { isNarrow } from "./panels";
 import { gapScreen } from "./trace-gap";

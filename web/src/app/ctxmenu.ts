@@ -1,19 +1,19 @@
 // 右クリック（長押し）メニュー。
 
 import type { ModelEdge, ModelNode } from "../core";
-import { flowName } from "./action-flow";
-import { isPseudoState, stateName } from "./state-machine";
+import { flowName } from "../render/action-flow";
+import { isPseudoState, stateName } from "../render/state-machine";
 import { local, placeUsageAt, fit, toCanvas } from "./canvas";
 import { $, closest, esc } from "./dom";
-import type { Pin } from "./geometry";
+import type { Pin } from "../render/geometry";
 import { act, renderInspector, startRename } from "./inspector";
 import { alignSel, deleteSel, MSGOPS, OPS, PHASEOPS, setPhaseSel, setSelection, toggleSel } from "./ops";
 import { openEntry, openTarget, PALETTE, placeTool, selectEntry, setTab } from "./panels";
 import { DIR_LABEL, PINOPS, pinsFor } from "./pins";
 import { highlight, render, scrollEditorTo } from "./render";
 import { clearSel, S } from "./state";
-import { kindLabel } from "./labels";
-import { kindIcon } from "./svg";
+import { kindLabel } from "../render/labels";
+import { kindIcon } from "../render/svg";
 import { relayout, toast } from "./sync";
 import { CC, edgeById, nodeByKey, phaseLabel } from "./views";
 import { addToView, canAddToView, deleteDiagram, editableView, removeFromView, renameDiagram } from "./view-ops";

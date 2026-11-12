@@ -1,4 +1,4 @@
-//! 内部ブロック図（InterconnectionView）の要素のキーと線の ID。UI の `web/src/app/views.ts` の `ibdContent` と同じ決め方にする
+//! 内部ブロック図（InterconnectionView）の要素のキーと線の ID。UI の `web/src/render/view-content.ts` の `ibdContent` と同じ決め方にする
 //! （UI が描いた線や要素を、操作の意図のキーと ID から探し直すため。ADR-0016）。
 //!
 //! - 部品：対象の直下の部品は `u:a`。その中の部品は `u:a.b`、さらに中は `u:a.b.c`（どの深さでも同じ）。中の部品は、部品の本体に書いたものと、

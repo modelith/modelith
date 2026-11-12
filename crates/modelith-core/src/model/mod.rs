@@ -315,7 +315,7 @@ pub fn is_lib(path: &str, quantities_imported: bool) -> bool {
         && (quantities_imported || (qualified && is_quantity_path(path)))
 }
 
-/// 種類から色分けの系統を決める。web の種類のアイコンの色（`web/src/app/svg.ts` の `family`）と同じ。
+/// 種類から色分けの系統を決める。web の種類のアイコンの色（`web/src/render/svg.ts` の `family`）と同じ。
 /// 種類の頭（`requirement`・`concern`・`verification`・`analysis`・`constraint`・`calc`・`state`・`action`・`use case`・`part`）で決め、定義と使用を区別しない。
 ///
 /// # 引数

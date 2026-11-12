@@ -2,14 +2,14 @@
 
 import type { Family } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
-import { esc } from "./dom";
+import { esc } from "./escape";
 import {
   boundaryBoxes, BOUNDARY, boxesOf, LANE_HEAD, laneRects, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, regionSeparators, segmentMids, STATE_HEAD, stateSize, stateTitle,
   textWidth, type Box, type NodeBox, type Route,
 } from "./geometry";
 import { isPseudoState } from "./state-machine";
 import type { ViewLayout } from "./layout";
-import { phaseLabel, type ViewContent } from "./views";
+import { phaseLabel, type ViewContent } from "./view-content";
 
 /** 色の名前（CSS 変数名から `--` を除いたもの）を値にする。 */
 export type ColorFn = (name: string) => string;
@@ -24,6 +24,9 @@ export type ColorFn = (name: string) => string;
  */
 export const CV: ColorFn = (v) => `var(--${v})`;
 
+/** 線の形（画面の「直角」「曲線」）。 */
+export type EdgeStyle = "ortho" | "curve";
+
 export interface MarkupOpts {
   font?: string;
   mono?: string;
@@ -36,7 +39,7 @@ export interface MarkupOpts {
   selPin?: { node: string; pin: string } | null;
   pulse?: Set<string>;
   cands?: Set<string> | null;
-  edgeStyle?: "ortho" | "curve";
+  edgeStyle?: EdgeStyle;
   dim?: Set<string> | undefined;
   phases?: boolean;
   /** トレースの抜けのある要素のキー → 印（△）のツールチップ（F-TRACE-2）。 */

@@ -2,7 +2,8 @@
 import { describe, expect, it } from "vitest";
 import type { Entry, ModelEdge, ModelLane, ModelNode } from "../core";
 import { build, parse } from "../core/rust";
-import { assertWord, autoPlace, BOUNDARY, boundaryBoxes, boxesOf, LANE_HEAD, LANE_PAD, laneRects, placeInLanes, compartment, DOT, downward, endLabelPos, featureText, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
+import { contentOf, viewDef, type ViewTarget } from "./view-content";
+import { assertWord, autoPlace, BOUNDARY, boundaryBoxes, boxesOf, LANE_HEAD, LANE_PAD, laneRects, placeInLanes, compartment, DOT, downward, endLabelPos, featureText, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, placeView, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -478,3 +479,54 @@ describe("laneRects・placeInLanes（アクティビティ図の区画、8.2.3.1
   });
 });
 
+
+describe("placeView（座標の無い要素を自動で並べる、F-VIEW-3）", () => {
+  const auto = (view: string): ViewTarget => ({ view, modelView: null, ibdCtx: null, seqCtx: null, flowCtx: null, stateCtx: null, phase: "" });
+
+  it("置かれた要素があれば、座標の無い要素をその一番下から 80 下に並べる", () => {
+    // Arrange
+    const M = build(parse("package P { part def A; part def B; }"));
+    const c = contentOf(M, auto("structure"), {});
+    const pos: Record<string, [number, number]> = { A: [0, 0] };
+    const a = c.nodes.find((n) => n.key === "A");
+    if (!a) throw new Error("A がありません");
+    // Act
+    placeView(c, viewDef("structure"), pos, null);
+    // Assert
+    expect(pos["A"]).toEqual([0, 0]);
+    expect(pos["B"]?.[1]).toBe(nodeH(a) + 80);
+  });
+
+  it("すべて置かれていれば、座標を変えない（境界）", () => {
+    // Arrange
+    const M = build(parse("package P { part def A; part def B; }"));
+    const c = contentOf(M, auto("structure"), {});
+    const pos: Record<string, [number, number]> = { A: [0, 0], B: [300, 40] };
+    // Act
+    placeView(c, viewDef("structure"), pos, null);
+    // Assert
+    expect(pos).toEqual({ A: [0, 0], B: [300, 40] });
+  });
+
+  it("シーケンス図では何もしない", () => {
+    // Arrange
+    const M = build(parse("package P { part def A; occurrence def S { part a : A; part b : A; message m from a to b; } }"));
+    const c = contentOf(M, { ...auto("seq"), seqCtx: "S" }, {});
+    const pos: Record<string, [number, number]> = {};
+    // Act
+    placeView(c, viewDef("seq"), pos, null);
+    // Assert
+    expect(pos).toEqual({});
+  });
+
+  it("状態遷移図は、状態を遷移の向きに並べる（placeStates）", () => {
+    // Arrange
+    const M = build(parse("package P { state def K { entry; then idle; state idle; transition first idle then busy; state busy; } }"));
+    const c = contentOf(M, { ...auto("stm"), stateCtx: "K" }, {});
+    const pos: Record<string, [number, number]> = {};
+    // Act
+    placeView(c, viewDef("stm"), pos, null);
+    // Assert
+    expect((pos["s:idle"]?.[0] ?? NaN) < (pos["s:busy"]?.[0] ?? NaN)).toBe(true);
+  });
+});

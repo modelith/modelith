@@ -27,6 +27,18 @@
 
 プラグインとの契約は別リポジトリ [`modelith/plugin-sdk`](https://github.com/modelith/plugin-sdk) にある（ADR-0004）。
 
+### web/ の中の分け方
+
+| パス | 内容 |
+| --- | --- |
+| `web/src/core/` | Rust のコア（wasm）の呼び出しと、その結果の型 |
+| `web/src/render/` | 図の中身の選び方・配置・SVG と draw.io の文字列化。DOM・画面の状態・ブラウザの保存領域に触れない |
+| `web/src/app/` | 画面（DOM の操作・画面の状態 `S`・操作の受け付け）。図は `render/` を呼んで描く |
+
+`render/` は、画面の外（Node）で図を書き出すための層でもある（ADR-0024 の 3）。入口の `render/index.ts` は、モデル・どの図か・保存した配置・描き方を引数で受け取り、
+画面の「エクスポート…」と同じ SVG・draw.io を返す。import の向きは `app/` → `render/` → `core/` の一方向で、`render/boundary.test.ts` が、
+入口から `app/`・ブラウザの API・npm のパッケージに届かないことを確かめる。文字の幅は、DOM で測らず、`render/geometry.ts` の文字ごとの幅の目安で決める（画面と書き出しで同じ）。
+
 ## ロードマップ
 
 | 段階 | 内容 |

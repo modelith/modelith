@@ -4,7 +4,7 @@ import type { Entry, Expr, ModelEdge, ModelLane, ModelNode, Port, PortDir } from
 import { flowBodyLines, flowDetail, flowShape } from "./action-flow";
 import { isPseudoState, stateActionLines } from "./state-machine";
 import type { Pos, Side, ViewLayout } from "./layout";
-import type { ViewDef } from "./views";
+import type { ViewDef } from "./view-content";
 
 export const W = 224;
 export const HEAD = 44;

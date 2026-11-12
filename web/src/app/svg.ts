@@ -9,7 +9,7 @@ import {
 } from "./geometry";
 import { isPseudoState } from "./state-machine";
 import type { ViewLayout } from "./layout";
-import { phaseLabel, type ViewContent } from "./views";
+import { phaseLabel, type ViewContent } from "./view-content";
 
 /** 色の名前（CSS 変数名から `--` を除いたもの）を値にする。 */
 export type ColorFn = (name: string) => string;

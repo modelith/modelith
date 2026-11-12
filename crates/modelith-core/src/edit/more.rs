@@ -164,10 +164,7 @@ pub(super) fn update_message(
     ty: &str,
 ) -> Result<Change, Refusal> {
     let name = name.trim();
-    if name
-        .chars()
-        .any(|c| c == '\'' || c == '\\' || c.is_control())
-    {
+    if super::ops::has_bad_name_char(name) {
         return Err(super::ops::BAD_RENAME.to_owned());
     }
     let c = d.context(ctx)?;
@@ -1014,7 +1011,7 @@ fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], inden
 ///
 /// # 戻り値
 ///
-/// 書いた後のテキストと、選ぶ名前・光らせる範囲（足した view）。名前が空・既にある図や同じ package の直下の要素の名前・知らない描き方・package が無い・
+/// 書いた後のテキストと、選ぶ名前・光らせる範囲（足した view）。名前が空・使えない文字（`'`・`\`・改行など）を含む・既にある図や同じ package の直下の要素の名前・知らない描き方・package が無い・
 /// 一般の図でないのに対象が無いときは理由の文（`Err`）。一般の図は、要素の無い空の図も作れる（F-VIEW-8）。
 ///
 /// # 例
@@ -1028,6 +1025,7 @@ fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], inden
 /// save_view(Doc("part def A;"), "w", "general", [])                       → Err("図を置くパッケージがありません。先にパッケージを作ってください")
 /// save_view(Doc("package P { part def A; view v; }"), "A", "general", [A]) → Err("「A」という名前の要素が既にあります。…")
 /// save_view(Doc("package P { part def A; }"), "P", "general", [A])         → Err("「P」はパッケージの名前なので、…")
+/// save_view(Doc("package P { part def A; }"), "it's", "general", [])       → Err(BAD_RENAME)
 /// ```
 pub(super) fn save_view(
     d: &Doc<'_>,
@@ -1038,6 +1036,10 @@ pub(super) fn save_view(
     let name = name.trim();
     if name.is_empty() {
         return Err("図の名前を入力してください".to_owned());
+    }
+    // 要素の名前と同じ規則にする（`'` などを含む名前は、名前の変更では付けられないため。#267）
+    if super::ops::has_bad_name_char(name) {
+        return Err(super::ops::BAD_RENAME.to_owned());
     }
     if d.m.views.iter().any(|v| v.name == name) {
         return Err(format!(
@@ -1176,7 +1178,7 @@ pub(super) fn remove_from_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Cha
 /// # 戻り値
 ///
 /// 書き換えた後のテキストと、選ぶ名前・光らせる範囲（view の宣言の頭）。同じ名前ならテキストを変えずに返す。
-/// 図が無い・名前が空・既にある図の名前のときは理由の文（`Err`）。
+/// 図が無い・名前が空・使えない文字（`'`・`\`・改行など）を含む・既にある図の名前のときは理由の文（`Err`）。
 ///
 /// # 例
 ///
@@ -1184,12 +1186,16 @@ pub(super) fn remove_from_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Cha
 /// rename_view(Doc("package P { view v : GeneralView { } }"), "v", "全体") → Ok(text = "package P { view '全体' : GeneralView { } }")
 /// rename_view(Doc("package P { view v; view w; }"), "v", "w")             → Err("「w」という図は既にあります。別の名前にしてください")
 /// rename_view(Doc("package P { view v; }"), "v", " ")                     → Err("図の名前を入力してください")
+/// rename_view(Doc("package P { view v; }"), "v", "it's")                  → Err(BAD_RENAME)
 /// ```
 pub(super) fn rename_view(d: &Doc<'_>, view: &str, name: &str) -> Result<Change, Refusal> {
     let v = d.view_named(view)?;
     let name = name.trim();
     if name.is_empty() {
         return Err("図の名前を入力してください".to_owned());
+    }
+    if super::ops::has_bad_name_char(name) {
+        return Err(super::ops::BAD_RENAME.to_owned());
     }
     let e = d.e(v);
     if name == view {
@@ -1531,10 +1537,7 @@ pub(super) fn set_attribute(
     if name.is_empty() {
         return Err("属性の名前を入力してください".to_owned());
     }
-    if name
-        .chars()
-        .any(|c| c == '\'' || c == '\\' || c.is_control())
-    {
+    if super::ops::has_bad_name_char(name) {
         return Err(super::ops::BAD_RENAME.to_owned());
     }
     if ty.contains(ATTR_STOP) || value.contains(ATTR_STOP) || ty.contains('=') {

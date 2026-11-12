@@ -1469,6 +1469,31 @@ fn rename_view_is_refused_for_empty_used_or_missing_names() {
 }
 
 #[test]
+fn view_names_follow_the_element_name_rule() {
+    // 同値分割：「'」「\」・改行を含む名前は、要素の名前の変更と同じ文で断る。空白や日本語を含む名前は付けられる（#267）
+    let text = "package P { part def A; view v; }";
+    for bad in ["it's", "a\\\\b", "a\\nb"] {
+        // Act
+        let saved = refused(
+            text,
+            &format!(r#"{{"op":"saveView","name":"{bad}","kind":"general","targets":[]}}"#),
+        );
+        let renamed = refused(
+            text,
+            &format!(r#"{{"op":"renameView","view":"v","name":"{bad}"}}"#),
+        );
+        // Assert
+        assert_eq!(saved, super::ops::BAD_RENAME, "{bad}");
+        assert_eq!(renamed, super::ops::BAD_RENAME, "{bad}");
+    }
+    let (after, _) = run(
+        text,
+        r#"{"op":"saveView","name":"全体 図","kind":"general","targets":[]}"#,
+    );
+    assert!(after.contains("view '全体 図' : GeneralView"), "{after}");
+}
+
+#[test]
 fn delete_view_keeps_the_exposed_elements() {
     // Arrange
     let text = "package P {\n    part def A;\n    view v {\n        expose P::A;\n    }\n}\n";

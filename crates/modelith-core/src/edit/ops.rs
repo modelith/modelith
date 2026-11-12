@@ -11,6 +11,28 @@ use crate::syntax::{SyntaxKind, is_keyword, tokenize};
 /// 名前を変えるときに使えない文字を含む名前を断る文。
 pub(super) const BAD_RENAME: &str = "名前に「'」「\\」や改行は使えません";
 
+/// 名前に、名前を変えるときに使えない文字（`'`・`\`・改行などの制御文字）があるか（`BAD_RENAME` で断る）。
+///
+/// # 引数
+///
+/// - `name`：付けようとする名前
+///
+/// # 戻り値
+///
+/// 使えない文字があれば true。
+///
+/// # 例
+///
+/// ```text
+/// has_bad_name_char("it's")   → true
+/// has_bad_name_char("a\nb")   → true
+/// has_bad_name_char("電気 ケトル") → false
+/// ```
+pub(super) fn has_bad_name_char(name: &str) -> bool {
+    name.chars()
+        .any(|c| c == '\'' || c == '\\' || c.is_control())
+}
+
 /// 名前が、テキストの書き方で使う言葉（SysML v2 の予約語）なら、断る理由の文を返す（予約語の名前はテキストを壊すため。#266）。
 ///
 /// # 引数
@@ -736,7 +758,7 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
     if nn.is_empty() {
         return Err("名前を入力してください".to_owned());
     }
-    if nn.chars().any(|c| c == '\'' || c == '\\' || c.is_control()) {
+    if has_bad_name_char(nn) {
         return Err(BAD_RENAME.to_owned());
     }
     let e = d.e(f.entry);

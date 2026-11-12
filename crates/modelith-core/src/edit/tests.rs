@@ -839,6 +839,41 @@ fn connect_verify_adds_to_existing_objective() {
 }
 
 #[test]
+fn connect_verify_is_refused_when_the_same_requirement_is_already_verified() {
+    // 同値分割：同じ名前で書いた verify・修飾名で書いた verify（同じ要求を指す）は断る。別の要求は足せる（connect_verify_adds_to_existing_objective）。#267
+    for text in [
+        "package P { requirement def R; verification def V { objective { verify R; } } }",
+        "package P { requirement def R; verification def V { objective { verify P::R; } } }",
+    ] {
+        // Act
+        let why = refused(
+            text,
+            r#"{"op":"connect","rel":"verify","from":"V","to":"R"}"#,
+        );
+        // Assert
+        assert_eq!(why, "同じ関係が既にあります", "{text}");
+    }
+}
+
+#[test]
+fn connect_verify_twice_from_an_empty_verification_writes_one_objective() {
+    // Arrange（境界値：1 回目で objective ができ、2 回目は同じ関係として断る）
+    let text = "package P { requirement def R; verification def V; }";
+    let (once, _) = run(
+        text,
+        r#"{"op":"connect","rel":"verify","from":"V","to":"R"}"#,
+    );
+    // Act
+    let why = refused(
+        &once,
+        r#"{"op":"connect","rel":"verify","from":"V","to":"R"}"#,
+    );
+    // Assert
+    assert_eq!(why, "同じ関係が既にあります");
+    assert_eq!(once.matches("verify R;").count(), 1, "{once}");
+}
+
+#[test]
 fn connect_flow_between_parts_and_ports() {
     // Arrange
     let text = "package P { part def E; part def F; part def C { part e : E; part f : F; } }";

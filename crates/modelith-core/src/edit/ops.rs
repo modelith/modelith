@@ -1547,6 +1547,9 @@ fn connect(
             )
         }
         "verify" => {
+            if verifies(d, a.entry, b.entry) {
+                return Err(SAME_RELATION.to_owned());
+            }
             let has_objective =
                 d.p.rels
                     .iter()
@@ -1610,7 +1613,7 @@ fn connect(
     };
     // package の直下に書く関係（満たす・導出）は、同じ文が既にあれば足さない（同じ関係が 2 行になるため。#244）
     if matches!(rel, "satisfy" | "derive") && has_statement(d.text, &snippet) {
-        return Err("同じ関係が既にあります".to_owned());
+        return Err(SAME_RELATION.to_owned());
     }
     let (text, a, b) = insert_into(d.text, host, &snippet);
     Ok(Change {
@@ -1618,6 +1621,43 @@ fn connect(
         select: None,
         flash: Some((a, b)),
     })
+}
+
+/// 同じ関係が既にあるときに、関係の追加を断る理由の文（画面にそのまま出す。ADR-0014）。
+const SAME_RELATION: &str = "同じ関係が既にあります";
+
+/// 検証 `v` の中に、要求 `r` を検証する文（`verify R;`）が既にあるか。参照は書いた場所から解決して比べる（`verify P::R;` も同じ関係）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `v`：検証（verification def など）の宣言の番号
+/// - `r`：要求の宣言の番号
+///
+/// # 戻り値
+///
+/// 既にあれば true。
+///
+/// # 例
+///
+/// ```text
+/// // "package P { requirement def R; requirement def S; verification def V { objective { verify R; } } }" のとき
+/// verifies(d, V, R) → true
+/// verifies(d, V, S) → false
+/// ```
+fn verifies(d: &Doc<'_>, v: usize, r: usize) -> bool {
+    let refs: Vec<(String, Option<usize>)> =
+        d.p.rels
+            .iter()
+            .filter(|x| x.pe == Some(v))
+            .filter_map(|x| match &x.kind {
+                RelKind::Verify { req } if !req.is_empty() => Some((req.clone(), x.pe)),
+                _ => None,
+            })
+            .collect();
+    crate::model::resolve_refs(&d.p, &refs)
+        .into_iter()
+        .any(|x| x == Some(r))
 }
 
 /// テキストに、空白の違いを除いて同じ文があるか。コメントの中も数えるが、関係の重複を断るのに使うだけなので問題にならない。

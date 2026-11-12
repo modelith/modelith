@@ -142,6 +142,7 @@ export function serializeLayout(layout: Layout, extras: LayoutExtras = NO_EXTRAS
  * readRaw("{}")                                        // → "empty"（中身の無いオブジェクト）
  * readRaw("{ broken")                                  // → { error: "配置ファイルを読めません（JSON の形が壊れています）" }
  * readRaw('{"modelith":"layout","format":1,"views":{"v":[]}}') // → { error: "配置ファイルの形が違います" }（ビューが配列）
+ * readRaw('{"modelith":"layout","format":1,"views":[]}')       // → { error: "配置ファイルの形が違います" }（views が配列）
  * readRaw('{"modelith":"layout","format":"1","views":{}}') // → { error: "配置ファイルの形式の書き方が違います" }
  */
 function readRaw(text: string): { top: Record<string, unknown>; views: Record<string, unknown> } | { error: string } | "empty" {
@@ -155,7 +156,8 @@ function readRaw(text: string): { top: Record<string, unknown>; views: Record<st
   // 中身の無いオブジェクト（手で作った `{}` など）は、失うものが無いので空のファイルと同じに扱う
   if (raw && typeof raw === "object" && !Array.isArray(raw) && !Object.keys(raw).length) return "empty";
   const o = raw as { modelith?: unknown; format?: unknown; views?: unknown } | null;
-  if (!o || typeof o !== "object" || o.modelith !== "layout" || typeof o.views !== "object" || o.views === null) {
+  // views は名前で引くオブジェクト。配列（[]）も typeof は object なので、別に断る（#267）
+  if (!o || typeof o !== "object" || o.modelith !== "layout" || typeof o.views !== "object" || o.views === null || Array.isArray(o.views)) {
     return { error: "配置ファイルの形が違います" };
   }
   // 数でない形式（"1" など）は、対応しない版の数と取り違えないよう別の文にする（#243）

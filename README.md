@@ -139,6 +139,14 @@ GitHub のアカウントがあれば、毎月または 1 回だけの支援を�
 
 <a href="https://github.com/sponsors/modelith"><img src="https://img.shields.io/badge/sponsor-modelith-ea4aaa?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors で支援する"></a>
 
+### スポンサー
+
+Modelith を支援してくださっている方々です。毎月 $10 以上のプランの方を、ここに掲載しています。掲載を望まない場合は、お知らせください。
+
+<!-- 企業スポンサー（毎月 $100）: ロゴとリンク -->
+
+<!-- サポーター（毎月 $10）: GitHub アカウント -->
+
 ## License
 
 Copyright (C) 2026 The Modelith Authors

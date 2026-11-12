@@ -759,7 +759,8 @@ impl Ctx {
             return None;
         }
         if n.kind() == ALIAS {
-            if let Some(a) = alias(n, pe) {
+            if let Some(mut a) = alias(n, pe) {
+                a.start = self.utf16(n.text_range().start().into());
                 self.out.aliases.push(a);
             }
             return None;
@@ -2486,12 +2487,12 @@ fn path_of(qn: &SyntaxNode) -> String {
 ///
 /// # 戻り値
 ///
-/// 別名と指す先。名前か、`for` の後の修飾名が無ければ `None`。
+/// 別名と指す先（位置 `start` は 0。呼ぶ側が UTF-16 の位置を入れる）。名前か、`for` の後の修飾名が無ければ `None`。
 ///
 /// # 例
 ///
 /// ```text
-/// alias("alias B for Q::A;", Some(0)) → Some({ name: "B", target: "Q::A", pe: Some(0) })
+/// alias("alias B for Q::A;", Some(0)) → Some({ name: "B", target: "Q::A", pe: Some(0), start: 0 })
 /// alias("alias B;", None)             → None   // 指す先が無い
 /// ```
 fn alias(n: &SyntaxNode, pe: Option<usize>) -> Option<Alias> {
@@ -2507,6 +2508,7 @@ fn alias(n: &SyntaxNode, pe: Option<usize>) -> Option<Alias> {
                     name,
                     target: path_of(&c),
                     pe,
+                    start: 0,
                 });
             }
             _ => {}

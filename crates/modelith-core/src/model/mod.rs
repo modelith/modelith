@@ -9,6 +9,7 @@ mod chains;
 mod filters;
 mod flows;
 mod focus;
+mod missing;
 mod names;
 mod sequences;
 mod states;
@@ -117,6 +118,110 @@ const LIBRARY_TYPES: &[&str] = &[
 
 /// メタクラスのライブラリのパッケージ（Systems Library の `SysML`・Kernel Semantic Library の `KerML`）。
 const METACLASS_PACKAGES: &[&str] = &["SysML", "KerML"];
+
+/// 標準ライブラリのパッケージ（SysML-v2-Release の `sysml.library` の Kernel Libraries・Systems Library・Domain Libraries。
+/// 量と単位・メタクラスのパッケージは `QUANTITY_PACKAGES`・`METACLASS_PACKAGES`）。ライブラリは同梱していないので、
+/// これらで始まる修飾名・`import` は、中身を確かめずに見つかるものとする。
+const LIBRARY_PACKAGES: &[&str] = &[
+    // Kernel Semantic Library
+    "Base",
+    "Clocks",
+    "ControlPerformances",
+    "FeatureReferencingPerformances",
+    "Links",
+    "Metaobjects",
+    "Objects",
+    "Observation",
+    "Occurrences",
+    "Performances",
+    "SpatialFrames",
+    "StatePerformances",
+    "Transfers",
+    "TransitionPerformances",
+    "Triggers",
+    // Kernel Data Type Library
+    "Collections",
+    "ScalarValues",
+    "VectorValues",
+    // Kernel Function Library
+    "BaseFunctions",
+    "BooleanFunctions",
+    "CollectionFunctions",
+    "ComplexFunctions",
+    "ControlFunctions",
+    "DataFunctions",
+    "IntegerFunctions",
+    "NaturalFunctions",
+    "NumericalFunctions",
+    "OccurrenceFunctions",
+    "RationalFunctions",
+    "RealFunctions",
+    "ScalarFunctions",
+    "SequenceFunctions",
+    "StringFunctions",
+    "TrigFunctions",
+    "VectorFunctions",
+    // Systems Library
+    "Actions",
+    "Allocations",
+    "AnalysisCases",
+    "Attributes",
+    "Calculations",
+    "Cases",
+    "Connections",
+    "Constraints",
+    "Flows",
+    "Interfaces",
+    "Items",
+    "Metadata",
+    "Parts",
+    "Ports",
+    "Requirements",
+    "StandardViewDefinitions",
+    "States",
+    "UseCases",
+    "VerificationCases",
+    "Views",
+    // Domain Libraries（量と単位のほか）
+    "AnalysisTooling",
+    "SampledFunctions",
+    "StateSpaceRepresentation",
+    "TradeStudies",
+    "CausationConnections",
+    "CauseAndEffect",
+    "ShapeItems",
+    "SpatialItems",
+    "ImageMetadata",
+    "ModelingMetadata",
+    "ParametersOfInterestMetadata",
+    "RiskMetadata",
+    "DerivationConnections",
+    "RequirementDerivation",
+];
+
+/// 名前が標準ライブラリのパッケージか（`LIBRARY_PACKAGES`・`QUANTITY_PACKAGES`・`METACLASS_PACKAGES` のどれか）。
+///
+/// # 引数
+///
+/// - `name`：パッケージの名前（修飾の無い名前。引用符を外したもの）
+///
+/// # 戻り値
+///
+/// 標準ライブラリのパッケージなら true。
+///
+/// # 例
+///
+/// ```text
+/// is_library_package("ScalarValues") → true
+/// is_library_package("ISQ")          → true
+/// is_library_package("SysML")        → true
+/// is_library_package("Nowhere")      → false
+/// ```
+fn is_library_package(name: &str) -> bool {
+    LIBRARY_PACKAGES.contains(&name)
+        || QUANTITY_PACKAGES.contains(&name)
+        || METACLASS_PACKAGES.contains(&name)
+}
 
 /// 量と単位のライブラリのパッケージ（Domain Libraries/Quantities and Units）。これを `import` したファイルと、
 /// これで修飾した名前（`ISQ::MassValue`）では、`…Value`・`…Kind` で終わる名前を標準ライブラリの型とみなす。
@@ -273,7 +378,8 @@ fn has_word(mods: &str, w: &str) -> bool {
 }
 
 /// 解析結果からモデルを作る。暫定コアの `build` から移した振る舞い。
-/// 図に描く要素 → ポート → 型付けと部品の線 → 関係の線 → 特殊化の線 → 線の ID → メモ → アクションの流れ → 解析の問題 → フェーズ → view の順に組み立てる。
+/// 図に描く要素 → ポート → 型付けと部品の線 → 関係の線 → 特殊化の線 → 線の ID → メモ → アクションの流れ → 解析の問題 →
+/// 特殊化・別名・import の見つからない相手 → フェーズ → view の順に組み立てる。
 ///
 /// # 引数
 ///
@@ -346,6 +452,7 @@ pub fn build_whole(p: &ParseResult) -> Model {
     b.state_machines();
     b.sequences();
     b.parse_problems();
+    b.missing_references();
     b.phases();
     views::build_views(&mut b);
     b.model
@@ -1352,7 +1459,8 @@ impl<'a> Builder<'a> {
     /// 特殊化・部分集合・再定義・参照の線（8.2.3 の subclassification・subsetting・redefinition・reference-subsetting）。
     /// 両端が図の要素のときだけ、特殊な側から一般な側へ引く（モデルの `edges` を書き換える）。定義の相手は定義として、
     /// 使用の相手は持ち主から外へ（`a.b` は型の中へ）探す。図の要素でない使用（定義の中の特性）の関係は、線にしない。
-    /// 相手が見つからなくても問題にしない（標準ライブラリの定義や、継承した特性など、読んでいない相手が多いため）。
+    /// 相手が見つからなくても線の問題にはしない（標準ライブラリの定義や、継承した特性など、読んでいない相手が多いため。
+    /// 定義の特殊化の相手が見つからないことは、`missing_references` が標準ライブラリの名前を除いて問題にする）。
     /// 線の範囲は、その相手だけを消す範囲にする（線を削除すると、その相手だけがテキストから消える）。
     fn specializations(&mut self) {
         let entries = self.entries;

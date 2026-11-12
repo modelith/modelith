@@ -450,6 +450,8 @@ pub struct Alias {
     pub target: String,
     /// 別名を書いた宣言の番号（package など）。ファイルの直下なら `None`。
     pub pe: Option<usize>,
+    /// 文の位置（UTF-16。指す先が見つからないときの問題の位置）。
+    pub start: usize,
 }
 
 /// `metadata M about A` の相手のうち、見つからなかったもの（8.2.2.27）。

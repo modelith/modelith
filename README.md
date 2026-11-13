@@ -5,17 +5,18 @@
 <h1 align="center">Modelith</h1>
 
 <p align="center">
-  <b>テキストと図を同期して編集できる、オープンソースの SysML v2 モデリングエディタ</b><br>
-  <sub>SysML v2 / KerML modeling editor with synchronized text and diagram editing</sub>
+  <b>An open-source SysML v2 modeling editor with synchronized text and diagram editing</b><br>
+  <sub>テキストと図を同期して編集できる、オープンソースの SysML v2 モデリングエディタ</sub>
 </p>
 
 <p align="center">
-  <a href="https://modelith.github.io/modelith/"><b>ブラウザで試す</b></a> &nbsp;|&nbsp;
-  <a href="https://modelith.github.io/">ユーザーマニュアル</a> &nbsp;|&nbsp;
-  <a href="https://github.com/modelith/modelith/releases">リリース</a> &nbsp;|&nbsp;
-  <a href="https://modelith.github.io/modelith/reports/requirements.html">テスト結果</a> &nbsp;|&nbsp;
-  <a href="https://github.com/modelith/modelith/issues/new/choose">フィードバック</a> &nbsp;|&nbsp;
-  <a href="https://github.com/sponsors/modelith">支援する</a>
+  <a href="README.ja.md">日本語</a> &nbsp;|&nbsp;
+  <a href="https://modelith.github.io/modelith/"><b>Try it in your browser</b></a> &nbsp;|&nbsp;
+  <a href="https://modelith.github.io/">User manual</a> &nbsp;|&nbsp;
+  <a href="https://github.com/modelith/modelith/releases">Releases</a> &nbsp;|&nbsp;
+  <a href="https://modelith.github.io/modelith/reports/requirements.html">Test results</a> &nbsp;|&nbsp;
+  <a href="https://github.com/modelith/modelith/issues/new/choose">Feedback</a> &nbsp;|&nbsp;
+  <a href="https://github.com/sponsors/modelith">Sponsor</a>
 </p>
 
 <p align="center">
@@ -28,124 +29,126 @@
   <a href="https://modelith.github.io/modelith/">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/modelith/.github/main/profile/screenshot-dark.png">
-      <img src="https://raw.githubusercontent.com/modelith/.github/main/profile/screenshot.png" width="800" alt="Modelith の画面。左にファイル、中央にトレーサビリティの図、右に SysML v2 のテキスト">
+      <img src="https://raw.githubusercontent.com/modelith/.github/main/profile/screenshot.png" width="800" alt="The Modelith window: files on the left, a traceability diagram in the middle, and SysML v2 text on the right">
     </picture>
   </a>
 </p>
 
-## Modelith とは
+## What is Modelith?
 
-システムエンジニア・学生・研究者のための、SysML v2 のモデリングエディタです。
-テキストで書いたモデルがすぐ図になり、図で動かした内容はテキストに書き戻されます。
+A SysML v2 modeling editor for systems engineers, students and researchers.
+A model you write as text becomes a diagram right away, and what you change in the diagram is written back to the text.
 
-- **書いても、描いても、同じモデル** — テキストを打てば図に反映し、図で要素や関係を足せばテキストが書き換わります。
-- **目的に合わせた図** — ブロック定義図・内部ブロック図・アクティビティ図・状態遷移図・シーケンス図・トレーサビリティなど、同じモデルを見たい切り口で表示できます。SVG や draw.io 形式でエクスポートすることもできます。
-- **要求の抜けに気づける** — 利用者要求から方式設計・検証までのつながりをたどり、導出・充足・検証の抜けを示します。
-- **SysML v2 を知らなくても読める** — テキストのキーワードや図の名前にマウスを乗せると、その意味を表示します。
-- **ブラウザを開くだけ** — インストールもアカウントも不要です。手元のフォルダを VS Code のように開いて、編集・保存できます。
-- **モデルは手元から出ない** — モデルを外部に送信せず、アクセス解析も使いません。モデルはただのテキストファイルなので、Git で差分を追えます。
+- **Write it or draw it — it's the same model.** Type text and the diagram follows; add elements and relationships in the diagram and the text is rewritten.
+- **Diagrams for each purpose.** Show the same model from the angle you need: block definition, internal block, activity, state machine, sequence, traceability and more. Export them as SVG or draw.io.
+- **Spot gaps in your requirements.** Follow the chain from stakeholder needs through architecture to verification, and see where derivation, satisfaction or verification is missing.
+- **Readable without knowing SysML v2.** Hover over a keyword in the text or the name of a diagram to see what it means.
+- **Just open a browser.** No installation and no account. Open a local folder like in VS Code, then edit and save.
+- **Your model stays with you.** Modelith does not send your model anywhere and uses no analytics. A model is plain text, so you can track changes with Git.
 
-## はじめる
+## Getting started
 
-**<https://modelith.github.io/modelith/>** をブラウザで開くと、サンプルのモデル（電気ケトル）が表示されます。使い方は [ユーザーマニュアル](https://modelith.github.io/) をご覧ください。
+Open **<https://modelith.github.io/modelith/>** in your browser to see a sample model (an electric kettle). See the [user manual](https://modelith.github.io/) (in Japanese) for how to use it.
 
-開発中の新しい機能を試したい方は、プレリリース版（alpha・beta）の **<https://modelith.github.io/modelith/preview/>** をお使いください。
-プレリリース版の前回の続き・下書き・設定は、上の安定版とは別に保存されます。
+To try features still in development, use the prerelease (alpha / beta) at **<https://modelith.github.io/modelith/preview/>**.
+The prerelease keeps its own last session, drafts and settings, separate from the stable version above.
 
-| 環境 | できること |
+| Environment | What you can do |
 | --- | --- |
-| Chrome・Edge | フォルダを開いて、ファイルを直接編集・上書き保存 |
-| Safari・Firefox | ファイルの読み込みと、ダウンロードでの保存 |
-| スマホなど幅の狭い画面 | モデルを見て確かめる（テキストは読み取り専用で開き、「編集」で書き換える） |
+| Chrome, Edge | Open a folder, edit its files directly and save over them |
+| Safari, Firefox | Load files, and save by downloading |
+| Phones and other narrow screens | View and check models (text opens read-only; tap "編集" (Edit) to change it) |
 
-## SysML v2 の対応状況
+The app's screens are in Japanese for now.
 
-SysML v2 のテキストの書き方のうち、よく使う部分から対応しています（**0.2.0-alpha.3 時点**、2026-10-23 に [SysML v2 の規格](https://github.com/Systems-Modeling/SysML-v2-Release) と照合）。
+## SysML v2 support
 
-状況の欄は、「対応」（使える）・「一部対応」（足りないところがある）・「未対応」（まだ使えない）で表します。
+Modelith supports the most used parts of the SysML v2 textual notation first (**as of 0.2.0-alpha.3**, checked against the [SysML v2 specification](https://github.com/Systems-Modeling/SysML-v2-Release) on 2026-10-23).
 
-| 分類 | 書き方 | 状況 | 足りないところ | 対応の予定 |
+Status is "Supported" (works), "Partial" (something is missing) or "Not yet" (cannot be used yet).
+
+| Area | Notation | Status | What is missing | Planned |
 | --- | --- | --- | --- | --- |
-| パッケージ | `package`（入れ子を含む）、`library package` | 対応 | ライブラリの印は記録しない | — |
-| | `import`（`P::A`・`P::*`・`P::**`）、可視性 `private`・`public`・`protected` | 対応 | フォルダを開いているときは、フォルダの中のほかのファイルの名前も使える。図には、表示中のファイルが参照したほかのファイルの定義だけを、ファイル名の札を付けて描く | — |
-| | package 直下の `filter`、取り込みの絞り込み `import P::*[@F]` | 未対応 | | 0.2.0 |
-| 名前 | 引用名 `'Fuel Tank'`・短い名前 `<R1>`・修飾名 `A::B`・`alias` | 一部対応 | ほかのファイルに書いた `alias` は解決しない | 0.2.0 |
-| 構造 | `part`・`item`・`attribute`・`port`・`enum`・`occurrence` の定義と使用、`event occurrence`・`timeslice`・`snapshot`・`individual` | 対応 | | |
-| | 型付け `:`・特殊化 `:>`・再定義 `:>>`・参照 `::>`・多重度 `[0..4]`・値 `=`・`:=`・`default`・向き `in`・`out` | 対応 | `: A, B` は先頭の型だけ | — |
-| | キーワードの無い特性 `x : Real;`・`ref r;`・交差 `=>`・`crosses`・共役ポート `~Pt` | 対応 | | |
-| つながり | `connection`・`connect`（3 つ以上をつなぐ形を含む）・`interface`（`connect` を省いた形を含む）・`bind`・`allocate`・`dependency` | 対応 | | |
-| | `flow`・`flow def`・`message`・`succession flow`（`from` を省いた短い形を含む） | 対応 | | |
-| 振る舞い | `action`・順序 `first … then`・`fork`・`join`・`merge`・`decide`・`send`・`accept`・`assign`・`terminate`・`if`・`while`・`for` | 対応 | アクションのパラメータとその間のフローを図に描かない | 0.2.0 |
-| | `state`・遷移 `transition`（トリガ・ガード・効果と省略形）・`entry`・`do`・`exit`・`parallel` | 対応 | 状態の使用の中の遷移を図に描かない | 0.3.0 以降 |
-| | `perform`・`exhibit`（既存の要素を指す `perform x.y;`・`exhibit s;` を含む）、`calc`・`constraint` | 対応 | | |
-| 要求と検証 | `requirement`・`subject`・`stakeholder`・`actor`・`concern`・`case`・`analysis`・`verification`・`use case`・`#derivation dependency` | 対応 | | |
-| | `satisfy`（`by` の無い形・宣言する形を含む）・`frame` | 対応 | | |
-| | `verify` | 一部対応 | 型の無い検証の使用の中では線を引かない | — |
-| | `objective`・`assert constraint`・`assert not` | 対応 | 目的は検証・解析の区画に、制約は持ち主の区画に書く。式は計算しない | — |
-| 図（ビュー） | `view`・`view def`・`expose`・`filter`（`and`・`or`・`not` などの式）・`render` | 一部対応 | メタデータの値を比べる `filter`、表や文字の形の `render` は使えない | 0.3.0 以降 |
-| 注釈 | `doc`・`comment … about`（メモ）・`rep`・`metadata def`・`#M`・`metadata … about`・自分で決めたキーワード | 対応 | 関係（`dependency`・`alias`）の本体の `doc` は記録しない | — |
-| 式 | 式・単位 `1500 [kg]`・`->collect{ … }` | 一部対応 | 文字列として持つだけで、計算しない | 0.3.0 以降 |
-| その他 | KerML、標準ライブラリ、モデル交換の形式（`.kpar`） | 未対応 | KerML の宣言は「まだ扱えない」と知らせる | 0.3.0 以降 |
+| Packages | `package` (including nesting), `library package` | Supported | The library marker is not recorded | — |
+| | `import` (`P::A`, `P::*`, `P::**`), visibility `private`, `public`, `protected` | Supported | With a folder open, names from other files in the folder can be used too. A diagram draws only the definitions from other files that the shown file refers to, labeled with the file name | — |
+| | `filter` directly in a package, filtered import `import P::*[@F]` | Not yet | | 0.2.0 |
+| Names | Quoted names `'Fuel Tank'`, short names `<R1>`, qualified names `A::B`, `alias` | Partial | An `alias` written in another file is not resolved | 0.2.0 |
+| Structure | Definitions and usages of `part`, `item`, `attribute`, `port`, `enum`, `occurrence`; `event occurrence`, `timeslice`, `snapshot`, `individual` | Supported | | |
+| | Typing `:`, specialization `:>`, redefinition `:>>`, reference `::>`, multiplicity `[0..4]`, values `=`, `:=`, `default`, direction `in`, `out` | Supported | `: A, B` uses only the first type | — |
+| | Features without a keyword `x : Real;`, `ref r;`, crossing `=>`, `crosses`, conjugated ports `~Pt` | Supported | | |
+| Connections | `connection`, `connect` (including forms joining three or more ends), `interface` (including the form without `connect`), `bind`, `allocate`, `dependency` | Supported | | |
+| | `flow`, `flow def`, `message`, `succession flow` (including the short form without `from`) | Supported | | |
+| Behavior | `action`, sequencing `first … then`, `fork`, `join`, `merge`, `decide`, `send`, `accept`, `assign`, `terminate`, `if`, `while`, `for` | Supported | Action parameters and the flows between them are not drawn | 0.2.0 |
+| | `state`, `transition` (trigger, guard, effect and the short forms), `entry`, `do`, `exit`, `parallel` | Supported | Transitions inside a state usage are not drawn | 0.3.0 or later |
+| | `perform`, `exhibit` (including `perform x.y;` and `exhibit s;` pointing at existing elements), `calc`, `constraint` | Supported | | |
+| Requirements and verification | `requirement`, `subject`, `stakeholder`, `actor`, `concern`, `case`, `analysis`, `verification`, `use case`, `#derivation dependency` | Supported | | |
+| | `satisfy` (including the form without `by` and the declaring form), `frame` | Supported | | |
+| | `verify` | Partial | No line is drawn inside an untyped verification usage | — |
+| | `objective`, `assert constraint`, `assert not` | Supported | Objectives go in the compartment of the verification or analysis, and constraints in the owner's compartment. Expressions are not evaluated | — |
+| Diagrams (views) | `view`, `view def`, `expose`, `filter` (expressions with `and`, `or`, `not` and so on), `render` | Partial | A `filter` that compares metadata values, and table or text `render`, cannot be used | 0.3.0 or later |
+| Annotations | `doc`, `comment … about` (notes), `rep`, `metadata def`, `#M`, `metadata … about`, user-defined keywords | Supported | A `doc` in the body of a relationship (`dependency`, `alias`) is not recorded | — |
+| Expressions | Expressions, units `1500 [kg]`, `->collect{ … }` | Partial | Kept as text only, not evaluated | 0.3.0 or later |
+| Other | KerML, the standard library, the model interchange format (`.kpar`) | Not yet | KerML declarations are reported as "not supported yet" | 0.3.0 or later |
 
-| 図の種類（SysML v2 の標準ビュー） | 状況 | 足りないところ | 対応の予定 |
+| Diagram type (SysML v2 standard view) | Status | What is missing | Planned |
 | --- | --- | --- | --- |
-| ブロック定義図・一般の図（GeneralView） | 一部対応 | ユースケースの楕円・アクターの記号が無い | 0.3.0 以降 |
-| 内部ブロック図（InterconnectionView） | 一部対応 | 対象そのもののポート（枠の上のポート）へ、図から新しく線を引く操作が無い（テキストで書く） | 0.3.0 以降 |
-| アクティビティ図（ActionFlowView） | 対応 | | — |
-| 状態遷移図（StateTransitionView） | 一部対応 | 状態の使用の中の遷移と、2 つ目以降の状態定義を描かない | 0.3.0 以降 |
-| シーケンス図（SequenceView） | 一部対応 | 分岐や繰り返しの枠（`alt`・`loop`）が無く、図からイベントや順序を足せない | 0.3.0 以降 |
-| ジオメトリ・グリッド・ブラウザ（GeometryView・GridView・BrowserView） | 未対応 | 一般の図で代わりに描き、そのことを知らせる | 0.3.0 以降 |
+| Block definition / general diagram (GeneralView) | Partial | No ellipse for use cases and no actor symbol | 0.3.0 or later |
+| Internal block diagram (InterconnectionView) | Partial | No way to draw a new line from the diagram to a port of the subject itself (on the frame); write it as text | 0.3.0 or later |
+| Activity diagram (ActionFlowView) | Supported | | — |
+| State machine diagram (StateTransitionView) | Partial | Transitions inside a state usage and any state definition after the first are not drawn | 0.3.0 or later |
+| Sequence diagram (SequenceView) | Partial | No frames for alternatives or loops (`alt`, `loop`), and events or ordering cannot be added from the diagram | 0.3.0 or later |
+| Geometry, grid and browser views (GeometryView, GridView, BrowserView) | Not yet | Drawn as a general diagram instead, with a notice | 0.3.0 or later |
 
-書き方ごとの詳しい状況は [対応表](docs/reference/sysml-conformance.md) にあります。予定は利用者の声に合わせて入れ替えることがあります。必要な書き方があれば、[Issues](https://github.com/modelith/modelith/issues/new/choose) でお知らせください。
+The [conformance table](docs/reference/sysml-conformance.md) (in Japanese) has the details for each notation. The plan may change based on user feedback. If you need a notation, please let us know in [Issues](https://github.com/modelith/modelith/issues/new/choose).
 
-## ロードマップ
+## Roadmap
 
-いまは **0.1.0 に向けた beta 版**です。機能は固定し、0.1.0 までは不具合の修正だけを行います。テストユーザーの声をもとに育てているので、気になる振る舞いがあればお知らせください。
+Modelith is now in **beta toward 0.1.0**. Features are frozen, and until 0.1.0 only bugs are fixed. It grows with feedback from test users, so please tell us about anything that behaves unexpectedly.
 
-| 版 | 内容 |
+| Version | Contents |
 | --- | --- |
-| 0.1.0 | 正式版 |
-| 0.2.0 | 図を作る・画面で編集・線の調整・エクスポートの強化と、要求図・ブロック定義図・内部ブロック図・アクティビティ図の不足を埋める。`import` と複数のファイルにまたがるモデルは進み具合を見て決める |
-| 0.3.0 以降 | 式の計算と単位、KerML、標準ライブラリ、残りの図、モデル交換の形式 |
+| 0.1.0 | First stable release |
+| 0.2.0 | Creating diagrams, editing on screen, adjusting lines and better export; filling the gaps in requirement, block definition, internal block and activity diagrams. `import` and models spanning several files depending on progress |
+| 0.3.0 and later | Expression evaluation and units, KerML, the standard library, the remaining diagrams, and the model interchange format |
 
-詳しくは [リリース計画](docs/development/release-plan.md)、各版の変更点は [リリース](https://github.com/modelith/modelith/releases) をご覧ください。
-0.1.0 の先は、CLI・MCP・LSP・プラグイン・サーバへと広げていく予定です（[アーキテクチャ](docs/explanation/architecture.md)）。
+See the [release plan](docs/development/release-plan.md) (in Japanese) for details, and [Releases](https://github.com/modelith/modelith/releases) for the changes in each version.
+After 0.1.0, Modelith will grow toward a CLI, MCP, LSP, plugins and a server ([architecture](docs/explanation/architecture.md), in Japanese).
 
-## ドキュメント
+## Documentation
 
-| 文書 | 内容 |
+| Document | Contents |
 | --- | --- |
-| [ユーザーマニュアル](https://modelith.github.io/) | 使い方（画面・ファイル・図・SysML v2 の書き方入門・プラグイン） |
-| [SysML v2 の対応表](docs/reference/sysml-conformance.md) | 規格の書き方ごとの対応状況 |
-| [検査ルール](docs/reference/check-rules.md)・[スクリプトのプラグイン](docs/reference/script-plugins.md) | プラグインの作り方 |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | 開発に参加する方法（手元で動かす・構成・開発者向けの文書） |
-| [SECURITY.md](SECURITY.md) | セキュリティの問題を見つけたときの、非公開の報告の仕方 |
+| [User manual](https://modelith.github.io/) (Japanese) | How to use it: the screen, files, diagrams, an introduction to SysML v2 notation, plugins |
+| [SysML v2 conformance table](docs/reference/sysml-conformance.md) (Japanese) | Support status for each notation in the specification |
+| [Check rules](docs/reference/check-rules.md) and [script plugins](docs/reference/script-plugins.md) (Japanese) | How to build plugins |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to take part in development: running it locally, the layout, documents for developers |
+| [SECURITY.md](SECURITY.md) | How to report a security issue privately |
 
-## 開発に参加する
+## Contributing
 
-使ってみた感想や「こんな図がほしい」は、[Issues](https://github.com/modelith/modelith/issues/new/choose) にお寄せください。
-コードで貢献するときは、[CONTRIBUTING.md](CONTRIBUTING.md)（CLA を含む）を先にお読みください。
+Please send your impressions and requests such as "I'd like this kind of diagram" to [Issues](https://github.com/modelith/modelith/issues/new/choose). Issues in English or Japanese are welcome.
+Before contributing code, please read [CONTRIBUTING.md](CONTRIBUTING.md) (including the CLA).
 
-| リポジトリ | 内容 | ライセンス |
+| Repository | Contents | License |
 | --- | --- | --- |
-| [modelith](https://github.com/modelith/modelith) | エディタ本体（Rust コア・Web アプリ・CLI） | AGPL-3.0 + [Plugin Exception](PLUGIN-EXCEPTION.md) |
-| [plugin-sdk](https://github.com/modelith/plugin-sdk) | プラグイン向けのインタフェース・型定義 | MIT |
-| [modelith.github.io](https://github.com/modelith/modelith.github.io) | ユーザーマニュアル | MIT |
+| [modelith](https://github.com/modelith/modelith) | The editor (Rust core, web app, CLI) | AGPL-3.0 + [Plugin Exception](PLUGIN-EXCEPTION.md) |
+| [plugin-sdk](https://github.com/modelith/plugin-sdk) | Interfaces and type definitions for plugins | MIT |
+| [modelith.github.io](https://github.com/modelith/modelith.github.io) | User manual | MIT |
 
-## 支援する
+## Sponsor
 
-Modelith の開発を続けるための支援を、[GitHub Sponsors](https://github.com/sponsors/modelith) で受け付けています。
-GitHub のアカウントがあれば、毎月または 1 回だけの支援を選べます。
+We accept support for continuing Modelith's development through [GitHub Sponsors](https://github.com/sponsors/modelith).
+With a GitHub account, you can choose a monthly or one-time sponsorship.
 
-<a href="https://github.com/sponsors/modelith"><img src="https://img.shields.io/badge/sponsor-modelith-ea4aaa?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors で支援する"></a>
+<a href="https://github.com/sponsors/modelith"><img src="https://img.shields.io/badge/sponsor-modelith-ea4aaa?logo=githubsponsors&logoColor=white" alt="Sponsor on GitHub Sponsors"></a>
 
-### スポンサー
+### Sponsors
 
-Modelith を支援してくださっている方々です。毎月 $10 以上のプランの方を、ここに掲載しています。掲載を望まない場合は、お知らせください。
+These are the people and organizations supporting Modelith. Sponsors on a plan of $10 or more a month are listed here. Please let us know if you would rather not be listed.
 
-<!-- 企業スポンサー（毎月 $100）: ロゴとリンク -->
+<!-- Corporate sponsors ($100 a month): logo and link -->
 
-<!-- サポーター（毎月 $10）: GitHub アカウント -->
+<!-- Supporters ($10 a month): GitHub account -->
 
 ## License
 

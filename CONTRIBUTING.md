@@ -1,67 +1,71 @@
 # Contributing to Modelith
 
-## ライセンスと CLA
+English | [日本語](CONTRIBUTING.ja.md)
 
-- 本体は [AGPL-3.0](LICENSE) に [プラグイン例外](PLUGIN-EXCEPTION.md) を付けて提供しています。
-- 初めて PR を送る際に **CLA（Contributor License Agreement）への同意**が必要です。
-  PR 上で案内が表示されたら手順に従ってください。（CLA 本文と署名の仕組みは準備中です。ADR-0006 参照）
+## License and CLA
 
-## 開発の流れ
+- Modelith is provided under [AGPL-3.0](LICENSE) with the [Plugin Exception](PLUGIN-EXCEPTION.md).
+- Your first pull request needs your **agreement to the CLA (Contributor License Agreement)**.
+  Follow the instructions when they appear on the pull request. (The CLA text and the signing process are being prepared; see ADR-0006.)
 
-- ブランチ戦略: [docs/development/branching-strategy.md](docs/development/branching-strategy.md)
-- 設計判断: [docs/adr/](docs/adr/)
-- 完了前に `scripts/check.sh` がグリーンであることを確認してください。CI も同じスクリプトを実行します。
+## How development works
 
-## 必要なツール
+- Branching strategy: [docs/development/branching-strategy.md](docs/development/branching-strategy.md)
+- Design decisions: [docs/adr/](docs/adr/)
+- Before you finish, make sure `scripts/check.sh` is green. CI runs the same script.
 
-- Rust stable（`rust-toolchain.toml` で wasm32 ターゲットごと自動導入）
-- Node.js 26 の最新（`.nvmrc`。CI は毎回最新の 26.x を使う）
+Most developer documents are in Japanese. Issues and pull requests in English are welcome.
 
-## 手元で動かす
+## Tools you need
 
-必要なもの：Rust（stable。`rust-toolchain.toml` が wasm32 ターゲットごと入れる）、Node.js 26、UI テストを動かすなら Docker。
+- Rust stable (`rust-toolchain.toml` installs it together with the wasm32 target)
+- The latest Node.js 26 (`.nvmrc`; CI uses the latest 26.x every time)
+
+## Running it locally
+
+You need Rust (stable; `rust-toolchain.toml` installs the wasm32 target), Node.js 26, and Docker if you run the UI tests.
 
 ```bash
 git clone https://github.com/modelith/modelith.git
 cd modelith
 npm ci --prefix web
-scripts/build-wasm.sh          # Rust のコアを wasm にする（web の前に必要）
-npm run dev --prefix web       # http://localhost:5173/ で開く
+scripts/build-wasm.sh          # build the Rust core as wasm (needed before the web app)
+npm run dev --prefix web       # open http://localhost:5173/
 ```
 
 ```bash
-scripts/check.sh               # 静的検査 → 単体 → 結合 → 統合（CI と同じ。PR の前に必ず通す）
-scripts/check.sh --fast        # 静的検査と単体テストだけ
+scripts/check.sh               # static checks → unit → integration → system (same as CI; always pass it before a PR)
+scripts/check.sh --fast        # static checks and unit tests only
 ```
 
-## 依存の追加・更新
+## Adding and updating dependencies
 
-サプライチェーン攻撃（乗っ取られたパッケージの版の配布）から守るための決まりです。
+These rules protect against supply-chain attacks (malicious versions published from hijacked packages).
 
-- lockfile（`Cargo.lock`・`package-lock.json`）をコミットする。npm の依存は `npm ci` で入れる（`npm install` は依存を変えるときだけ）。
-- インストール時のスクリプト（`postinstall` など）は動かさない。lockfile のあるフォルダの `.npmrc` に `ignore-scripts=true` を置き、CI も `npm ci --ignore-scripts` で入れる。
-- 公開から 7 日たっていない版は入れない（Dependabot の `cooldown` も 7 日）。急ぎのセキュリティ修正は除く。
-- rustup 自身も最新に保つ（`rustup self update`。CI はツールチェーンを入れる前に更新し、1.29.2 以上を確かめる）。
-- Python のパッケージには依存しない。
-- CI の `audit` が、既知の脆弱性（RustSec・npm）と npm の署名・来歴（`npm audit signatures`）を確かめる。
+- Commit the lockfiles (`Cargo.lock`, `package-lock.json`). Install npm dependencies with `npm ci` (use `npm install` only when changing dependencies).
+- Do not run install scripts (`postinstall` and so on). Put `ignore-scripts=true` in the `.npmrc` next to each lockfile; CI also installs with `npm ci --ignore-scripts`.
+- Do not take versions published less than 7 days ago (Dependabot's `cooldown` is also 7 days), except for urgent security fixes.
+- Keep rustup itself up to date (`rustup self update`; CI updates it before installing the toolchain and checks for 1.29.2 or later).
+- Do not depend on Python packages.
+- CI's `audit` job checks for known vulnerabilities (RustSec, npm) and npm signatures and provenance (`npm audit signatures`).
 
-## 構成
+## Layout
 
 ```
-crates/modelith-core   Rust のコア（SysML v2 のパーサ。ブラウザ・CLI・サーバで共有する）
-crates/modelith-wasm   ブラウザ向けの wasm
-crates/modelith-cli    modelith コマンド（準備中）
-web/                   Web アプリ（TypeScript + Vite）
-docs/                  文書（要求仕様・設計判断・開発の手順）
+crates/modelith-core   Rust core (the SysML v2 parser, shared by the browser, CLI and server)
+crates/modelith-wasm   wasm for the browser
+crates/modelith-cli    the modelith command (in preparation)
+web/                   web app (TypeScript + Vite)
+docs/                  documents (requirements, design decisions, development procedures)
 ```
 
-## 開発者向けの文書
+## Documents for developers (in Japanese)
 
-| 文書 | 内容 |
+| Document | Contents |
 | --- | --- |
-| [要求仕様](docs/reference/requirements.sysml) | 何を作るか。SysML v2 で書いた唯一の定義元 |
-| [設計判断（ADR）](docs/adr/) | なぜそう作るか |
-| [アーキテクチャ](docs/explanation/architecture.md) | 全体の構成と、この先の段階 |
-| [ブランチ戦略](docs/development/branching-strategy.md)・[テスト](docs/development/testing.md)・[リリース手順](docs/development/releasing.md) | 開発の進め方 |
-| [画面の言葉の手引き](docs/development/ui-writing.md) | 画面の文言の書き方 |
-| [CLAUDE.md](CLAUDE.md) | AI エージェント向けの作業ガイド |
+| [Requirements](docs/reference/requirements.sysml) | What to build. The single source of truth, written in SysML v2 |
+| [Design decisions (ADR)](docs/adr/) | Why it is built that way |
+| [Architecture](docs/explanation/architecture.md) | The overall structure and the stages ahead |
+| [Branching strategy](docs/development/branching-strategy.md), [testing](docs/development/testing.md), [release procedure](docs/development/releasing.md) | How development proceeds |
+| [UI writing guide](docs/development/ui-writing.md) | How to write the words on screen |
+| [CLAUDE.md](CLAUDE.md) | Working guide for AI agents |

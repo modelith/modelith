@@ -1,27 +1,31 @@
-# セキュリティの問題の報告
+# Reporting security issues
 
-Modelith のセキュリティの問題（利用者のモデルが外部に送られる、プラグインの隔離を抜けられる、ほかの人の画面でスクリプトを動かせる、など）を見つけたときは、**公開の Issue には書かずに**、GitHub の非公開の報告でお知らせください。
+English | [日本語](SECURITY.ja.md)
 
-- 報告の窓口：[Report a vulnerability](https://github.com/modelith/modelith/security/advisories/new)（このリポジトリの「Security」タブ →「Report a vulnerability」）
+If you find a security issue in Modelith (a user's model is sent outside, the plugin sandbox can be escaped, scripts can be run on someone else's screen, and so on), **do not open a public issue**. Please tell us through GitHub's private reporting.
 
-報告には、次のことを書いてください。分かる範囲でかまいません。
+- Where to report: [Report a vulnerability](https://github.com/modelith/modelith/security/advisories/new) (the "Security" tab of this repository → "Report a vulnerability")
 
-- 何ができてしまうか（影響）
-- 再現する手順（モデルのテキスト・プラグインのフォルダ・操作の順番）
-- 確かめたブラウザと、Modelith のバージョン（画面右上の「ヘルプ」に出ます）
+Please include the following, as far as you know.
 
-## 対象
+- What it allows (the impact)
+- Steps to reproduce (the model text, the plugin folder, the order of operations)
+- The browser you used and the Modelith version (shown under "ヘルプ" (Help) at the top right of the screen)
 
-| 対象 | 例 |
+Reports in English or Japanese are welcome.
+
+## Scope
+
+| Target | Examples |
 | --- | --- |
-| Web アプリ（<https://modelith.github.io/modelith/>） | 画面へのスクリプトの差し込み、配信元以外への通信、下書きや開いたフォルダの中身が漏れる |
-| プラグインの隔離 | 隔離された場所の外（アプリの画面・ブラウザの保存場所・開いたフォルダ）に届く、宣言していない権限が使える、宣言していない通信ができる |
-| コマンドラインの `modelith check` | プロジェクトのフォルダの外のファイルを読む・書く |
+| The web app (<https://modelith.github.io/modelith/>) | Injecting scripts into the page, connections to anywhere other than where it is served from, leaking drafts or the contents of an opened folder |
+| The plugin sandbox | Reaching outside the sandbox (the app's page, browser storage, the opened folder), using permissions that were not declared, making connections that were not declared |
+| The command-line `modelith check` | Reading or writing files outside the project folder |
 
-プラグインそのもの（第三者が作ったもの）の問題は、そのプラグインの作者にお知らせください。
+For issues in a plugin itself (one made by a third party), please contact the author of that plugin.
 
-## 対応
+## How we respond
 
-- 受け取ったら、できるだけ早く受け取ったことをお返事します。
-- 直すまでの間は、内容を公開しないでください。直した版を公開したあと、報告の内容とお名前（ご希望があれば）をリリースノートに記します。
-- 0.1.0 より前の版（alpha・beta・rc）は、最新の版だけを直します。
+- We will acknowledge your report as soon as we can.
+- Please keep the details private until it is fixed. After we publish a fixed version, we will credit the report, and your name if you wish, in the release notes.
+- For versions before 0.1.0 (alpha, beta, rc), only the latest version is fixed.

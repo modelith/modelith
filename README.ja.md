@@ -50,8 +50,13 @@
 
 **<https://modelith.github.io/modelith/>** をブラウザで開くと、サンプルのモデル（電気ケトル）が表示されます。使い方は [ユーザーマニュアル](https://modelith.github.io/) をご覧ください。
 
-開発中の新しい機能を試したい方は、プレリリース版（alpha・beta）の **<https://modelith.github.io/modelith/preview/>** をお使いください。
-プレリリース版の前回の続き・下書き・設定は、上の安定版とは別に保存されます。
+Modelith は 3 つの系列で公開しています。前回の続き・下書き・設定は、系列ごとに別に保存されます。
+
+| 系列 | URL | 中身 |
+| --- | --- | --- |
+| 安定版 | <https://modelith.github.io/modelith/> | 最新の正式版（0.1.0 が出るまでは、最新のリリース候補版） |
+| リリース候補版 | <https://modelith.github.io/modelith/rc/> | 最新のリリース候補版（出ている間だけ） |
+| プレビュー版 | <https://modelith.github.io/modelith/preview/> | 次の版の最新の alpha・beta。開発中の新しい機能を試せます |
 
 | 環境 | できること |
 | --- | --- |
@@ -59,58 +64,40 @@
 | Safari・Firefox | ファイルの読み込みと、ダウンロードでの保存 |
 | スマホなど幅の狭い画面 | モデルを見て確かめる（テキストは読み取り専用で開き、「編集」で書き換える） |
 
+画面は今のところ日本語です。英語の画面は 0.4.0 で入れる予定です。
+
 ## SysML v2 の対応状況
 
-SysML v2 のテキストの書き方のうち、よく使う部分から対応しています（**0.2.0-alpha.3 時点**、2026-10-23 に [SysML v2 の規格](https://github.com/Systems-Modeling/SysML-v2-Release) と照合）。
+SysML v2 のテキストの書き方のうち、よく使う部分に対応し、よく使う図に描きます。
 
-状況の欄は、「対応」（使える）・「一部対応」（足りないところがある）・「未対応」（まだ使えない）で表します。
+- **書き方**：パッケージと `import`、定義と使用（`part`・`item`・`attribute`・`port`・`enum`・`occurrence` など）、接続・インタフェース・流れ、アクション、状態と遷移、要求・`satisfy`・`verify`・導出、ユースケース、`expose` と `filter` を使うビュー、コメントとメタデータ。0.2.0 から、フォルダの中の複数のファイルにまたがるモデルも扱えます。
+- **図**：ブロック定義図・一般の図、内部ブロック図、アクティビティ図、状態遷移図、シーケンス図、トレーサビリティ。SVG と draw.io にエクスポートできます。
+- **まだできないこと**：式は文字列として持つだけで、計算しません。KerML・標準ライブラリ・モデル交換の形式（`.kpar`）にはまだ対応していません。まだ読めない書き方は、黙って捨てずに問題一覧で知らせます。
 
-| 分類 | 書き方 | 状況 | 足りないところ | 対応の予定 |
-| --- | --- | --- | --- | --- |
-| パッケージ | `package`（入れ子を含む）、`library package` | 対応 | ライブラリの印は記録しない | — |
-| | `import`（`P::A`・`P::*`・`P::**`）、可視性 `private`・`public`・`protected` | 対応 | フォルダを開いているときは、フォルダの中のほかのファイルの名前も使える。図には、表示中のファイルが参照したほかのファイルの定義だけを、ファイル名の札を付けて描く | — |
-| | package 直下の `filter`、取り込みの絞り込み `import P::*[@F]` | 未対応 | | 0.2.0 |
-| 名前 | 引用名 `'Fuel Tank'`・短い名前 `<R1>`・修飾名 `A::B`・`alias` | 一部対応 | ほかのファイルに書いた `alias` は解決しない | 0.2.0 |
-| 構造 | `part`・`item`・`attribute`・`port`・`enum`・`occurrence` の定義と使用、`event occurrence`・`timeslice`・`snapshot`・`individual` | 対応 | | |
-| | 型付け `:`・特殊化 `:>`・再定義 `:>>`・参照 `::>`・多重度 `[0..4]`・値 `=`・`:=`・`default`・向き `in`・`out` | 対応 | `: A, B` は先頭の型だけ | — |
-| | キーワードの無い特性 `x : Real;`・`ref r;`・交差 `=>`・`crosses`・共役ポート `~Pt` | 対応 | | |
-| つながり | `connection`・`connect`（3 つ以上をつなぐ形を含む）・`interface`（`connect` を省いた形を含む）・`bind`・`allocate`・`dependency` | 対応 | | |
-| | `flow`・`flow def`・`message`・`succession flow`（`from` を省いた短い形を含む） | 対応 | | |
-| 振る舞い | `action`・順序 `first … then`・`fork`・`join`・`merge`・`decide`・`send`・`accept`・`assign`・`terminate`・`if`・`while`・`for` | 対応 | アクションのパラメータとその間のフローを図に描かない | 0.2.0 |
-| | `state`・遷移 `transition`（トリガ・ガード・効果と省略形）・`entry`・`do`・`exit`・`parallel` | 対応 | 状態の使用の中の遷移を図に描かない | 0.3.0 以降 |
-| | `perform`・`exhibit`（既存の要素を指す `perform x.y;`・`exhibit s;` を含む）、`calc`・`constraint` | 対応 | | |
-| 要求と検証 | `requirement`・`subject`・`stakeholder`・`actor`・`concern`・`case`・`analysis`・`verification`・`use case`・`#derivation dependency` | 対応 | | |
-| | `satisfy`（`by` の無い形・宣言する形を含む）・`frame` | 対応 | | |
-| | `verify` | 一部対応 | 型の無い検証の使用の中では線を引かない | — |
-| | `objective`・`assert constraint`・`assert not` | 対応 | 目的は検証・解析の区画に、制約は持ち主の区画に書く。式は計算しない | — |
-| 図（ビュー） | `view`・`view def`・`expose`・`filter`（`and`・`or`・`not` などの式）・`render` | 一部対応 | メタデータの値を比べる `filter`、表や文字の形の `render` は使えない | 0.3.0 以降 |
-| 注釈 | `doc`・`comment … about`（メモ）・`rep`・`metadata def`・`#M`・`metadata … about`・自分で決めたキーワード | 対応 | 関係（`dependency`・`alias`）の本体の `doc` は記録しない | — |
-| 式 | 式・単位 `1500 [kg]`・`->collect{ … }` | 一部対応 | 文字列として持つだけで、計算しない | 0.3.0 以降 |
-| その他 | KerML、標準ライブラリ、モデル交換の形式（`.kpar`） | 未対応 | KerML の宣言は「まだ扱えない」と知らせる | 0.3.0 以降 |
+残りの書き方は、次の順に対応します（書き方ごとの状況は [対応表](docs/reference/sysml-conformance.md) にあります）。
 
-| 図の種類（SysML v2 の標準ビュー） | 状況 | 足りないところ | 対応の予定 |
-| --- | --- | --- | --- |
-| ブロック定義図・一般の図（GeneralView） | 一部対応 | ユースケースの楕円・アクターの記号が無い | 0.3.0 以降 |
-| 内部ブロック図（InterconnectionView） | 一部対応 | 対象そのもののポート（枠の上のポート）へ、図から新しく線を引く操作が無い（テキストで書く） | 0.3.0 以降 |
-| アクティビティ図（ActionFlowView） | 対応 | | — |
-| 状態遷移図（StateTransitionView） | 一部対応 | 状態の使用の中の遷移と、2 つ目以降の状態定義を描かない | 0.3.0 以降 |
-| シーケンス図（SequenceView） | 一部対応 | 分岐や繰り返しの枠（`alt`・`loop`）が無く、図からイベントや順序を足せない | 0.3.0 以降 |
-| ジオメトリ・グリッド・ブラウザ（GeometryView・GridView・BrowserView） | 未対応 | 一般の図で代わりに描き、そのことを知らせる | 0.3.0 以降 |
+| 版 | 書き方 |
+| --- | --- |
+| 0.3.0 | フィルタ付きの `import Q::*[@F]`、package 直下の `filter @X;`、関係の本体の `doc`・`comment`、複数の型 `: A, B`、値付きの列挙値、式の書き方（値と単位 `1500 [kg]`、本体付きの式 `->collect{ … }`。計算はしない） |
+| 0.4.0 | KerML（`classifier`・`struct`・`function` などの宣言。`.kerml` のファイルを読む） |
+| 0.5.0 以降 | 式の計算と単位、標準ライブラリの同梱、ジオメトリ・グリッド・ブラウザのビュー、シーケンス図と状態遷移図の残り、モデル交換の形式（`.kpar`） |
 
-書き方ごとの詳しい状況は [対応表](docs/reference/sysml-conformance.md) にあります。予定は利用者の声に合わせて入れ替えることがあります。必要な書き方があれば、[Issues](https://github.com/modelith/modelith/issues/new/choose) でお知らせください。
+予定は利用者の声に合わせて入れ替えることがあります。必要な書き方があれば、[Issues](https://github.com/modelith/modelith/issues/new/choose) でお知らせください。
 
 ## ロードマップ
 
-いまは **0.1.0 に向けた beta 版**です。機能は固定し、0.1.0 までは不具合の修正だけを行います。テストユーザーの声をもとに育てているので、気になる振る舞いがあればお知らせください。
+**0.1.0** はリリース候補版を出していて、次が最初の正式版です。**0.2.0** は、プレビュー版で beta を出しています。
 
-| 版 | 内容 |
+| 版 | できるようになること |
 | --- | --- |
-| 0.1.0 | 正式版 |
-| 0.2.0 | 図を作る・画面で編集・線の調整・エクスポートの強化と、要求図・ブロック定義図・内部ブロック図・アクティビティ図の不足を埋める。`import` と複数のファイルにまたがるモデルは進み具合を見て決める |
-| 0.3.0 以降 | 式の計算と単位、KerML、標準ライブラリ、残りの図、モデル交換の形式 |
+| 0.1.0 | 同じモデルをテキストでも図でも書ける。要求のトレーサビリティ、エクスポート、検査ルールなどのプラグイン |
+| 0.2.0 | 図を作る、テキストを書かずに画面で編集できることを増やす、線の調整、エクスポートの強化、要求図・ブロック定義図・内部ブロック図・アクティビティ図の不足を埋める、複数のファイルにまたがるモデル |
+| 0.3.0 | AI（Claude・Codex など）が、MCP で手元のモデルを読み、確かめ、書き換え、図を書き出す。SysML v2 の書き方を増やす |
+| 0.4.0 | AI の書き換えが開いている画面に出て、元に戻せる。KerML。英語の画面とマニュアル |
+| 0.5.0 | 自分で動かしたサーバにプロジェクトを置き、どのパソコンからも開ける |
+| 0.6.0〜0.8.0 | ほかの人と共有する、同時に編集する、つながっていない間も編集を続ける |
 
-詳しくは [リリース計画](docs/development/release-plan.md)、各版の変更点は [リリース](https://github.com/modelith/modelith/releases) をご覧ください。
-0.1.0 の先は、CLI・MCP・LSP・プラグイン・サーバへと広げていく予定です（[アーキテクチャ](docs/explanation/architecture.md)）。
+詳しくは [リリース計画](docs/development/release-plan.md) と [リリース計画（0.3.0 から先）](docs/development/release-plan-0.3.0.md)、各版の変更点は [リリース](https://github.com/modelith/modelith/releases) をご覧ください。
 
 ## ドキュメント
 

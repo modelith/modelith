@@ -73,6 +73,9 @@ package ModelithRequirements {
         requirement def <'N-12'> FeedbackNeed {
             doc /* 使い方や不具合が開発者に届き、Modelith が良くなってほしい。ただし、何が送られるかを確かめ、止められるようにしたい */
         }
+        requirement def <'N-13'> LanguageNeed {
+            doc /* 自分の言語（まず英語と日本語）で、画面とマニュアルを読みたい */
+        }
     }
 
     // =================================================================
@@ -468,6 +471,16 @@ package ModelithRequirements {
             doc /* 予定：0.3.0。「ヘルプ」の「不具合を報告」から、版と環境を書き込んだ報告の下書きを開き、中身を見てから送れる。モデルの中身は書き込まない */
         }
 
+        // ---- 言語（ADR-0027。0.3.0 で土台、0.4.0 で英語） -------------------
+        requirement def <'F-L10N-1'> LanguageChoiceReq {
+            doc /* 予定：0.4.0。画面の言語を、ブラウザの言語の設定から自動で選ぶ（辞書のある言語が無ければ英語）。「設定」で「自動」か言語を 1 つ選び直せ、選んだ言語はこのブラウザに残る。
+                   言語は画面の文言だけを変え、モデルのテキスト・要素の名前・ファイル名は変えない */
+        }
+        requirement def <'F-L10N-2'> LocalizedProblemsReq {
+            doc /* 予定：0.4.0。問題一覧と設定ファイルのエラーの文が、選んだ言語で出る。画面・CLI・MCP で同じ問題には同じ文が出る。
+                   問題の種類のコードと値は言語によらず同じで、AI とプラグインはコードで判断できる。CLI と MCP の言語は、引数か OS の言語の設定（LC_ALL・LC_MESSAGES・LANG）で決まり、無ければ英語 */
+        }
+
         // ---- 品質 --------------------------------------------------
         requirement def <'Q-1'> ResponsiveReq {
             doc /* 解析中も入力や図の操作が止まらない（コアを Worker で動かす。ADR-0003） */
@@ -576,6 +589,8 @@ package ModelithRequirements {
         #derivation dependency from ShareRolesReq to CollaborateNeed;
         #derivation dependency from UsageDataReq to FeedbackNeed;
         #derivation dependency from BugReportReq to FeedbackNeed;
+        #derivation dependency from LanguageChoiceReq to LanguageNeed;
+        #derivation dependency from LocalizedProblemsReq to LanguageNeed;
         #derivation dependency from TextToDiagramReq to EditBothWaysNeed;
         #derivation dependency from DiagramToTextReq to EditBothWaysNeed;
         #derivation dependency from NewPackageGuideReq to EditBothWaysNeed;
@@ -730,6 +745,9 @@ package ModelithRequirements {
         part def UsageReporter {
             doc /* 利用状況とエラーの送信（予定：0.3.0。ADR-0026） */
         }
+        part def Messages {
+            doc /* 問題の文を言語ごとの辞書で作る層（予定：0.3.0。crates/modelith-messages。コアは言語を知らない。ADR-0027） */
+        }
 
         part def Modelith {
             part core : Core;
@@ -748,6 +766,7 @@ package ModelithRequirements {
             part mcp : McpServer;
             part server : Server;
             part usage : UsageReporter;
+            part messages : Messages;
         }
 
         satisfy TextToDiagramReq by TextEditor;
@@ -867,6 +886,8 @@ package ModelithRequirements {
         satisfy ShareRolesReq by Server;
         satisfy UsageDataReq by UsageReporter;
         satisfy BugReportReq by AppShell;
+        satisfy LanguageChoiceReq by AppShell;
+        satisfy LocalizedProblemsReq by Messages;
     }
 
     // =================================================================

@@ -50,8 +50,13 @@ A model you write as text becomes a diagram right away, and what you change in t
 
 Open **<https://modelith.github.io/modelith/>** in your browser to see a sample model (an electric kettle). See the [user manual](https://modelith.github.io/) (in Japanese) for how to use it.
 
-To try features still in development, use the prerelease (alpha / beta) at **<https://modelith.github.io/modelith/preview/>**.
-The prerelease keeps its own last session, drafts and settings, separate from the stable version above.
+Modelith is published in three channels. Each keeps its own last session, drafts and settings.
+
+| Channel | URL | What it has |
+| --- | --- | --- |
+| Stable | <https://modelith.github.io/modelith/> | The latest release (the latest release candidate until 0.1.0 is out) |
+| Release candidate | <https://modelith.github.io/modelith/rc/> | The latest release candidate, while one is out |
+| Preview | <https://modelith.github.io/modelith/preview/> | The latest alpha or beta of the next version, with features still in development |
 
 | Environment | What you can do |
 | --- | --- |
@@ -59,60 +64,40 @@ The prerelease keeps its own last session, drafts and settings, separate from th
 | Safari, Firefox | Load files, and save by downloading |
 | Phones and other narrow screens | View and check models (text opens read-only; tap "編集" (Edit) to change it) |
 
-The app's screens are in Japanese for now.
+The app's screens are in Japanese for now. An English version is planned for 0.4.0.
 
 ## SysML v2 support
 
-Modelith supports the most used parts of the SysML v2 textual notation first (**as of 0.2.0-alpha.3**, checked against the [SysML v2 specification](https://github.com/Systems-Modeling/SysML-v2-Release) on 2026-10-23).
+Modelith supports the commonly used parts of the SysML v2 textual notation, and draws them in the diagrams people use most.
 
-Status is "Supported" (works), "Partial" (something is missing) or "Not yet" (cannot be used yet).
+- **Notation:** packages and `import`, definitions and usages (`part`, `item`, `attribute`, `port`, `enum`, `occurrence` and more), connections, interfaces and flows, actions, states and transitions, requirements, `satisfy`, `verify` and derivation, use cases, views with `expose` and `filter`, comments and metadata. From 0.2.0, a model can span several files in a folder.
+- **Diagrams:** block definition / general diagram, internal block diagram, activity diagram, state machine diagram, sequence diagram, and traceability. Export as SVG or draw.io.
+- **Not yet:** expressions are kept as text and not evaluated; KerML, the standard library, and the model interchange format (`.kpar`) are not supported yet. Anything Modelith cannot read yet is reported in the problem list, not dropped silently.
 
-| Area | Notation | Status | What is missing | Planned |
-| --- | --- | --- | --- | --- |
-| Packages | `package` (including nesting), `library package` | Supported | The library marker is not recorded | — |
-| | `import` (`P::A`, `P::*`, `P::**`), visibility `private`, `public`, `protected` | Supported | With a folder open, names from other files in the folder can be used too. A diagram draws only the definitions from other files that the shown file refers to, labeled with the file name | — |
-| | `filter` directly in a package, filtered import `import P::*[@F]` | Not yet | | 0.2.0 |
-| Names | Quoted names `'Fuel Tank'`, short names `<R1>`, qualified names `A::B`, `alias` | Partial | An `alias` written in another file is not resolved | 0.2.0 |
-| Structure | Definitions and usages of `part`, `item`, `attribute`, `port`, `enum`, `occurrence`; `event occurrence`, `timeslice`, `snapshot`, `individual` | Supported | | |
-| | Typing `:`, specialization `:>`, redefinition `:>>`, reference `::>`, multiplicity `[0..4]`, values `=`, `:=`, `default`, direction `in`, `out` | Supported | `: A, B` uses only the first type | — |
-| | Features without a keyword `x : Real;`, `ref r;`, crossing `=>`, `crosses`, conjugated ports `~Pt` | Supported | | |
-| Connections | `connection`, `connect` (including forms joining three or more ends), `interface` (including the form without `connect`), `bind`, `allocate`, `dependency` | Supported | | |
-| | `flow`, `flow def`, `message`, `succession flow` (including the short form without `from`) | Supported | | |
-| Behavior | `action`, sequencing `first … then`, `fork`, `join`, `merge`, `decide`, `send`, `accept`, `assign`, `terminate`, `if`, `while`, `for` | Supported | Action parameters and the flows between them are not drawn | 0.2.0 |
-| | `state`, `transition` (trigger, guard, effect and the short forms), `entry`, `do`, `exit`, `parallel` | Supported | Transitions inside a state usage are not drawn | 0.3.0 or later |
-| | `perform`, `exhibit` (including `perform x.y;` and `exhibit s;` pointing at existing elements), `calc`, `constraint` | Supported | | |
-| Requirements and verification | `requirement`, `subject`, `stakeholder`, `actor`, `concern`, `case`, `analysis`, `verification`, `use case`, `#derivation dependency` | Supported | | |
-| | `satisfy` (including the form without `by` and the declaring form), `frame` | Supported | | |
-| | `verify` | Partial | No line is drawn inside an untyped verification usage | — |
-| | `objective`, `assert constraint`, `assert not` | Supported | Objectives go in the compartment of the verification or analysis, and constraints in the owner's compartment. Expressions are not evaluated | — |
-| Diagrams (views) | `view`, `view def`, `expose`, `filter` (expressions with `and`, `or`, `not` and so on), `render` | Partial | A `filter` that compares metadata values, and table or text `render`, cannot be used | 0.3.0 or later |
-| Annotations | `doc`, `comment … about` (notes), `rep`, `metadata def`, `#M`, `metadata … about`, user-defined keywords | Supported | A `doc` in the body of a relationship (`dependency`, `alias`) is not recorded | — |
-| Expressions | Expressions, units `1500 [kg]`, `->collect{ … }` | Partial | Kept as text only, not evaluated | 0.3.0 or later |
-| Other | KerML, the standard library, the model interchange format (`.kpar`) | Not yet | KerML declarations are reported as "not supported yet" | 0.3.0 or later |
+The remaining notation is planned in this order (the [conformance table](docs/reference/sysml-conformance.md), in Japanese, has the status of each notation).
 
-| Diagram type (SysML v2 standard view) | Status | What is missing | Planned |
-| --- | --- | --- | --- |
-| Block definition / general diagram (GeneralView) | Partial | No ellipse for use cases and no actor symbol | 0.3.0 or later |
-| Internal block diagram (InterconnectionView) | Partial | No way to draw a new line from the diagram to a port of the subject itself (on the frame); write it as text | 0.3.0 or later |
-| Activity diagram (ActionFlowView) | Supported | | — |
-| State machine diagram (StateTransitionView) | Partial | Transitions inside a state usage and any state definition after the first are not drawn | 0.3.0 or later |
-| Sequence diagram (SequenceView) | Partial | No frames for alternatives or loops (`alt`, `loop`), and events or ordering cannot be added from the diagram | 0.3.0 or later |
-| Geometry, grid and browser views (GeometryView, GridView, BrowserView) | Not yet | Drawn as a general diagram instead, with a notice | 0.3.0 or later |
+| Version | Notation |
+| --- | --- |
+| 0.3.0 | Filtered `import Q::*[@F]`, `filter @X;` directly in a package, `doc` and `comment` in relationship bodies, multiple types `: A, B`, enum values with values, and the syntax of expressions (values with units `1500 [kg]`, expressions with bodies `->collect{ … }`) without evaluating them |
+| 0.4.0 | KerML (declarations such as `classifier`, `struct` and `function`; reading `.kerml` files) |
+| 0.5.0 and later | Evaluating expressions and units, bundling the standard library, the geometry, grid and browser views, the remaining parts of the sequence and state machine diagrams, and the model interchange format (`.kpar`) |
 
-The [conformance table](docs/reference/sysml-conformance.md) (in Japanese) has the details for each notation. The plan may change based on user feedback. If you need a notation, please let us know in [Issues](https://github.com/modelith/modelith/issues/new/choose).
+The plan may change based on user feedback. If you need a notation, please let us know in [Issues](https://github.com/modelith/modelith/issues/new/choose).
 
 ## Roadmap
 
-Modelith is now in **beta toward 0.1.0**. Features are frozen, and until 0.1.0 only bugs are fixed. It grows with feedback from test users, so please tell us about anything that behaves unexpectedly.
+**0.1.0** is in release candidates, and the first stable version comes next. **0.2.0** is in beta in the preview channel.
 
-| Version | Contents |
+| Version | What you can do |
 | --- | --- |
-| 0.1.0 | First stable release |
-| 0.2.0 | Creating diagrams, editing on screen, adjusting lines and better export; filling the gaps in requirement, block definition, internal block and activity diagrams. `import` and models spanning several files depending on progress |
-| 0.3.0 and later | Expression evaluation and units, KerML, the standard library, the remaining diagrams, and the model interchange format |
+| 0.1.0 | Write text and draw diagrams of the same model; requirement traceability; export; plugins for check rules |
+| 0.2.0 | Create diagrams and edit more on screen without writing text; adjust lines; better export; fill the gaps in requirement, block definition, internal block and activity diagrams; models spanning several files |
+| 0.3.0 | AI (Claude, Codex and others) reads, checks and edits your local models and exports diagrams through MCP; more SysML v2 notation |
+| 0.4.0 | AI edits show up in the open app and can be undone; KerML; English screens and manual |
+| 0.5.0 | Keep projects on a server you run yourself and open them from any computer |
+| 0.6.0 – 0.8.0 | Share projects with others, edit together at the same time, and keep editing offline |
 
-See the [release plan](docs/development/release-plan.md) (in Japanese) for details, and [Releases](https://github.com/modelith/modelith/releases) for the changes in each version.
-After 0.1.0, Modelith will grow toward a CLI, MCP, LSP, plugins and a server ([architecture](docs/explanation/architecture.md), in Japanese).
+See the [release plan](docs/development/release-plan.md) and the [plan from 0.3.0](docs/development/release-plan-0.3.0.md) (in Japanese) for details, and [Releases](https://github.com/modelith/modelith/releases) for the changes in each version.
 
 ## Documentation
 

@@ -1,11 +1,14 @@
 //! モデルを読む操作（ADR-0024 の 1。要求 F-AI-1）。AI のクライアント（MCP）・開いているアプリ・サーバが同じ形で使う。
 //!
 //! 入力はプロジェクトのファイルのパスとテキストだけで、ファイルの読み書きはしない（呼ぶ側が渡す）。
-//! 出力は plugin-sdk の契約の型（`ProjectOutline`・`ElementDetail`。ADR-0024 の 2）。
+//! 出力は plugin-sdk の契約の型（`ProjectOutline`・`ElementDetail`・`ProblemReport`。ADR-0024 の 2）。
 //! 要素は修飾名（`Shop::Cart`）で指す。名前は、テキストに書ける形（必要なら引用名）にしてつなぐ。
 
+mod problems;
 #[cfg(test)]
 mod tests;
+
+pub use problems::{PROJECT_FILE, Project, SOURCE, check, problems};
 
 use modelith_plugin_protocol::{
     DiagramSummary, ElementDetail, ElementRelation, ElementSummary, ProjectFile, ProjectOutline,

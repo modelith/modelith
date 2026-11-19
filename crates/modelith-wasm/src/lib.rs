@@ -855,7 +855,8 @@ fn edit_json(text: &str, intent: &str) -> String {
 ///
 /// # 戻り値
 ///
-/// 編集の結果の JSON。断るときは `{"refused":"…"}`、ほかのファイルの要素なら `{"refused":"…","file":"parts.sysml"}`。
+/// 編集の結果の JSON。断るときは `{"refused":"…"}`、ほかのファイルの要素なら `{"refused":"…","file":"parts.sysml"}`、
+/// 表示中のファイルの要素をほかのファイルの図が出しているので削除できないなら `{"refused":"…","shownIn":"views.sysml"}`。
 ///
 /// # 例
 ///
@@ -871,10 +872,15 @@ fn edit_json_in(text: &str, paths: &[String], parsed: Vec<ParseResult>, intent: 
     let json = match modelith_core::edit::edit_in(text, parsed, &intent) {
         Ok(out) => serde_json::to_string(&out),
         Err(r) => {
-            let file = r.file.and_then(|f| paths.get(f - 1));
-            Ok(match file {
-                Some(path) => serde_json::json!({ "refused": r.reason, "file": path }).to_string(),
-                None => refused_json(&r.reason),
+            let path_of = |file: Option<usize>| file.and_then(|f| paths.get(f.checked_sub(1)?));
+            Ok(match (path_of(r.file), path_of(r.shown_in)) {
+                (Some(path), _) => {
+                    serde_json::json!({ "refused": r.reason, "file": path }).to_string()
+                }
+                (None, Some(path)) => {
+                    serde_json::json!({ "refused": r.reason, "shownIn": path }).to_string()
+                }
+                (None, None) => refused_json(&r.reason),
             })
         }
     };
@@ -1259,6 +1265,26 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(v["file"], "parts.sysml");
         assert_eq!(v["refused"], modelith_core::edit::IN_OTHER_FILE);
+    }
+
+    #[test]
+    fn delete_of_an_element_shown_in_another_file_is_refused_with_that_path() {
+        // Arrange（異常系：表示中のファイルの要素を、ほかのファイルの図が出している。#297）
+        let views =
+            modelith_core::project::merge::parse_file("package V { view v { expose A::X; } }")
+                .expect("短い");
+        // Act
+        let json = edit_json_in(
+            "package A { part def X; }",
+            &["views.sysml".to_owned()],
+            vec![views],
+            r#"{"op":"delete","keys":["X"]}"#,
+        );
+        // Assert（要素のあるファイル（file）ではなく、図のあるファイル（shownIn）を返す）
+        let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(v["shownIn"], "views.sysml");
+        assert_eq!(v["file"], serde_json::Value::Null);
+        assert_eq!(v["refused"], modelith_core::edit::SHOWN_IN_OTHER_FILE);
     }
 
     #[test]

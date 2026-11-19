@@ -1174,6 +1174,7 @@ fn delete(d: &Doc<'_>, keys: &[String], ctx: Option<&str>) -> Result<Change, Ref
 /// `ParseResult.rels` の文そのもの）と、作成した図がその要素だけを出している `expose`（#239）、
 /// 状態遷移図・アクティビティ図の要素を端にする遷移・順序・流れの文（`behavior_spans`。#297）。
 /// 宣言の中に書いた関係（`part def Car :> Vehicle` の `:>` など）は、宣言ごと消してしまうので含めない。
+/// ほかのファイルの作成した図がその要素だけを出しているときは、範囲に含めず、削除を断る印を付ける（`Doc::mark_shown_in`）。
 ///
 /// # 引数
 ///
@@ -1221,8 +1222,16 @@ fn dangling_spans(d: &Doc<'_>, gone: &[usize]) -> (Vec<Range>, HashSet<Range>) {
             .filter(|(_, e)| e.exposes.is_some())
     {
         for &i in gone {
+            let exposes = d.exposes_only_for(v, i);
+            if !d.in_open_file(v) {
+                // ほかのファイルの図の expose は書き換えられない。残すと図が壊れるので、理由を示して削除を断る（#297）
+                if !exposes.is_empty() {
+                    d.mark_shown_in(v);
+                }
+                continue;
+            }
             out.extend(
-                d.exposes_only_for(v, i)
+                exposes
                     .iter()
                     .map(|x| (d.b(x.start), with_semicolon(d.text, d.b(x.end)))),
             );

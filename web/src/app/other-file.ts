@@ -1,5 +1,6 @@
 // プロジェクトのほかのファイルの要素への案内（ADR-0021 §5）。図から書き換えられるのは表示中のファイルの要素だけなので、
 // ほかのファイルの要素を書き換えようとしたら、どのファイルにあるかを知らせ、そのファイルを開けるようにする。
+// 表示中のファイルの要素でも、ほかのファイルの図に出しているものは削除できないので、その図のあるファイルを知らせる（#297）。
 
 import { ask } from "./dialog";
 
@@ -52,3 +53,31 @@ export async function guideToFile(path: string): Promise<void> {
  */
 export const otherFileText = (path: string): string =>
   `この要素は「${path}」にあります。図から書き換えられるのは、表示中のファイルの要素だけです。そのファイルを開いて編集してください。`;
+
+/**
+ * 表示中のファイルの要素を、ほかのファイルの作成した図が出しているので削除できないことを知らせ、そのファイルを開くかを尋ねる。開くを選べば開く。
+ *
+ * @param path その要素を図に出しているファイル（フォルダからのパス）
+ * @returns 尋ね終えたら解決する Promise
+ * @example
+ * await guideToShowingFile("views.sysml") // → 「この要素は「views.sysml」の図に出しているので、削除できません。…」を出し、「そのファイルを開く」で開く
+ */
+export async function guideToShowingFile(path: string): Promise<void> {
+  const r = await ask("ほかのファイルの図に出しています", shownInFileText(path), [
+    { id: "close", label: "閉じる" },
+    { id: "open", label: "そのファイルを開く", kind: "primary" },
+  ]);
+  if (r?.id === "open") openProjectFile(path);
+}
+
+/**
+ * ほかのファイルの図に出している要素を削除できないことの案内の文（ADR-0014 の言葉）。
+ *
+ * @param path その要素を図に出しているファイル（フォルダからのパス）
+ * @returns 案内の文
+ * @example
+ * shownInFileText("views.sysml")
+ * // → "この要素は「views.sysml」の図に出しているので、削除できません。先にそのファイルを開いて、図でこの要素を右クリックし、「この図から外す」を選んでください。"
+ */
+export const shownInFileText = (path: string): string =>
+  `この要素は「${path}」の図に出しているので、削除できません。先にそのファイルを開いて、図でこの要素を右クリックし、「この図から外す」を選んでください。`;

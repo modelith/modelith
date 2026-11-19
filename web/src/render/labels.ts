@@ -108,6 +108,34 @@ export const savedViewHint = (std: string | null): string => viewHint(stdViewLab
 export const tabTitle = (name: string, hint: string): string => (hint.startsWith(`${name}（`) ? hint : `${name}\n${hint}`);
 
 /**
+ * 要素の名前（と型の名前）を、画面に出す形にする。引用名の中のエスケープ（`\'`・`\"`・`\\`。KerML 8.2.2.1）を、表す文字に戻す（#297）。
+ * コアが返す名前は、テキストに書いたままのエスケープを持つ（要素を探すキーと同じ形）。表示のためだけに使い、要素を探す・比べるのには使わない。
+ * 改行やタブを表すエスケープ（`\n`・`\t` など）は、1 行の名前として見せられないので、書いたままにする。
+ *
+ * @param name コアが返した名前（引用符は外れている）
+ * @returns 画面に出す名前
+ * @example
+ * shownName("a\\'b")    // → "a'b"（テキストでは 'a\'b'）
+ * shownName("x\\\\y")   // → "x\\y"（テキストでは 'x\\y'）
+ * shownName("a\\nb")    // → "a\\nb"（改行のエスケープは書いたまま）
+ * shownName("電気 ケトル") // → "電気 ケトル"
+ * shownName("")          // → ""
+ */
+export const shownName = (name: string): string => name.replace(/\\(['"\\])/g, "$1");
+
+/**
+ * 線のラベルを、画面に出す形にする。部品として持つ線（comp）のラベルは部品の名前なので、要素の名前と同じく shownName を通す。
+ * ほかの線のラベル（遷移のトリガ・ガード、流れるものなど）は式を含むことがあるので、コアが返したまま出す。
+ *
+ * @param e 線（種類とラベル）
+ * @returns 画面に出すラベル（無ければ空文字列）
+ * @example
+ * shownEdgeLabel({ kind: "comp", label: "q\\'r" })             // → "q'r"
+ * shownEdgeLabel({ kind: "transition", label: "Go [x == '\\\\']" }) // → "Go [x == '\\\\']"（そのまま）
+ */
+export const shownEdgeLabel = (e: { kind: string; label: string }): string => (e.kind === "comp" ? shownName(e.label) : e.label);
+
+/**
  * 属性 1 つを `名前 : 型 = 値` の形の文にする（値の書き方 `:=`・`default` はそのまま）。
  *
  * @param a 属性（解析結果の項目）

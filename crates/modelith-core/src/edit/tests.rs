@@ -2152,3 +2152,191 @@ fn relation_to_another_file_is_written_in_the_open_file() {
         "{after}"
     );
 }
+
+/// ほかのファイル 1 つ（`other`）とつないで意図を当てる。
+fn run_with(text: &str, other: &str, json: &str) -> Result<String, Refused> {
+    let intent: Intent = serde_json::from_str(json).unwrap_or_else(|e| panic!("{json}: {e}"));
+    let others = vec![project::merge::parse_file(other).expect("短いファイル")];
+    edit_in(text, others, &intent).map(|out| apply(text, &out.edits))
+}
+
+// 表示中のファイルの要素への操作が、ほかのファイルの中身によって断られないこと（探すだけの走査で、ほかのファイルの位置に触れない）
+
+const OWN: &str = "package A {\n    part def X;\n}\n";
+
+#[test]
+fn definition_of_the_open_file_is_renamed_whatever_other_files_hold() {
+    // Arrange（同値分割：ほかのファイルが、別の定義を持つ・X を参照する・定義の中に同じ名前を持つ。境界：`package B;` だけ・空）
+    for other in [
+        "package B {\n    part def Y;\n}\n",
+        "package B {\n    part y : A::X;\n}\n",
+        "package B {\n    part def M {\n        part def X;\n    }\n}\n",
+        "package B;\n",
+        "",
+    ] {
+        // Act
+        let got = run_with(OWN, other, r#"{"op":"rename","key":"X","name":"Z"}"#);
+        // Assert（変えるのは表示中のファイルだけ。F-EDIT-3）
+        assert_eq!(
+            got.as_deref(),
+            Ok("package A {\n    part def Z;\n}\n"),
+            "{other:?}"
+        );
+    }
+}
+
+#[test]
+fn usage_of_the_open_file_is_renamed_when_another_file_declares_the_same_name() {
+    // Arrange（ほかのファイルの定義の中の同じ名前は、表示中のファイルの名前を隠さない）
+    let text = "package A {\n    part def K {\n        part x;\n    }\n}\n";
+    let other = "package B {\n    part def M {\n        part x;\n    }\n}\n";
+    // Act
+    let got = run_with(
+        text,
+        other,
+        r#"{"op":"rename","key":"u:x","ctx":"K","name":"z"}"#,
+    );
+    // Assert
+    assert_eq!(
+        got.as_deref(),
+        Ok("package A {\n    part def K {\n        part z;\n    }\n}\n")
+    );
+}
+
+#[test]
+fn definition_is_added_to_the_open_file_whatever_other_files_hold() {
+    // Arrange（同値分割：ほかのファイルに同じ種類の定義がある・無い。境界：`package B;` だけ・コメントだけ・空）
+    for (kind, name, other) in [
+        ("part def", "NewPart", "package B {\n    part def Y;\n}\n"),
+        (
+            "requirement def",
+            "NewRequirement",
+            "package B {\n    requirement def R;\n}\n",
+        ),
+        (
+            "action def",
+            "NewAction",
+            "package B {\n    action def Act;\n}\n",
+        ),
+        (
+            "state def",
+            "NewStates",
+            "package B {\n    state def St;\n}\n",
+        ),
+        (
+            "part def",
+            "NewPart",
+            "package B {\n    requirement def R;\n}\n",
+        ),
+        ("part def", "NewPart", "package B;\n"),
+        ("part def", "NewPart", "// メモ\n"),
+        ("part def", "NewPart", ""),
+    ] {
+        // Act
+        let got = run_with(
+            OWN,
+            other,
+            &format!(r#"{{"op":"addNode","kind":"{kind}"}}"#),
+        );
+        // Assert（表示中のファイルの package に置く）
+        let after = got.unwrap_or_else(|r| panic!("{kind} {other:?}: {r:?}"));
+        assert!(
+            after.starts_with("package A {\n    part def X;\n") && after.ends_with("    }\n}\n"),
+            "{kind} {other:?}: {after}"
+        );
+        assert!(after.contains(&format!("    {kind} {name} {{")), "{after}");
+    }
+}
+
+#[test]
+fn package_of_another_file_is_not_chosen_when_the_open_file_has_none() {
+    // Arrange（境界：表示中のファイルに package が無く、ほかのファイルにだけある）
+    let (text, other) = ("part def X;\n", "package B;\n");
+    // Act
+    let made = run_with(
+        text,
+        other,
+        r#"{"op":"addNode","kind":"part def","newPackage":"M"}"#,
+    );
+    let none = run_with(text, other, r#"{"op":"addNode","kind":"part def"}"#);
+    let view = run_with(
+        text,
+        other,
+        r#"{"op":"saveView","name":"v","kind":"general","targets":[]}"#,
+    );
+    // Assert（作る名前があれば表示中のファイルに package を作る。無ければ、package が無いという理由で断る）
+    assert_eq!(
+        made.as_deref(),
+        Ok("part def X;\n\npackage M {\n    part def NewPart {\n    }\n}\n")
+    );
+    assert_eq!(
+        none,
+        Err(Refused {
+            reason: "要素を配置するパッケージがありません".to_owned(),
+            file: None
+        })
+    );
+    assert_eq!(
+        view,
+        Err(Refused {
+            reason: "図を置くパッケージがありません。先にパッケージを作ってください".to_owned(),
+            file: None
+        })
+    );
+}
+
+#[test]
+fn element_of_the_open_file_is_deleted_when_another_file_has_a_dependency() {
+    // Arrange（ほかのファイルの依存の文は、消す相手を探すだけでも調べない）
+    let other = "package B {\n    part def P;\n    part def Q;\n    dependency from P to Q;\n}\n";
+    // Act
+    let got = run_with(OWN, other, r#"{"op":"delete","keys":["X"]}"#);
+    // Assert
+    assert_eq!(got.as_deref(), Ok("package A {\n}\n"));
+}
+
+#[test]
+fn relation_is_written_in_the_open_file_when_another_file_has_the_same_kind() {
+    // Arrange（ほかのファイルに同じ種類の関係があっても、その隣（ほかのファイル）には書かない）
+    let text = "package A {\n    part def X;\n    requirement def R;\n    requirement def S;\n}\n";
+    let other = "package B {\n    part def P;\n    requirement def Q;\n    requirement def T;\n    satisfy Q by P;\n    #derivation dependency from Q to T;\n}\n";
+    for (json, line) in [
+        (
+            r#"{"op":"connect","rel":"satisfy","from":"X","to":"R"}"#,
+            "    satisfy R by X;\n}\n",
+        ),
+        (
+            r#"{"op":"connect","rel":"derive","from":"R","to":"S"}"#,
+            "    #derivation dependency from R to S;\n}\n",
+        ),
+    ] {
+        // Act
+        let got = run_with(text, other, json);
+        // Assert
+        let after = got.unwrap_or_else(|r| panic!("{json}: {r:?}"));
+        assert!(after.ends_with(line), "{json}: {after}");
+    }
+}
+
+#[test]
+fn element_of_another_file_is_still_not_rewritten_when_the_open_file_has_the_same_kind() {
+    // Arrange（異常系：ほかのファイルで宣言された定義の名前の変更・削除は、今までどおり、そのファイルを添えて断る）
+    let text = "package A {\n    import B::*;\n    part def X;\n    part y : Y;\n}\n";
+    let other = "package B {\n    part def Y;\n}\n";
+    for json in [
+        r#"{"op":"rename","key":"Y","name":"Z"}"#,
+        r#"{"op":"delete","keys":["Y"]}"#,
+    ] {
+        // Act
+        let got = run_with(text, other, json);
+        // Assert
+        assert_eq!(
+            got,
+            Err(Refused {
+                reason: IN_OTHER_FILE.to_owned(),
+                file: Some(1)
+            }),
+            "{json}"
+        );
+    }
+}

@@ -1,5 +1,5 @@
 // 複数のファイルにまたがるモデル（ADR-0021、F-FILE-15）。ローカルフォルダの代わりに OPFS を使う。
-import { expect, openApp, putFiles, test } from "./fixtures";
+import { editorText, expect, openApp, putFiles, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 const PARTS = "package Parts {\n    part def Car;\n    part def Bus;\n}\n";
@@ -63,4 +63,45 @@ test("F-FILE-15: ほかのファイルを編集すると、表示に戻ったと
   await page.locator('#explorer [data-file][title="app.sysml"]').click();
   // Assert（app.sysml の Car は見つからなくなる）
   await expect(page.locator("#problems")).toContainText("型「Car」が見つかりません");
+});
+
+const A = "package A {\n    part def X;\n}\n";
+const B = "package B {\n    part def Y;\n}\n";
+
+/** 互いに参照しない a.sysml と b.sysml のフォルダを開き、a.sysml を表示して、図のタブ「ブロック定義図」を開く。 */
+async function openUnrelated(page: Page): Promise<void> {
+  await openApp(page);
+  await putFiles(page, { "a.sysml": A, "b.sysml": B });
+  await page.locator('[data-cmd="openFolder"]').click();
+  await page.locator('#explorer [data-file][title="a.sysml"]').click();
+  await expect(page.locator("#docName")).toHaveText("a.sysml");
+  await page.waitForTimeout(400); // 表示の反映で図のタブのメニューが描き直されるのを待つ
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="structure"]').click();
+}
+
+test("F-EDIT-3・F-FILE-15: ほかのファイルがあっても、表示中のファイルの定義の名前を図から変えられる", async ({ page }) => {
+  // Arrange
+  await openUnrelated(page);
+  await page.locator('#gNodes .node[data-key="X"]').click();
+  // Act
+  await page.locator('[data-act="rename"]').click();
+  await page.locator("#renameIn").fill("Z");
+  await page.keyboard.press("Enter");
+  // Assert（断らずに、表示中のファイルだけを書き換える）
+  await expect(page.locator('#gNodes .node[data-key="Z"]')).toBeVisible();
+  expect(await editorText(page)).toBe(A.replace("part def X;", "part def Z;"));
+  await expect(page.locator("#dialog")).not.toContainText("b.sysml");
+});
+
+test("F-EDIT-2・F-FILE-15: ほかのファイルに同じ種類の定義があっても、パレットから表示中のファイルに定義を置ける", async ({ page }) => {
+  // Arrange
+  await openUnrelated(page);
+  await page.locator('#palette [data-tool="part def"]').click();
+  const box = (await page.locator("#wrap").boundingBox())!;
+  // Act
+  await page.mouse.click(box.x + 120, box.y + box.height - 120);
+  // Assert（断らずに、表示中のファイルの package に置く）
+  await expect(page.locator('#gNodes .node[data-key="NewPart"]')).toBeVisible();
+  expect(await editorText(page)).toBe("package A {\n    part def X;\n    part def NewPart {\n    }\n}\n");
 });

@@ -26,6 +26,7 @@ wasm は `scripts/build-wasm.sh` が `web/src/core/wasm/` に書き出す（コ�
 ```bash
 scripts/build-wasm.sh          # Rust のコアの wasm を作る（web のテストとアプリが使う）
 npm test --prefix web          # 単体・結合
+npm test --prefix cli          # MCP のサーバの単体・結合（コアは wasm。フォルダの読み方は一時フォルダで確かめる）
 scripts/e2e.sh                 # e2e・UI（ビルドしてから、基準のブラウザで操作する）
 scripts/e2e.sh -g F-FILE       # 要求 ID でしぼる（引数は Playwright にそのまま渡す）
 ```

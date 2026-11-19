@@ -37,6 +37,31 @@ test.describe("図を作る（F-VIEW-8）", () => {
     expect(await nodeKeys(page)).toEqual([]);
   });
 
+  test("F-VIEW-8: 空の図にツリーの「追加」で続けて入れた要素は、重ならずに並ぶ（#297）", async ({ page }) => {
+    // Arrange
+    await openModel(page, "package Shop {\n    part def Cart;\n    part def Item;\n    part def Shelf;\n}\n");
+    await create(page, "売り場", "general");
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/売り場/);
+    await page.locator("#sideModel").click();
+    // Act（「追加」は、いつも図の同じ位置に置こうとする）
+    for (const name of ["Cart", "Item", "Shelf"]) {
+      const row = page.locator("#tree .ti", { has: page.locator(".nm", { hasText: new RegExp(`^${name}$`) }) });
+      await row.hover(); // 行の操作ボタンは、マウスを乗せると出る
+      await row.locator("[data-add]").click();
+      await expect.poll(() => nodeKeys(page)).toContain(name);
+    }
+    // Assert（どの 2 つの要素の矩形も重ならない）
+    const boxes = await Promise.all(["Cart", "Item", "Shelf"].map((k) => page.locator(`#gNodes .node[data-key="${k}"] rect`).first().boundingBox()));
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const [a, b] = [boxes[i], boxes[j]];
+        if (!a || !b) throw new Error("要素の矩形がありません");
+        const apart = a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
+        expect(apart, `${i} と ${j} が重なっています`).toBe(true);
+      }
+    }
+  });
+
   test("F-VIEW-8: 内部ブロック図を選ぶと、描くブロックをモデルから選んで作れる", async ({ page }) => {
     // Arrange
     await openModel(page);

@@ -4,6 +4,7 @@
 import { inOpenFile, type Entry, type ModelNode, type ViewKind } from "../core";
 import { type AskOption, ask } from "./dialog";
 import { perform } from "./intent";
+import { boxesOf, freeSpot, nodeH, nodeW } from "../render/geometry";
 import { diagramName } from "../render/labels";
 import { DIAGRAM_KINDS, type DiagramKind, renameViewLayout, renameViewTabs, targetCandidates } from "./diagram-kinds";
 import { closeViewTabs, openModelView, saveTabs } from "./panels";
@@ -235,7 +236,7 @@ export async function deleteDiagram(name: string): Promise<void> {
 
 /**
  * 表示中の作成した図に要素を入れる（F-VIEW-8）。コアに意図 `addToView` を渡して expose を足し（setText）、
- * pos があればそこに置いて配置を確定し、トーストで知らせる。
+ * pos があればそこ（既にある要素に重なるなら、その下）に置いて配置を確定し、トーストで知らせる。
  *
  * @param e 入れる要素（解析結果の項目）
  * @param pos 置く位置（図の座標、左上）。省くと自動の配置に任せる
@@ -260,11 +261,31 @@ export async function addToView(e: Entry, pos?: [number, number], opts: { quiet?
   }
   const r = await perform({ op: "addToView", view: mv.name, key: n.key });
   if (!r) return false;
-  if (pos) curLayout().pos[n.key] = pos;
+  if (pos) curLayout().pos[n.key] = clearOfOthers(n, pos);
   setText(r.text, { changeAt: r.at, flash: r.flash });
   commitLayout();
   if (!opts.quiet) toast(`「${e.name}」をこの図に入れました`);
   return true;
+}
+
+/**
+ * 表示中の図に要素を置く位置を、既に図にある要素に重ならない位置にする（#297）。ツリーの「追加」のように、いつも同じ位置に置く操作を
+ * 続けても、要素が重ならない。図に入れたばかりで、まだ解析結果に出ていない要素（配置の座標だけがある）も避ける。
+ *
+ * @param n 置く要素
+ * @param pos 置きたい位置（図の座標、左上）
+ * @returns 置く位置（重ならなければ pos のまま、重なれば下へずらした位置）
+ * @example
+ * // 図の (200, 170) に高さ 44 の要素があるとき
+ * clearOfOthers(B, [200, 170]) // → [200, 260]
+ * clearOfOthers(B, [600, 170]) // → [600, 170]
+ */
+function clearOfOthers(n: ModelNode, pos: [number, number]): [number, number] {
+  const placed = curLayout().pos;
+  const shown = CC().nodes;
+  const fresh = S.M.nodes.filter((m) => placed[m.key] && !shown.includes(m));
+  const others = [...shown, ...fresh].filter((m) => m.key !== n.key);
+  return freeSpot(pos, { w: nodeW(n), h: nodeH(n) }, [...boxesOf(others, placed).values()]);
 }
 
 /**

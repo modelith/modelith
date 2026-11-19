@@ -1579,6 +1579,31 @@ export function placeView(c: ViewContent, v: ViewDef, pos: Record<string, Pos>, 
   placeNotes(nodes, edges, pos);
 }
 
+/** 位置を決めて置く要素と、既にある要素の間に空ける間隔（freeSpot）。 */
+const SPOT_GAP = 40;
+
+/**
+ * 要素を置きたい位置が既にある要素に重なるなら、重ならなくなるまで下へずらした位置を返す（#297）。
+ * 同じ位置に続けて置いても、要素が縦に並ぶ。座標の無い要素を並べる placeView と違い、利用者が決めた位置の近くに置くときに使う。
+ *
+ * @param want 置きたい位置（要素の左上、図の座標）
+ * @param size 置く要素の大きさ
+ * @param taken 既にある要素の矩形
+ * @returns 置く位置（左上）。重ならなければ want のまま。重なれば、重なった要素の下端から 40 空け、10 単位に切り上げた y
+ * @example
+ * freeSpot([200, 170], { w: 224, h: 44 }, [])                                    // → [200, 170]
+ * freeSpot([200, 170], { w: 224, h: 44 }, [{ x: 200, y: 170, w: 224, h: 44 }])  // → [200, 260]
+ * freeSpot([200, 170], { w: 224, h: 44 }, [{ x: 424, y: 170, w: 224, h: 44 }])  // → [200, 170]（縁が接するだけ）
+ */
+export function freeSpot(want: Pos, size: { w: number; h: number }, taken: readonly Box[]): Pos {
+  const x = want[0];
+  let y = want[1];
+  const hit = (): Box | undefined => taken.find((b) => x < b.x + b.w && b.x < x + size.w && y < b.y + b.h && b.y < y + size.h);
+  // 1 回ずらすたびに、重なった要素より下へ出るので、要素の数だけ繰り返せば必ず終わる
+  for (let b = hit(), k = 0; b && k <= taken.length; b = hit(), k++) y = Math.ceil((b.y + b.h + SPOT_GAP) / 10) * 10;
+  return [x, y];
+}
+
 /** 内部ブロック図の枠の上のポートの四角の一辺。 */
 export const BOUNDARY = 14;
 

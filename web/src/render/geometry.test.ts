@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Entry, ModelEdge, ModelLane, ModelNode } from "../core";
 import { build, parse } from "../core/rust";
 import { contentOf, viewDef, type ViewTarget } from "./view-content";
-import { assertWord, autoPlace, BOUNDARY, boundaryBoxes, boxesOf, LANE_HEAD, LANE_PAD, laneRects, placeInLanes, compartment, DOT, downward, endLabelPos, featureText, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, placeView, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
+import { assertWord, autoPlace, BOUNDARY, boundaryBoxes, boxesOf, LANE_HEAD, LANE_PAD, laneRects, placeInLanes, compartment, DOT, downward, endLabelPos, featureText, freeSpot, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, placeView, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -528,5 +528,51 @@ describe("placeView（座標の無い要素を自動で並べる、F-VIEW-3）",
     placeView(c, viewDef("stm"), pos, null);
     // Assert
     expect((pos["s:idle"]?.[0] ?? NaN) < (pos["s:busy"]?.[0] ?? NaN)).toBe(true);
+  });
+});
+
+describe("freeSpot（既にある要素に重ならない位置、F-VIEW-8・#297）", () => {
+  const size = { w: W, h: 44 };
+  const at = (x: number, y: number): Box => ({ x, y, ...size });
+
+  it("何も無ければ、置きたい位置のまま（正常系）", () => {
+    // Act
+    const p = freeSpot([200, 170], size, []);
+    // Assert
+    expect(p).toEqual([200, 170]);
+  });
+
+  it("同じ位置に要素があれば、その下に間を空けて置く（3 つ続けて置いても重ならない）", () => {
+    // Act
+    const second = freeSpot([200, 170], size, [at(200, 170)]);
+    const third = freeSpot([200, 170], size, [at(200, 170), at(second[0], second[1])]);
+    // Assert（下端 214 から 40 空けて 254、10 単位に切り上げて 260。その下端 304 から 40 空けて 344 → 350）
+    expect(second).toEqual([200, 260]);
+    expect(third).toEqual([200, 350]);
+  });
+
+  it("ずらした先にも要素があれば、さらにその下に置く（並びの順によらない）", () => {
+    // Act（下の要素を先に渡す）
+    const p = freeSpot([200, 170], size, [at(200, 260), at(200, 170)]);
+    // Assert
+    expect(p).toEqual([200, 350]);
+  });
+
+  it("一部だけ重なる要素も避ける", () => {
+    // Act（右下にずれた要素と、角が重なる）
+    const p = freeSpot([200, 170], size, [at(400, 200)]);
+    // Assert（下端 244 から 40 空けて 284 → 290）
+    expect(p).toEqual([200, 290]);
+  });
+
+  it("縁が接するだけの要素・離れた要素は避けない（境界値）", () => {
+    // Act（右隣にちょうど接する・真下にちょうど接する・1 だけ重なる）
+    const right = freeSpot([200, 170], size, [at(200 + W, 170)]);
+    const below = freeSpot([200, 170], size, [at(200, 170 + 44)]);
+    const one = freeSpot([200, 170], size, [at(200 + W - 1, 170 + 43)]);
+    // Assert
+    expect(right).toEqual([200, 170]);
+    expect(below).toEqual([200, 170]);
+    expect(one).toEqual([200, 300]);
   });
 });

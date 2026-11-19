@@ -397,11 +397,11 @@ impl Doc<'_> {
             .collect()
     }
 
-    /// 書いた順で最初の package。暫定コアの `firstPackage`（`web/src/app/ops.ts`）と同じ。
+    /// 表示中のファイルの、書いた順で最初の package（ほかのファイルの package は選ばない。ADR-0021 §5）。暫定コアの `firstPackage`（`web/src/app/ops.ts`）と同じ。
     ///
     /// # 戻り値
     ///
-    /// package の宣言の番号。package が無ければ None。
+    /// package の宣言の番号。表示中のファイルに package が無ければ None。
     ///
     /// # 例
     ///
@@ -410,9 +410,12 @@ impl Doc<'_> {
     /// first_package() → Some(P の番号)
     /// // d.text = "part def A;" のとき
     /// first_package() → None
+    /// // d.text = "part def A;" で、ほかのファイルが "package B;" のとき
+    /// first_package() → None
     /// ```
     pub(super) fn first_package(&self) -> Option<usize> {
-        self.p.entries.iter().position(|e| e.kind == "package")
+        // ほかのファイルの package には書けない（ADR-0021 §5）
+        (0..self.p.entries.len()).find(|&i| self.e(i).kind == "package" && self.in_open_file(i))
     }
 
     /// e から上へたどった、最初の @Phase の値（自分か、外側の宣言から受け継ぐ）。値が空の指定は飛ばす。
@@ -506,7 +509,7 @@ pub(super) fn unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
     n
 }
 
-/// 定義を追加する。置く package は、同じ種類の要素が最後に置かれた package（無ければ最初の package）。
+/// 定義を追加する。置く package は、表示中のファイルで同じ種類の要素が最後に置かれた package（無ければ最初の package）。
 /// package が無く `new_package` があれば、テキストの末尾（`@layout` コメントの前）に作ってそこに置く。
 /// 名前は種類ごとの `NewPart` などで、使われていれば番号を付ける。フェーズの指定は、置く package から受け継ぐ値と違うときだけ書く。
 /// 暫定コアの `OPS.addNode`（`web/src/app/ops.ts`）と同じ書き方。
@@ -538,13 +541,14 @@ fn add_node(
     phase: Option<&str>,
     new_package: Option<&str>,
 ) -> Result<Change, Refusal> {
-    let pkg =
-        d.p.entries
-            .iter()
-            .rev()
-            .find(|e| e.kind == kind && e.pe.is_some_and(|p| d.e(p).kind == "package"))
-            .and_then(|e| e.pe)
-            .or_else(|| d.first_package());
+    // 置くのは表示中のファイルなので、ほかのファイルの同じ種類の要素は見ない（ADR-0021 §5）
+    let pkg = (0..d.p.entries.len())
+        .rev()
+        .filter(|&i| d.in_open_file(i))
+        .map(|i| d.e(i))
+        .find(|e| e.kind == kind && e.pe.is_some_and(|p| d.e(p).kind == "package"))
+        .and_then(|e| e.pe)
+        .or_else(|| d.first_package());
     let (text, target, inherited) = match (pkg, new_package) {
         (Some(p), _) => (d.text.to_owned(), d.target(p), d.phase_of(p)),
         (None, Some(name)) => {
@@ -935,7 +939,9 @@ fn names_entry(d: &Doc<'_>, ts: &[(SyntaxKind, usize, &str)], k: usize) -> Optio
     }
     segs.reverse();
     let at = ts[k].1;
+    // ほかのファイルの宣言は、表示中のファイルのトークンを囲まない（位置に触れると操作を断る印が付く）
     let ctx = (0..d.p.entries.len())
+        .filter(|&x| d.in_open_file(x))
         .filter(|&x| (d.b(d.e(x).start)..d.b(d.e(x).end)).contains(&at))
         .max_by_key(|&x| d.b(d.e(x).start));
     crate::model::resolve_refs(&d.p, &[(segs.join("::"), ctx)])
@@ -1044,7 +1050,8 @@ fn def_reach<'a>(
     };
     let mine = reach(i);
     let hidden: Vec<std::ops::Range<usize>> = (0..d.p.entries.len())
-        .filter(|&j| j != i && d.e(j).name == old)
+        // ほかのファイルの同じ名前の宣言は、表示中のファイルの名前を隠さない
+        .filter(|&j| j != i && d.in_open_file(j) && d.e(j).name == old)
         .map(reach)
         .filter(|r| r != &mine && mine.start <= r.start && r.end <= mine.end)
         .collect();
@@ -1219,6 +1226,8 @@ fn dependency_parts(d: &Doc<'_>, gone: &[usize]) -> (Vec<Range>, HashSet<usize>)
             .iter()
             .filter(|r| matches!(r.kind, RelKind::Dependency { .. } | RelKind::Derive { .. }))
             .map(|r| r.start)
+            // ほかのファイルの依存の文は書き換えないので、調べない（ADR-0021 §5）
+            .filter(|&start| crate::project::merge::file_of(start) == 0)
             .collect();
     starts.sort_unstable();
     starts.dedup();
@@ -1540,7 +1549,14 @@ fn connect(
     ctx: Option<&str>,
 ) -> Result<Change, Refusal> {
     let (ea, eb) = (d.e(a.entry), d.e(b.entry));
-    let last_rel = |want: fn(&RelKind) -> bool| d.p.rels.iter().rev().find(|r| want(&r.kind));
+    // 関係は表示中のファイルに書くので、ほかのファイルの関係の隣には置かない（ADR-0021 §5）
+    let last_rel = |want: fn(&RelKind) -> bool| {
+        d.p.rels
+            .iter()
+            .rev()
+            .filter(|r| crate::project::merge::file_of(r.start) == 0)
+            .find(|r| want(&r.kind))
+    };
     let (host, snippet): (Target, String) = match rel {
         "comp" => {
             let kw = lookup(KW_FOR, &eb.kind).unwrap_or("part");

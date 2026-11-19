@@ -4,7 +4,11 @@
 // スマホ（F-EDIT-10）は、本物の端末の設定（画面の大きさ・タッチ・モバイルの表示）で、iPhone（WebKit）と Android（Chromium）でも動かす（e2e/mobile.spec.ts）。
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 4180;
+// アプリを配信するポート。別の作業ツリーで同時に動かすときは、PW_APP_PORT で変える（同じポートだと、もう一方が配信しているアプリを使ってしまう）
+const PORT = Number(process.env.PW_APP_PORT ?? 4180);
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  throw new Error(`PW_APP_PORT は 1〜65535 の整数にしてください（今: ${process.env.PW_APP_PORT}）`);
+}
 // 基準のブラウザ（Playwright の公式イメージの中。scripts/e2e.sh が起動する）。あればそこへつなぐ
 const REFERENCE_WS = process.env.PW_REFERENCE_WS;
 

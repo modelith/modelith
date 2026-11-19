@@ -2,6 +2,7 @@
 # e2e と UI テスト（見た目）を実行する。check.sh と公開のワークフローが使う。
 #   scripts/e2e.sh [Playwright の引数...]
 #   例: scripts/e2e.sh e2e/visual.spec.ts --update-snapshots=all   （基準画像を作り直す）
+#   同時に 2 つ動かすときは、PW_APP_PORT（アプリの配信。既定 4180）と PW_REFERENCE_PORT（基準のブラウザ。既定 3123）を変える
 #
 # 画面の画素は、OS のフォントや描画の設定で変わる。どこで動かしても同じ画像になるよう、
 # ブラウザは Playwright の公式イメージ（Docker）の中で動かし、テストはそこへつなぐ（docs/development/testing.md）。

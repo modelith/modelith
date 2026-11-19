@@ -2458,3 +2458,47 @@ fn missing_names_in_other_files_are_left_out_and_unimported_names_are_missing() 
         ["引き継ぐ定義「Car」が見つかりません（Sports）"]
     );
 }
+
+// ---- 標準ライブラリを `::*` で import していても、見つからない相手を型と同じ基準で知らせる（#297 B-4） ----
+
+#[test]
+fn wildcard_library_import_does_not_hide_missing_specializations_and_aliases() {
+    // Arrange（同値分割：量と単位のライブラリ・そのほかのライブラリの `::*`。型（Missing）と同じく、引き継ぐ定義と別名も知らせる）
+    for import in ["private import ISQ::*;", "import ScalarValues::*;"] {
+        let text = format!(
+            "package P {{ {import} part def A :> Nope; alias T for Nope2; part x : Missing; }}"
+        );
+        // Act
+        let (_, m) = run(&text);
+        // Assert
+        assert_eq!(
+            errors(&m),
+            [
+                "型「Missing」が見つかりません（x）",
+                "引き継ぐ定義「Nope」が見つかりません（A）",
+                "別名「T」の指す先「Nope2」が見つかりません（alias）"
+            ],
+            "{import}"
+        );
+    }
+}
+
+#[test]
+fn names_known_from_a_wildcard_library_import_are_still_not_missing() {
+    // Arrange（境界値：`::*` で取り込んだ名前のうち、型でも標準とみなす名前（よく使う標準ライブラリの名前・量と単位の …Value）は知らせない。
+    // メタデータの定義の決まった書き方（import Metaobjects::*; … :> SemanticMetadata）も知らせない）
+    let text = "package P {
+        private import ISQ::*;
+        import ScalarValues::*;
+        import Metaobjects::*;
+        attribute def L :> LengthValue;
+        attribute def R :> Real;
+        metadata def M :> SemanticMetadata;
+        alias Mass for MassValue;
+        attribute m : MassValue;
+    }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}

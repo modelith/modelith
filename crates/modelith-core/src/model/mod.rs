@@ -85,6 +85,9 @@ const LIBRARY_TYPES: &[&str] = &[
     "Natural",
     "Positive",
     "Occurrence",
+    // Metaobjects（メタデータの定義の基。`metadata def M :> SemanticMetadata;`）
+    "Metaobject",
+    "SemanticMetadata",
     // Systems Library の基の定義
     "Part",
     "Item",

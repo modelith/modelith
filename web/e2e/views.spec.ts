@@ -936,6 +936,37 @@ test.describe("状態遷移図（StateTransitionView、F-VIEW-7、8.2.3.18）", 
     await page.locator("#zFit").click();
   }
 
+  test("F-VIEW-4: 状態が 3 つ横に並ぶ作成した状態遷移図は、開いた時点で全体が図の枠に収まる（#297）", async ({ page }) => {
+    // Arrange（幅 1400px の画面。拡大率 0.8 では右端の状態が枠からはみ出す大きさ）
+    const text = `package P {
+    state def Mode {
+        entry; then idle;
+        state idle;
+        state run;
+        state stop;
+        transition t1 first idle accept Go then run;
+        transition first run then stop;
+    }
+    view modes : StateTransitionView { expose P::Mode; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ
+    // Act
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="modes"]').click();
+    await expect.poll(() => nodeKeys(page)).toContain("s:stop");
+    // Assert（どの要素も、図の枠の左右・上下の中にある）
+    const wrap = await page.locator("#wrap").boundingBox();
+    const nodes = await page.locator("#gNodes").boundingBox();
+    if (!wrap || !nodes) throw new Error("図の枠か要素がありません");
+    expect(nodes.x).toBeGreaterThanOrEqual(wrap.x);
+    expect(nodes.x + nodes.width).toBeLessThanOrEqual(wrap.x + wrap.width);
+    expect(nodes.y).toBeGreaterThanOrEqual(wrap.y);
+    expect(nodes.y + nodes.height).toBeLessThanOrEqual(wrap.y + wrap.height);
+  });
+
   test("F-VIEW-7: StateTransitionView は、expose した state def を状態と遷移の図として 8.2.3.18 の記号で描き、「まだ扱えない」と知らせない", async ({ page }) => {
     // Arrange・Act
     await openStates(page);

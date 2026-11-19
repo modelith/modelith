@@ -15,6 +15,7 @@ step() { printf '\n==> %s\n' "$*"; }
 
 ensure_dependencies() {
   [[ -d web/node_modules ]] || npm ci --prefix web --ignore-scripts --no-audit --no-fund
+  [[ -d cli/node_modules ]] || npm ci --prefix cli --ignore-scripts --no-audit --no-fund
   [[ -d tests/harness/node_modules ]] || npm ci --prefix tests/harness --ignore-scripts --no-audit --no-fund
   command -v shellcheck >/dev/null || { echo "ERROR: shellcheck が必要です（apt-get install shellcheck・brew install shellcheck など）" >&2; exit 1; }
 }
@@ -26,7 +27,7 @@ stage_static() {
   # プラグインとの契約の TypeScript の型は plugin-sdk のコピー。Cargo.toml で固定したコミットと同じかを確かめる（ADR-0004）
   node web/tools/plugin-protocol-cli.ts check
   # 関数の doc コメント（programming-principles §4、ADR-0008）。書き足し終えた領域から順に対象に加える
-  node web/tools/doc-comments-cli.ts web/tools web/src crates
+  node web/tools/doc-comments-cli.ts web/tools web/src cli/src crates
   shellcheck -x scripts/*.sh scripts/lib/*.sh .claude/hooks/*.sh
   step "[static] rust: fmt / $([[ $MODE == fast ]] && echo check || echo clippy)"
   cargo fmt --all -- --check
@@ -35,11 +36,13 @@ stage_static() {
   else
     cargo clippy --workspace --all-targets --all-features -- -D warnings
   fi
-  # web の型検査とテストは、Rust のコアの wasm を使う（ADR-0015）
+  # web と cli の型検査とテストは、Rust のコアの wasm を使う（ADR-0015）
   step "[static] wasm build"
   scripts/build-wasm.sh
   step "[static] web: typecheck"
   npm run --prefix web -s typecheck
+  step "[static] cli: typecheck"
+  npm run --prefix cli -s typecheck
 }
 
 stage_unit() {
@@ -49,6 +52,8 @@ stage_unit() {
   cargo test --workspace --lib --bins --quiet
   step "[unit] web"
   npm run --prefix web -s test
+  step "[unit] cli"
+  npm run --prefix cli -s test
 }
 
 stage_integration() {

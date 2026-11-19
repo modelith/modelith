@@ -16,5 +16,6 @@ git fetch --quiet --tags origin || echo "注意: タグを取得できません�
 sed -i -E "0,/^version = \".*\"$/s//version = \"$version\"/" Cargo.toml
 cargo update --workspace --quiet
 npm version "$version" --no-git-tag-version --prefix web >/dev/null
+npm version "$version" --no-git-tag-version --prefix cli >/dev/null
 node web/tools/release-notes-cli.ts new "$version"
-echo "版を $version にしました（Cargo.toml・Cargo.lock・web/package.json・web/package-lock.json）"
+echo "版を $version にしました（Cargo.toml・Cargo.lock と、web・cli の package.json・package-lock.json）"

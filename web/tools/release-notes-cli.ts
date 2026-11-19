@@ -1,7 +1,7 @@
 // リリースノートのひな形を作り、形を確かめる（docs/development/releasing.md）。判断は release-notes.ts。
 //   node web/tools/release-notes-cli.ts new <版>       docs/releases/v<版>.md のひな形を作る（前の版は git のタグとノートから選ぶ）
 //   node web/tools/release-notes-cli.ts check [<版>]   docs/releases/ のすべての形を確かめる。版を渡すと、その版のノートがあり、
-//                                                       Cargo.toml と web/package.json の版と一致することも確かめる
+//                                                       Cargo.toml と web・cli の package.json の版と一致することも確かめる
 //   node web/tools/release-notes-cli.ts current        Cargo.toml の版を出す
 import { execSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -89,7 +89,7 @@ function newNote(version: string): void {
 /**
  * docs/releases/ のすべてのノートの形を確かめる。問題があれば一覧を出して失敗し、無ければ「release notes: ok」を出す。
  *
- * @param version 渡すと、その版のノートがあり、Cargo.toml と web/package.json の版と一致することも確かめる
+ * @param version 渡すと、その版のノートがあり、Cargo.toml と web・cli の package.json の版と一致することも確かめる
  */
 function check(version?: string): void {
   const problems: string[] = [];
@@ -99,9 +99,11 @@ function check(version?: string): void {
   if (version) {
     if (!knownVersions().includes(version)) problems.push(`docs/releases/v${version}.md がありません（new で作ってください）`);
     const cargo = currentVersion();
-    const web = (JSON.parse(read("web/package.json")) as { version: string }).version;
     if (cargo !== version) problems.push(`Cargo.toml の版が ${cargo ?? "（無し）"} です（${version} にしてください）`);
-    if (web !== version) problems.push(`web/package.json の版が ${web} です（${version} にしてください）`);
+    for (const path of ["web/package.json", "cli/package.json"]) {
+      const found = (JSON.parse(read(path)) as { version: string }).version;
+      if (found !== version) problems.push(`${path} の版が ${found} です（${version} にしてください）`);
+    }
   }
   if (problems.length) fail(`リリースノートに問題があります\n${problems.map((p) => `  - ${p}`).join("\n")}`);
   console.log("release notes: ok");

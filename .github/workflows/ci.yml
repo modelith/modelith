@@ -52,10 +52,13 @@ jobs:
           check-latest: true  # 毎回その時点の、.nvmrc の版の最新（26.x）を使う（セキュリティリリースをすぐ取り込む）
       # 署名の確かめには、入れた依存が要る（インストール時スクリプトは動かさない）
       - run: npm ci --prefix web --ignore-scripts --no-audit --no-fund
+      - run: npm ci --prefix cli --ignore-scripts --no-audit --no-fund
       - run: npm ci --prefix tests/harness --ignore-scripts --no-audit --no-fund
       - run: npm audit signatures --prefix web
+      - run: npm audit signatures --prefix cli
       - run: npm audit signatures --prefix tests/harness
       - run: npm audit --prefix web --omit=dev --audit-level=moderate
+      - run: npm audit --prefix cli --omit=dev --audit-level=moderate
 
   check:
     runs-on: ubuntu-latest
@@ -80,8 +83,10 @@ jobs:
           cache: npm
           cache-dependency-path: |
             web/package-lock.json
+            cli/package-lock.json
             tests/harness/package-lock.json
       - run: npm ci --prefix web --ignore-scripts --no-audit --no-fund
+      - run: npm ci --prefix cli --ignore-scripts --no-audit --no-fund
       - run: npm ci --prefix tests/harness --ignore-scripts --no-audit --no-fund
       - name: Harness check（静的検査 → 単体 → 結合 → 統合）
         run: scripts/check.sh

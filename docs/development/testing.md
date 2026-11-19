@@ -67,7 +67,7 @@ Chromium に加えて Firefox と WebKit でも動かす（`playwright.config.ts
 | レポート | 中身 | どこで見るか |
 | --- | --- | --- |
 | 要求別の表（`reports/requirements.html`） | システム要求ごとに、合格・失敗・単体／結合で検証・未検証 | CI のジョブのサマリ（同じ表）、CI の成果物 `test-reports`、公開版の「ヘルプ」→「この版のテスト結果」 |
-| Playwright のレポート（`reports/e2e/`） | テストごとの手順・最後の画面。失敗したときは操作の記録（trace）、UI テストの「基準・今回・差分」 | CI の成果物 `test-reports`、手元では `npx playwright show-report reports/e2e`（`web/` で実行） |
+| Playwright のレポート（`reports/e2e/`） | テストごとの手順・最後の画面。失敗したときは操作の記録（trace）、UI テストの「基準・今回・差分」 | CI の成果物 `test-reports`、手元では `npx playwright show-report reports/e2e`（`web/` で実行）、CI が失敗したときは <https://modelith-dev.github.io/>（下の「失敗した CI のテスト結果のページ」） |
 
 公開版（GitHub Pages）には、その版で実行したレポートを `reports/` に一緒に載せる。テストが失敗したら公開しない。
 
@@ -86,9 +86,50 @@ e2e が失敗して終わると、`scripts/e2e.sh` が、失敗したテスト�
 
 - 要約を作るのは `web/tools/e2e-failure.ts`（判断）と `web/tools/e2e-failure-cli.ts`（`web/test-results/` を読む。trace.zip の展開に `unzip` コマンドを使う）。手元でもう一度出すには `node web/tools/e2e-failure-cli.ts web/test-results`。
 - 要約は trace（`playwright.config.ts` の `trace: "retain-on-failure"`）から作る。trace を残さない設定で動かしたとき（`--trace off`）は、失敗したときの画面だけを出す。
-- 画像（失敗時の画面・UI テストの差分）はログに出ない。成果物 `test-reports` の Playwright のレポートで見る。
+- 画像（失敗時の画面・UI テストの差分）はログに出ない。成果物 `test-reports` の Playwright のレポートか、下の「失敗した CI のテスト結果のページ」で見る。
 - 失敗したテストが多いときは、最初の 10 件だけを要約し、残りは名前だけを出す。
 - trace の形は Playwright の版で変わりうる。`@playwright/test` の版を上げたら、わざと失敗するテストを一時的に書いて `scripts/e2e.sh` で流し、要約が出ることを確かめる。知らない形の記録は飛ばすので、形が変わっても e2e の成否は変わらない（要約の中身が減る）。
+
+### 失敗した CI のテスト結果のページ（画面と操作の再生を見るもの）
+
+CI の `check` ジョブが失敗すると、ワークフロー `CI reports`（`.github/workflows/ci-reports.yml`）が、成果物 `test-reports` の中身を <https://modelith-dev.github.io/> に置く。
+成果物を取り出せない環境（エージェントなど）でも、失敗時の画面・UI テストの差分・操作の再生（trace）をブラウザで見られるようにするため。
+
+| 場所 | 中身 |
+| --- | --- |
+| `https://modelith-dev.github.io/` | 置いてある実行の一覧（始まった日時・ブランチ・PR・コミット・CI の実行・結果のページ） |
+| `…/runs/<実行の ID>-<やり直しの回数>/report/e2e/index.html` | Playwright のレポート。失敗したテストを開き、「Traces」から操作の再生を見る |
+| `…/runs/<実行の ID>-<やり直しの回数>/report/requirements.html` | 要求別の表 |
+| `…/runs/<実行の ID>-<やり直しの回数>/meta.json` | その実行のメタデータ（一覧はここから作る） |
+
+- PR の実行なら、その PR に結果のページへのリンクのコメントが付く（`github-actions[bot]` の、`<!-- ci-reports -->` で始まるコメント。同じ PR では書き換え、増やさない）。
+- 残すのは、新しく置いたものから 10 回分（全体で 900 MB まで）。古いものは次に置くときに消えるので、リンクは切れることがある。
+- 置かない場合：`check` ジョブが失敗していない（PR のタイトルなど、ほかのジョブの失敗）、成果物が無い（e2e まで進まずに落ちた）、成果物が大きすぎる（1 回分が 200 MB 超、または 95 MB を超えるファイルがある）、Playwright のレポートも要求別の表も無い。理由はワークフローのログに出る。
+- 判断（置く成果物・大きさ・掃除・一覧の HTML・コメントの文）は `web/tools/ci-reports.ts`、ファイルの入出力は `web/tools/ci-reports-cli.ts`、GitHub の API と git は `scripts/ci-reports.sh`。上限の値は `ci-reports.ts` の `DEFAULT_LIMITS`。
+- ワークフローは、成果物の名前 `test-reports` とジョブの名前 `check`（`.github/workflows/ci.yml`）に頼っている。どちらかを変えるときは `ci-reports.ts` の `ARTIFACT_NAME`・`CHECK_JOB` も変える。
+
+#### 安全の考え方
+
+- **アプリとは別のオリジンに置く。** テスト結果のページは、PR（フォークを含む）の中身から作られる、信頼できない HTML と JavaScript。
+  アプリ（`modelith.github.io`）と同じオリジンに置くと、そのページのスクリプトが、アプリの下書き・設定・フォルダを開く許可に届いてしまう。だから organization もサイトも分けている（`modelith-dev.github.io`）。置き場所のページに、個人の情報や秘密を入力しない。
+- **PR のコードを実行しない。** `CI reports` は `workflow_run` で動き、フォークの PR のあとでも、secret を持って本体の文脈で動く。checkout するのは既定ブランチ（`dev`）のスクリプトだけで、成果物は写すだけ（中のものを読まない・実行しない）。
+  シンボリックリンク、ファイルでもフォルダでもないもの、名前が `.git` で始まるものは、写す前に消す。
+- **信頼できない文字列を、シェルの文や HTML にそのまま入れない。** ワークフローは実行の ID だけを受け取り、ブランチ名などは API から取り直して、形を確かめ、一覧では HTML としてエスケープする。PR へのコメントにはブランチ名を入れない。
+- **書き込みの権限を小さくする。** 置き場所へは GitHub App のトークンで書く。App は `modelith-dev/modelith-dev.github.io` にだけ入っていて、権限は Contents の読み書きだけ。トークンは 1 時間で切れ、成果物を扱い終えたあとの、書き込む手順にだけ渡す。
+  secret は `CI_REPORTS_APP_ID`（App の ID）と `CI_REPORTS_APP_PRIVATE_KEY`（秘密鍵）で、`modelith/modelith` の Actions の secret に登録してある。
+
+#### 置き場所の履歴（force-push する）
+
+1 回分が約 60 MB あるので、コミットを積むと置き場所のリポジトリがすぐ大きくなる。そこで、置くたびに `main` を「親の無い 1 つのコミット」に作り直して置き換える（`git push --force-with-lease`）。
+置き場所は生成物だけのリポジトリで、人は書き込まない。[ブランチ戦略](branching-strategy.md) の「force-push 禁止」は本体のリポジトリの決まりで、ここには当てはめない。
+取ってきたあとにほかの書き込みがあったときは、置き換えずに失敗する（ワークフローは `concurrency` で 1 つずつ動く）。
+
+#### 試し方
+
+- 手元：`tests/harness/node_modules/.bin/bats tests/harness/integration/ci-reports.bats`（GitHub の API は `gh` のスタブ、置き場所は手元のリポジトリで置き換える）。
+- GitHub：Actions の `CI reports` を手で起動し、`run_id` に、`check` ジョブが失敗した CI の実行の ID（Actions の URL の `runs/` のあとの数）を渡す。`comment` にチェックを入れると、その実行の PR にコメントも付ける。
+  `workflow_run` も手での起動も、ワークフローが既定ブランチ（`dev`）に入ってからしか動かない。
+- 続けて何度も失敗すると、待っている実行は最新の 1 つだけになる（GitHub の `concurrency` の決まり。間の実行の結果は置かれない）。
 
 ## e2e の書き方
 

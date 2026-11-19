@@ -3,6 +3,7 @@
 import type { Entry, Expr, ModelEdge, ModelLane, ModelNode, Port, PortDir } from "../core";
 import { flowBodyLines, flowDetail, flowShape } from "./action-flow";
 import { isPseudoState, stateActionLines } from "./state-machine";
+import { shownName } from "./labels";
 import type { Pos, Side, ViewLayout } from "./layout";
 import type { ViewContent, ViewDef } from "./view-content";
 
@@ -105,11 +106,12 @@ const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", 
 export function featureText(c: Entry): string {
   const specs = c.specs ?? [], m = c.multiplicity;
   const value = c.value ? `${c.valueOp ?? "="} ${c.value}` : "";
-  if (!specs.length && !m) return value ? `${c.name} ${value}` : c.type ? `${c.name} : ${c.type}` : c.name;
+  const name = shownName(c.name), type = shownName(c.type);
+  if (!specs.length && !m) return value ? `${name} ${value}` : type ? `${name} : ${type}` : name;
   const first = specs[0];
   const unnamed = !!first && first.target.split(/::|\./).pop() === c.name;
-  const parts = [unnamed ? "" : c.name];
-  if (c.type) parts.push(`: ${c.type}`);
+  const parts = [unnamed ? "" : name];
+  if (type) parts.push(`: ${type}`);
   if (m?.range) parts.push(`[${m.range}]`);
   if (m?.ordered) parts.push("ordered");
   if (m?.nonunique) parts.push("nonunique");
@@ -184,12 +186,12 @@ export function compartment(n: ModelNode): Line[] {
     for (const c of e.children) if (c.kind === "attribute" || c.kind === "param") push(featureText(c), "attr", 1);
   }
   if (n.kind === "state def") {
-    const st = e.children.filter((c) => c.kind === "state").map((c) => c.name);
+    const st = e.children.filter((c) => c.kind === "state").map((c) => shownName(c.name));
     if (st.length) push("states: " + st.join(", "), "attr");
     for (const t of n.trans) push(t, "expr", 1);
   }
   if (n.kind === "action def") {
-    e.children.filter((c) => c.kind === "action").forEach((c, k) => push(`${k + 1}. ${c.name}`, "attr", 1));
+    e.children.filter((c) => c.kind === "action").forEach((c, k) => push(`${k + 1}. ${shownName(c.name)}`, "attr", 1));
   }
   const MAX = 8;
   if (L.length > MAX) {
@@ -337,7 +339,7 @@ const STATE_SYMBOL: Record<string, number> = { start: 22, done: 26 };
  * stateTitle(state off)          // → "off"
  * stateTitle(state m : Modes)    // → "m : Modes"
  */
-export const stateTitle = (n: ModelNode): string => n.name + (n.entry.type && !isPseudoState(n) ? ` : ${n.entry.type}` : "");
+export const stateTitle = (n: ModelNode): string => shownName(n.name) + (n.entry.type && !isPseudoState(n) ? ` : ${shownName(n.entry.type)}` : "");
 
 /**
  * 状態遷移の図（8.2.3.18）の要素の大きさ。開始・終了は決まった大きさの丸。状態は、名前と区画の行が収まる幅（STATE_W 〜 280）で、

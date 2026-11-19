@@ -2502,3 +2502,53 @@ fn names_known_from_a_wildcard_library_import_are_still_not_missing() {
     // Assert
     assert_eq!(errors(&m), Vec::<&str>::new());
 }
+
+// ---- 名前が空の要素（''）は、黙って消さずに知らせる（#297 C-7） ----
+
+#[test]
+fn elements_with_an_empty_quoted_name_are_reported() {
+    // Arrange（同値分割：定義・使用。'' は書けるが、名前で指せないので図とツリーに出せない）
+    let text = "package P {\n    part def '';\n    part def A {\n        part '' : A;\n    }\n}\n";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let notices: Vec<(&str, usize)> = m
+        .problems
+        .iter()
+        .filter(|p| p.kind == Some("unsupported"))
+        .map(|p| (p.msg.as_str(), p.pos))
+        .collect();
+    assert_eq!(
+        notices,
+        [
+            (
+                "「part def ''」は Modelith ではまだ扱えないため、図とツリーに出ません",
+                16
+            ),
+            (
+                "「part '' : A」は Modelith ではまだ扱えないため、図とツリーに出ません",
+                54
+            )
+        ]
+    );
+    assert_eq!(
+        m.nodes.iter().map(|n| n.key.as_str()).collect::<Vec<_>>(),
+        ["A"]
+    );
+}
+
+#[test]
+fn unnamed_and_one_character_names_are_not_reported_as_empty_names() {
+    // Arrange（境界値：名前を書かない使用（part : A;）・1 文字の引用名（' '・'a'）・名前の無い再定義（:>> m）は、空の名前ではない）
+    let text = "package P {\n    part def A { attribute m; }\n    part def B :> A {\n        part : A;\n        attribute :>> m;\n    }\n    part def ' ';\n    part def 'a';\n}\n";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(
+        m.problems
+            .iter()
+            .map(|p| p.msg.as_str())
+            .collect::<Vec<_>>(),
+        Vec::<&str>::new()
+    );
+}

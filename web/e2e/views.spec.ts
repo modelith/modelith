@@ -1286,3 +1286,19 @@ test.describe("シーケンス図のイベントと順序・ビューの式・3 
     await expect(page.locator("#problems")).toContainText("線の接続先「controller.board.nope」の「nope」が見つかりません（connect）");
   });
 });
+
+test("F-EDIT-8: 引用名のエスケープ（'a\\'b'）は図とツリーで表す文字に戻して示し、名前が空の要素（''）は問題一覧で知らせる（#297）", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  // Act
+  await page.locator("#ed").fill("package P {\n    part def 'a\\'b';\n    part def '';\n}\n");
+  await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="all"]').click();
+  // Assert（要素を探すキーは、テキストに書いたままのエスケープを持つ）
+  await expect(page.locator(`#gNodes .node[data-key="a\\\\'b"]`)).toContainText("a'b");
+  await expect(page.locator("#gNodes")).not.toContainText("a\\'b");
+  await page.locator("#sideModel").click();
+  await expect(page.locator("#tree .ti .nm", { hasText: /^a'b$/ })).toHaveCount(1);
+  await expect(page.locator("#problems")).toContainText("「part def ''」は Modelith ではまだ扱えないため、図とツリーに出ません");
+});

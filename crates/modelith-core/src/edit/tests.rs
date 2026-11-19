@@ -2475,3 +2475,41 @@ fn delete_action_removes_the_flows_between_its_parameters() {
         "package P {\n    action def Do {\n        action a { out x; }\n        action c { in z; }\n        flow from a.x to c.z;\n    }\n}\n"
     );
 }
+
+// ---- 名前の「::」は断る（#297 B-3） ----
+
+#[test]
+fn names_with_double_colon_are_refused_with_the_reason() {
+    // Arrange（異常系：「::」を含む名前。引用名に書けるが、名前の区切りと区別できず、その要素への線が消えるので断る。
+    // 同値分割：要素の名前・図の名前（作成・変更）・属性の名前・メッセージの名前。境界値：「::」だけ・先頭・末尾）
+    let text = "package P {\n    part def A;\n    part a : A;\n    view v;\n    occurrence def S { part x : A; message m1 from x to x; }\n}\n";
+    for bad in ["Sub::Part", "::", "::a", "a::"] {
+        for json in [
+            format!(r#"{{"op":"rename","key":"A","name":"{bad}"}}"#),
+            format!(r#"{{"op":"saveView","name":"{bad}","kind":"general","targets":[]}}"#),
+            format!(r#"{{"op":"renameView","view":"v","name":"{bad}"}}"#),
+            format!(r#"{{"op":"setAttribute","key":"A","name":"{bad}","type":"","value":""}}"#),
+            format!(
+                r#"{{"op":"updateMessage","ctx":"S","id":"msg|0|m1","name":"{bad}","type":""}}"#
+            ),
+        ] {
+            // Act
+            let why = refused(text, &json);
+            // Assert
+            assert_eq!(why, super::ops::BAD_NAME_SEPARATOR, "{json}");
+        }
+    }
+}
+
+#[test]
+fn names_with_a_single_colon_are_still_written_as_quoted_names() {
+    // Arrange（境界値：「:」1 つは名前の区切りではないので、これまでどおり引用名で書く）
+    let text = "package P {\n    part def A;\n    part a : A;\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"A","name":"a:b"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def 'a:b';\n    part a : 'a:b';\n}\n"
+    );
+}

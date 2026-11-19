@@ -11,7 +11,7 @@ use crate::syntax::{SyntaxKind, is_keyword, tokenize};
 /// 名前を変えるときに使えない文字を含む名前を断る文。
 pub(super) const BAD_RENAME: &str = "名前に「'」「\\」や改行は使えません";
 
-/// 名前に、名前を変えるときに使えない文字（`'`・`\`・改行などの制御文字）があるか（`BAD_RENAME` で断る）。
+/// 名前に、名前を変えるときに使えない文字（`'`・`\`・改行などの制御文字）があるか（`bad_name_reason` が `BAD_RENAME` で断る）。
 ///
 /// # 引数
 ///
@@ -28,9 +28,39 @@ pub(super) const BAD_RENAME: &str = "名前に「'」「\\」や改行は使え�
 /// has_bad_name_char("a\nb")   → true
 /// has_bad_name_char("電気 ケトル") → false
 /// ```
-pub(super) fn has_bad_name_char(name: &str) -> bool {
+fn has_bad_name_char(name: &str) -> bool {
     name.chars()
         .any(|c| c == '\'' || c == '\\' || c.is_control())
+}
+
+/// 「::」を含む名前を断る文。引用名（`'a::b'`）としては書けるが、名前の解決が修飾名の区切りと区別できず、
+/// その要素を指す線が消えるので付けさせない（#297）。
+pub(super) const BAD_NAME_SEPARATOR: &str =
+    "名前に「::」は使えません（「::」は、パッケージの中の要素を指すときの区切りです）";
+
+/// 付けようとする名前が使えないなら、断る理由の文を返す。使えない文字（`has_bad_name_char`）と、名前の区切りの「::」を確かめる。
+///
+/// # 引数
+///
+/// - `name`：付けようとする名前
+///
+/// # 戻り値
+///
+/// 使えなければ理由の文（`BAD_RENAME`・`BAD_NAME_SEPARATOR`）、使えれば None。
+///
+/// # 例
+///
+/// ```text
+/// bad_name_reason("it's")      → Some(BAD_RENAME)
+/// bad_name_reason("Sub::Part") → Some(BAD_NAME_SEPARATOR)
+/// bad_name_reason("a:b")       → None   // 「:」1 つは区切りではない
+/// bad_name_reason("電気 ケトル") → None
+/// ```
+pub(super) fn bad_name_reason(name: &str) -> Option<&'static str> {
+    if has_bad_name_char(name) {
+        return Some(BAD_RENAME);
+    }
+    name.contains("::").then_some(BAD_NAME_SEPARATOR)
 }
 
 /// 名前が、テキストの書き方で使う言葉（SysML v2 の予約語）なら、断る理由の文を返す（予約語の名前はテキストを壊すため。#266）。
@@ -762,8 +792,8 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
     if nn.is_empty() {
         return Err("名前を入力してください".to_owned());
     }
-    if has_bad_name_char(nn) {
-        return Err(BAD_RENAME.to_owned());
+    if let Some(why) = bad_name_reason(nn) {
+        return Err(why.to_owned());
     }
     let e = d.e(f.entry);
     let old = e.name.as_str();

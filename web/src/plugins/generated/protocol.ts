@@ -1,5 +1,5 @@
 // plugin-sdk の packages/typescript/src/generated/protocol.ts のコピー。編集しないこと。
-// 取得元: git+https://github.com/modelith/plugin-sdk?rev=3401b4ac78351eb874a9d7304f6f6ed791fd89b9#3401b4ac78351eb874a9d7304f6f6ed791fd89b9
+// 取得元: git+https://github.com/modelith/plugin-sdk?rev=c6ecddcd8f0578f6e10fddbd146d865e883c78c5#c6ecddcd8f0578f6e10fddbd146d865e883c78c5
 // 更新: Cargo.toml の plugin-sdk の rev を変えてから node web/tools/plugin-protocol-cli.ts sync（scripts/check.sh が古さを検出する）
 
 // 生成物。編集しないこと。定義元: crates/modelith-plugin-protocol
@@ -8,6 +8,8 @@
 export const API_VERSION = "0";
 export const PLUGIN_ID_PATTERN = "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$";
 export const RULE_ID_PATTERN = "^[a-z0-9][a-z0-9-]*$";
+export const USAGE_SCHEMA_VERSION = 1;
+export const COUNT_MAX = 10000;
 
 export type PluginId = string;
 
@@ -63,8 +65,9 @@ rules?: Array<string>, importers?: Array<Importer>, exporters?: Array<Exporter>,
 
 export type Engines = { 
 /**
- * Modelith の版の範囲。比べる記号と版をカンマで区切って並べる（Cargo の版の指定と同じ書き方。例: `">=0.1.0, <0.3.0"`・`"^0.2"`）。
- * 本体は、自分の版からプレリリースの印（`-beta.1` など）を外して比べる（`0.2.0-beta.1` の本体は `0.2.0` として扱う）。
+ * Modelith の版の範囲。比べる記号と版をカンマで区切って並べる（Cargo の版の指定と同じ書き方。例: `">=0.1.0, <0.3.0"`・`"^0.2"`・`"0.2.x"`・`"*"`）。
+ * 桁を `x`・`X`・`*` にすると、その桁から後ろを書かなかったのと同じ。版に付けたプレリリースとビルドの印（`-beta.1`・`+b5`）は比べるときに外す。
+ * 本体も、自分の版からプレリリースの印を外して比べる（`0.2.0-beta.1` の本体は `0.2.0` として扱う）。
  */
 modelith: string, };
 
@@ -284,3 +287,447 @@ label?: string, } | { "type": "commandDone", requestId: number, } | { "type": "i
  * ファイルの中身（base64）。
  */
 base64: string, } | { "type": "failed", requestId: number, message: string, } | { "type": "storageGet", requestId: number, key: string, } | { "type": "storageSet", requestId: number, key: string, value: unknown, } | { "type": "notify", level: NotifyLevel, message: string, };
+
+export type ProjectFile = { 
+/**
+ * プロジェクトのフォルダからのパス（`/` 区切り）。
+ */
+path: string, };
+
+export type ElementSummary = { 
+/**
+ * 修飾名（例: `Shop::Cart`）。
+ */
+qualifiedName: string, name: string, 
+/**
+ * 短い名前（`<C1>`）。書いていなければ省く。
+ */
+shortName?: string, 
+/**
+ * 要素の種類（例: `part def`）。[`crate::ModelElement`] の `kind` と同じ言葉。
+ */
+kind: string, 
+/**
+ * 要素を書いたファイル（[`ProjectFile`] の `path`）。
+ */
+file: string, 
+/**
+ * テキスト上の位置。
+ */
+range: Range, };
+
+export type RelationDirection = "outgoing" | "incoming";
+
+export type ElementRelation = { 
+/**
+ * 関係の種類。[`crate::RelationKind`] にあるものは同じ言葉（`satisfy` など）、
+ * それ以外（特化・型付け・接続など）は camelCase の言葉。一覧はコアに合わせて決める。
+ */
+kind: string, direction: RelationDirection, 
+/**
+ * 相手の要素の修飾名。
+ */
+other: string, };
+
+export type ElementDetail = { 
+/**
+ * 説明（`doc`）。書いていなければ省く。
+ */
+doc?: string, 
+/**
+ * 型の名前（書かれたまま）。書いていなければ省く。
+ */
+type?: string, 
+/**
+ * 工程（`@Phase`）の名前。
+ */
+phase?: string, 
+/**
+ * 直下の要素（属性・部品・ポートなど）。
+ */
+members: Array<ElementSummary>, ports: Array<ModelPort>, 
+/**
+ * この要素から出る関係と、この要素に入る関係。
+ */
+relations: Array<ElementRelation>, 
+/**
+ * 修飾名（例: `Shop::Cart`）。
+ */
+qualifiedName: string, name: string, 
+/**
+ * 短い名前（`<C1>`）。書いていなければ省く。
+ */
+shortName?: string, 
+/**
+ * 要素の種類（例: `part def`）。[`crate::ModelElement`] の `kind` と同じ言葉。
+ */
+kind: string, 
+/**
+ * 要素を書いたファイル（[`ProjectFile`] の `path`）。
+ */
+file: string, 
+/**
+ * テキスト上の位置。
+ */
+range: Range, };
+
+export type DiagramSummary = { name: string, qualifiedName: string, 
+/**
+ * 図の種類。view の型の名前（例: `GeneralView`・`InterconnectionView`）。
+ */
+kind: string, file: string, range: Range, };
+
+export type ProjectOutline = { files: Array<ProjectFile>, 
+/**
+ * 定義と用法（入れ子の要素も含む）。
+ */
+elements: Array<ElementSummary>, 
+/**
+ * テキストに書いた図（view）。
+ */
+diagrams: Array<DiagramSummary>, };
+
+export type ProblemReport = { 
+/**
+ * 問題のあるファイル。
+ */
+file: string, diagnostic: Diagnostic, };
+
+export type Count = number;
+
+export type Channel = "stable" | "rc" | "preview";
+
+export type Client = "web" | "server";
+
+export type Sender = { client: Client, 
+/**
+ * 送り手の版（SemVer。例: `0.2.0-rc.1`）。
+ */
+appVersion: string, channel: Channel, };
+
+export type SendLevel = "all" | "errorsOnly";
+
+export type Browser = "chrome" | "edge" | "firefox" | "safari" | "other";
+
+export type Os = "windows" | "macos" | "linux" | "android" | "ios" | "other";
+
+export type ScreenClass = "phone" | "tablet" | "desktop";
+
+export type Language = "ja" | "en" | "other";
+
+export type OnboardingStep = "sampleOpened" | "textWritten" | "diagramOpened" | "edited" | "viewCreated" | "saved" | "folderOpened";
+
+export type DurationClass = "lt1s" | "1to3s" | "3to10s" | "ge10s";
+
+export type SizeClass = "lt10kb" | "10to100kb" | "100kbTo1mb" | "ge1mb";
+
+export type WeeksClass = "1" | "2to4" | "5to12" | "ge13";
+
+export type AmountClass = "0" | "1" | "2to10" | "11to100" | "101to1000" | "ge1001";
+
+export type StorageClass = "lt100mb" | "100mbTo1gb" | "1to10gb" | "ge10gb";
+
+export type Deployment = "docker" | "binary";
+
+export type LoginMethods = { 
+/**
+ * 管理者が作るアカウント（OIDC と併せた非常用の管理者を含む）。
+ */
+accounts: boolean, oidc: boolean, };
+
+export type ParseDurationClass = "lt100ms" | "100to300ms" | "300msTo1s" | "1to3s" | "ge3s";
+
+export type ErrorName = "error" | "typeError" | "rangeError" | "referenceError" | "syntaxError" | "notAllowedError" | "quotaExceededError" | "abortError" | "securityError" | "notFoundError" | "otherDomException" | "panic" | "other";
+
+export type ErrorKind = "uncaughtError" | "unhandledRejection" | "wasmPanic";
+
+export type AutoViews = { 
+/**
+ * トレーサビリティ。
+ */
+trace: Count, 
+/**
+ * ブロック定義図。
+ */
+structure: Count, 
+/**
+ * 制御ループ。
+ */
+control: Count, 
+/**
+ * 内部ブロック図。
+ */
+ibd: Count, 
+/**
+ * 振る舞い。
+ */
+behavior: Count, 
+/**
+ * シーケンス図。
+ */
+seq: Count, 
+/**
+ * アクティビティ図。
+ */
+afv: Count, 
+/**
+ * 状態遷移図。
+ */
+stm: Count, 
+/**
+ * すべて。
+ */
+all: Count, };
+
+export type CreatedViews = { 
+/**
+ * GeneralView。
+ */
+general: Count, 
+/**
+ * InterconnectionView（内部ブロック図）。
+ */
+interconnection: Count, 
+/**
+ * ActionFlowView（アクティビティ図）。
+ */
+actionFlow: Count, 
+/**
+ * StateTransitionView（状態遷移図）。
+ */
+stateTransition: Count, 
+/**
+ * SequenceView（シーケンス図）。
+ */
+sequence: Count, 
+/**
+ * そのほかの view。
+ */
+other: Count, };
+
+export type Edits = { addNode: Count, addUsage: Count, rename: Count, delete: Count, deleteEdge: Count, connect: Count, addMessage: Count, updateMessage: Count, moveMessage: Count, setPhase: Count, initPhases: Count, makePort: Count, setPortDir: Count, deletePort: Count, saveView: Count, addToView: Count, removeFromView: Count, renameView: Count, deleteView: Count, setAttribute: Count, removeAttribute: Count, setDoc: Count, undo: Count, redo: Count, };
+
+export type Layout = { 
+/**
+ * 要素の移動。
+ */
+move: Count, 
+/**
+ * 線の調整。
+ */
+adjustEdge: Count, 
+/**
+ * 整列。
+ */
+align: Count, };
+
+export type Saves = { 
+/**
+ * ブラウザの下書き。
+ */
+draft: Count, 
+/**
+ * ダウンロード。
+ */
+download: Count, 
+/**
+ * 手元のフォルダ（File System Access）。
+ */
+folder: Count, };
+
+export type Exports = { svg: Count, png: Count, jpeg: Count, drawio: Count, 
+/**
+ * 画像のコピー。
+ */
+clipboard: Count, };
+
+export type Checks = { runs: Count, 
+/**
+ * 問題が 0 件だった回数。
+ */
+noProblems: Count, 
+/**
+ * 1〜9 件だった回数。
+ */
+problems1To9: Count, 
+/**
+ * 10〜99 件だった回数。
+ */
+problems10To99: Count, 
+/**
+ * 100 件以上だった回数。
+ */
+problems100OrMore: Count, };
+
+export type ParseTime = { fileSize: SizeClass, duration: ParseDurationClass, count: Count, };
+
+export type StackFrame = { 
+/**
+ * 配信しているアプリのファイル（例: `assets/index-3f2a.js`）。利用者のファイルの名前は入らない。
+ */
+module: string, 
+/**
+ * 関数の名前（wasm の中のコアの関数。例: `modelith_core::edit::ops::rename`）。縮めた JS の関数名は送らない。
+ */
+function?: string, 
+/**
+ * 行（取れないときは省く）。
+ */
+line?: number, 
+/**
+ * 列（取れないときは省く）。
+ */
+column?: number, };
+
+export type StartupReport = { schemaVersion: number, 
+/**
+ * 環境（任意）。環境は日に 1 回のまとめ（[`DailyReport`]）で送り、起動の報告では送らなくてよい。
+ */
+browser?: Browser, os?: Os, 
+/**
+ * 画面の幅の区分。
+ */
+screen?: ScreenClass, 
+/**
+ * 画面の表示の言語（BCP 47 の言語の部分）。
+ */
+language?: Language, 
+/**
+ * 手元のフォルダを開けるブラウザか（File System Access）。
+ */
+folderAccess?: boolean, 
+/**
+ * 起動にかかった時間の区分。
+ */
+startupTime: DurationClass, client: Client, 
+/**
+ * 送り手の版（SemVer。例: `0.2.0-rc.1`）。
+ */
+appVersion: string, channel: Channel, };
+
+export type DailyReport = { schemaVersion: number, 
+/**
+ * 環境。日に 1 回なので、起動の回数ではなく使われた端末の数に近い分母になる（環境はここで送る）。
+ * 型の上では任意（受け口は欠けた項目を読み飛ばす）。
+ */
+browser?: Browser, os?: Os, screen?: ScreenClass, language?: Language, folderAccess?: boolean, 
+/**
+ * その日に初めて起きた、使い始めの段階（同じ段階は 1 回だけ）。
+ */
+onboarding: Array<OnboardingStep>, 
+/**
+ * 自動の図の種類ごとの表示の回数。表示の回数は、図のタブを開いた・切り替えた回数（描き直しのたびではない）。
+ */
+autoViews: AutoViews, 
+/**
+ * 作成した図（テキストの view）の種類ごとの表示の回数。数え方は `auto_views` と同じ。view の名前は送らない。
+ */
+createdViews: CreatedViews, 
+/**
+ * 編集の意図（modelith-core の `Intent` の op）ごとの回数と、元に戻す・やり直す。
+ */
+edits: Edits, 
+/**
+ * 図の見た目だけを変える操作の回数（モデルは変わらない）。
+ */
+layout: Layout, 
+/**
+ * 保存先ごとの保存の回数。
+ */
+saves: Saves, 
+/**
+ * エクスポートの形式ごとの回数。
+ */
+exports: Exports, 
+/**
+ * チェックの実行。
+ */
+checks: Checks, 
+/**
+ * プラグインの機能（チェック・コマンド・エクスポートなど）を使った回数。どのプラグインかは送らない
+ * （公開の登録簿ができるまで名前を入れない。入れるときは任意の項目として足す）。
+ */
+pluginUses: Count, 
+/**
+ * AI による書き換え（MCP）の回数。アプリが数えられるのは modelith 0.4.0 から。
+ */
+aiRewrites: Count, 
+/**
+ * 解析にかかった時間の区分ごとの回数（ファイルの大きさの区分ごと）。同じ組が 2 度あれば、受け口は足し合わせる。
+ */
+parseTimes: Array<ParseTime>, 
+/**
+ * wasm を読み込めなかった回数。
+ */
+wasmLoadFailures: Count, 
+/**
+ * コアを動かす Worker が止まり、作り直した回数。
+ */
+workerRestarts: Count, 
+/**
+ * このブラウザで使った週の数の区分（ID を持たずに、続けて使われているかを測る）。
+ */
+weeksUsed?: WeeksClass, 
+/**
+ * このブラウザで初めて使った四半期（`YYYY-Qn`。例: `2026-Q4`）。端末の手がかりにならないよう、月より粗くする。
+ */
+firstQuarter?: string, client: Client, 
+/**
+ * 送り手の版（SemVer。例: `0.2.0-rc.1`）。
+ */
+appVersion: string, channel: Channel, };
+
+export type ErrorReport = { schemaVersion: number, 
+/**
+ * 送る段階（「すべて送る」と「エラーだけ」の比を数える）。
+ */
+level: SendLevel, errorKind: ErrorKind, 
+/**
+ * 例外の種類（JS のエラーの名前、DOMException の名前）。
+ */
+errorName: ErrorName, 
+/**
+ * スタックトレース（内側から外側へ）。送り手は、自分たちの配信物（アプリの `assets/` の JS と wasm）の段だけを入れ、
+ * プラグインやブラウザの拡張など、ほかのコードの段は送らない（受け口は `module` の形しか確かめられない）。
+ */
+frames: Array<StackFrame>, client: Client, 
+/**
+ * 送り手の版（SemVer。例: `0.2.0-rc.1`）。
+ */
+appVersion: string, channel: Channel, };
+
+export type ServerDailyReport = { schemaVersion: number, 
+/**
+ * 起動ごとに作るランダムな ID（UUID）。サーバに残す ID ではない。
+ */
+instanceId: string, os: Os, deployment: Deployment, 
+/**
+ * 有効なログインの方式（両方を有効にできる）。
+ */
+login: LoginMethods, 
+/**
+ * 利用者の数の区分。
+ */
+users: AmountClass, 
+/**
+ * 7 日以内に使った人の数の区分。
+ */
+activeUsers7d: AmountClass, 
+/**
+ * プロジェクトの数の区分。
+ */
+projects: AmountClass, 
+/**
+ * 保存容量の区分。
+ */
+storage: StorageClass, 
+/**
+ * プラグインの数の区分。
+ */
+plugins: AmountClass, client: Client, 
+/**
+ * 送り手の版（SemVer。例: `0.2.0-rc.1`）。
+ */
+appVersion: string, channel: Channel, };
+
+export type UsageReport = { "kind": "startup" } & StartupReport | { "kind": "daily" } & DailyReport | { "kind": "error" } & ErrorReport | { "kind": "serverDaily" } & ServerDailyReport;

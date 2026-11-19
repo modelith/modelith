@@ -12,7 +12,7 @@ rust-version = "1.85"
 [workspace.dependencies]
 modelith-core = { path = "crates/modelith-core" }
 # プラグインとの契約（ADR-0004・ADR-0018）。版は plugin-sdk のコミットで固定する
-modelith-plugin-protocol = { git = "https://github.com/modelith/plugin-sdk", rev = "3401b4ac78351eb874a9d7304f6f6ed791fd89b9" }
+modelith-plugin-protocol = { git = "https://github.com/modelith/plugin-sdk", rev = "c6ecddcd8f0578f6e10fddbd146d865e883c78c5" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -86,7 +86,7 @@ The plan may change based on user feedback. If you need a notation, please let u
 
 ## Roadmap
 
-**0.1.0** is the first stable version. **0.2.0** is in beta in the preview channel.
+**0.1.0** is the first stable version. **0.2.0** is in release candidates; try it in the release candidate channel.
 
 | Version | What you can do |
 | --- | --- |

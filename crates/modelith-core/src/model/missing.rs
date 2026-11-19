@@ -2,7 +2,9 @@
 //!
 //! 型付けの検査（`Builder::usages`）と同じく、標準ライブラリの名前は問題にせず、フォルダを開いているときは
 //! ほかのファイルの名前も解決する（F-FILE-15）。ライブラリは同梱していないので、ライブラリのパッケージで始まる名前と、
-//! ライブラリのパッケージから `import` した名前は、中身を確かめずに見つかるものとする。
+//! ライブラリのパッケージから名前を挙げて `import` した名前は、中身を確かめずに見つかるものとする。
+//! `import P::*` でまとめて取り込んだだけの名前は、型付けの検査と同じ基準（`is_lib`）で確かめる。
+//! 何でも見つかるものとすると、ライブラリを `import` したファイルでは書き誤りを知らせられないため（#297）。
 
 use super::{Builder, is_lib, is_library_package, is_standard_view};
 
@@ -79,7 +81,8 @@ impl Builder<'_> {
     }
 
     /// 名前が標準ライブラリのものとみなせるか。`is_lib` の名前と標準ビュー定義（`GeneralView` など）に加えて、ライブラリのパッケージで始まる修飾名と、
-    /// ライブラリのパッケージから `import` した修飾の無い名前（`P::*` で取り込んだものか、`P::名前` で取り込んだもの）。
+    /// ライブラリのパッケージから名前を挙げて `import` した修飾の無い名前（`P::名前`）。
+    /// `P::*` で取り込んだだけの名前は、型と同じく `is_lib` の名前だけを標準ライブラリのものとみなす（#297）。
     ///
     /// # 引数
     ///
@@ -95,9 +98,11 @@ impl Builder<'_> {
     /// is_library_name("Part")                           → true    // LIBRARY_TYPES
     /// is_library_name("GeneralView")                    → true    // 標準ビュー定義
     /// is_library_name("Metaobjects::SemanticMetadata")  → true    // ライブラリのパッケージで修飾
-    /// // "import Metaobjects::*;" があるとき
-    /// is_library_name("SemanticMetadata")               → true
-    /// is_library_name("Nope")                           → false
+    /// // "import RiskMetadata::Risk;" があるとき
+    /// is_library_name("Risk")                           → true
+    /// // "import ISQ::*;" があるとき
+    /// is_library_name("MassValue")                      → true    // is_lib の名前
+    /// is_library_name("Nope")                           → false   // `::*` だけでは標準ライブラリのものとみなさない
     /// ```
     fn is_library_name(&self, path: &str) -> bool {
         if is_lib(path, self.quantities_imported) || is_standard_view(path) {
@@ -110,7 +115,7 @@ impl Builder<'_> {
         }
         self.p.import_list.iter().any(|i| {
             let from = i.path.split("::").next().unwrap_or("");
-            is_library_package(from) && (i.members || i.path.rsplit("::").next() == Some(path))
+            is_library_package(from) && !i.members && i.path.rsplit("::").next() == Some(path)
         })
     }
 }

@@ -145,6 +145,24 @@ test("F-EDIT-3: 名前に「'」は使えず、理由を伝える（異常系）
   expect(await editorText(page)).toBe(text);
 });
 
+test("F-EDIT-3: 名前に「::」は使えず、理由を伝える（異常系。#297）", async ({ page }) => {
+  // Arrange（「::」を含む名前は、その要素への線が消えるので断る）
+  await openApp(page);
+  const text = "package P {\n    part def A;\n    part def B { part x : A; }\n}\n";
+  await page.locator("#ed").fill(text);
+  await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="all"]').click();
+  await page.locator('#gNodes .node[data-key="A"]').click();
+  // Act
+  await page.locator('[data-act="rename"]').click();
+  await page.locator("#renameIn").fill("Sub::Part");
+  await page.keyboard.press("Enter");
+  // Assert
+  await expect(page.locator("#toast")).toHaveText("名前に「::」は使えません（「::」は、パッケージの中の要素を指すときの区切りです）");
+  expect(await editorText(page)).toBe(text);
+});
+
 test.describe("説明の編集（F-EDIT-12）", () => {
   const REQ = "package P {\n    requirement def BoilReq {\n        doc /* 5 分以内に沸かす */\n    }\n    part def Kettle;\n}\n";
 

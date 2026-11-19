@@ -51,6 +51,43 @@ test("F-FILE-15: ほかのファイルの要素を図から消そうとすると
   await expect(page.locator("#ed")).toHaveValue(APP);
 });
 
+test("F-EDIT-2・F-FILE-15: ほかのファイルの図に出している要素を削除しようとすると、理由を示してそのファイルを案内し、図から外すと削除できる（#297）", async ({ page }) => {
+  // Arrange（shelf.sysml の作成した図が、表示中の stock.sysml の Item だけを出している）
+  const stock = "package Stock {\n    part def Item;\n    part def Box;\n}\n";
+  const shelf = "package Shelf {\n    view shelf : GeneralView {\n        expose Stock::Item;\n    }\n}\n";
+  await openApp(page);
+  await putFiles(page, { "stock.sysml": stock, "shelf.sysml": shelf });
+  await page.locator('[data-cmd="openFolder"]').click();
+  await page.locator('#explorer [data-file][title="stock.sysml"]').click();
+  await expect(page.locator("#docName")).toHaveText("stock.sysml");
+  await page.waitForTimeout(400); // 表示の反映で図のタブのメニューが描き直されるのを待つ
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="structure"]').click();
+  await page.locator('#gNodes .node[data-key="Item"]').click();
+  // Act
+  await page.keyboard.press("Delete");
+  // Assert（Item は表示中のファイルの要素なので、「ほかのファイルの要素です」とは言わない。テキストは変えない）
+  await expect(page.locator("#dialogTitle")).toHaveText("ほかのファイルの図に出しています");
+  await expect(page.locator("#dialogText")).toHaveText(
+    "この要素は「shelf.sysml」の図に出しているので、削除できません。先にそのファイルを開いて、図でこの要素を右クリックし、「この図から外す」を選んでください。",
+  );
+  await expect(page.locator("#ed")).toHaveValue(stock);
+  // 案内どおりに、そのファイルを開いて図から外すと、削除できる
+  await page.locator('#dialogButtons [data-id="open"]').click();
+  await expect(page.locator("#docName")).toHaveText("shelf.sysml");
+  await page.locator("#sideViews").click();
+  await page.locator('#diagramList [data-mv="shelf"]').click();
+  await page.locator('#gNodes .node[data-key="Item"]').click({ button: "right" });
+  await page.locator('#ctx button:has-text("この図から外す")').click();
+  await expect(page.locator("#ed")).toHaveValue(shelf.replace("        expose Stock::Item;\n", ""));
+  await page.locator("#sideFiles").click();
+  await page.locator('#explorer [data-file][title="stock.sysml"]').click();
+  await expect(page.locator("#docName")).toHaveText("stock.sysml");
+  await page.locator('#gNodes .node[data-key="Item"]').click();
+  await page.keyboard.press("Delete");
+  await expect(page.locator("#ed")).toHaveValue(stock.replace("    part def Item;\n", ""));
+});
+
 test("F-FILE-15: ほかのファイルを編集すると、表示に戻ったときの図に入る", async ({ page }) => {
   // Arrange
   await openApp2(page);

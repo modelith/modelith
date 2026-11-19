@@ -2095,7 +2095,8 @@ fn element_of_another_file_is_not_rewritten() {
             got,
             Err(Refused {
                 reason: IN_OTHER_FILE.to_owned(),
-                file: Some(1)
+                file: Some(1),
+                shown_in: None
             }),
             "{json}"
         );
@@ -2273,14 +2274,16 @@ fn package_of_another_file_is_not_chosen_when_the_open_file_has_none() {
         none,
         Err(Refused {
             reason: "要素を配置するパッケージがありません".to_owned(),
-            file: None
+            file: None,
+            shown_in: None
         })
     );
     assert_eq!(
         view,
         Err(Refused {
             reason: "図を置くパッケージがありません。先にパッケージを作ってください".to_owned(),
-            file: None
+            file: None,
+            shown_in: None
         })
     );
 }
@@ -2334,9 +2337,249 @@ fn element_of_another_file_is_still_not_rewritten_when_the_open_file_has_the_sam
             got,
             Err(Refused {
                 reason: IN_OTHER_FILE.to_owned(),
-                file: Some(1)
+                file: Some(1),
+                shown_in: None
             }),
             "{json}"
+        );
+    }
+}
+
+// ---- 状態・アクションを削除すると、それを指す遷移・順序の文も消える（#297 B-2） ----
+
+#[test]
+fn delete_state_removes_the_transitions_that_point_to_it() {
+    // Arrange（同値分割：先が消す状態の遷移・元が消す状態の遷移。関わらない遷移と最初の遷移は残す）
+    let text = "package P {\n    state def Mode {\n        entry; then idle;\n        state idle;\n        state run;\n        state stop;\n        transition t1 first idle accept Go then run;\n        transition first run then stop;\n        transition first idle then stop;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["s:run"],"ctx":"Mode"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    state def Mode {\n        entry; then idle;\n        state idle;\n        state stop;\n        transition first idle then stop;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_state_removes_the_first_transition_but_keeps_the_entry_action() {
+    // Arrange（境界値：最初の遷移の先を消す。`entry;` は状態の振る舞いなので残す）
+    let text = "package P {\n    state def Mode {\n        entry action init; then idle;\n        state idle;\n        state run;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["s:idle"],"ctx":"Mode"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    state def Mode {\n        entry action init; \n        state run;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_state_removes_the_shorthand_transitions_that_follow_it() {
+    // Arrange（境界値：直前の状態から引く短い書き方。消す状態 b の後ろの `then c;`・`accept E then a;` は b からの遷移なので消す。
+    // 残すと、前の状態 a からの遷移に変わってしまう。b の前の `then b;` は a から b への遷移なので消す）
+    let text = "package P {\n    state def S {\n        state a;\n        then b;\n        state b;\n        then c;\n        accept E then a;\n        state c;\n        then a;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["s:b"],"ctx":"S"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    state def S {\n        state a;\n        state c;\n        then a;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_state_removes_a_following_shorthand_transition_to_a_missing_state() {
+    // Arrange（異常系：相手が見つからない短い書き方の遷移。線にはなっていないが、残すと前の状態からの遷移に変わる）
+    let text = "package P {\n    state def S {\n        state a;\n        state b;\n        then nope;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["s:b"],"ctx":"S"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    state def S {\n        state a;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_state_keeps_the_transitions_of_other_states() {
+    // Arrange（境界値：消す状態の前の状態の遷移、同じ名前の別の状態定義の遷移は残す）
+    let text = "package P {\n    state def S {\n        state a;\n        then c;\n        state b;\n        state c;\n    }\n    state def T {\n        state b;\n        state c;\n        transition first b then c;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["s:b"],"ctx":"S"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    state def S {\n        state a;\n        then c;\n        state c;\n    }\n    state def T {\n        state b;\n        state c;\n        transition first b then c;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_state_removes_the_transitions_to_the_states_inside_it() {
+    // Arrange（入れ子：消す状態の中の状態を指す、外に書いた遷移も消す）
+    let text = "package P {\n    state def S {\n        state off;\n        state on {\n            state low;\n        }\n        transition first off then on.low;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["s:on"],"ctx":"S"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    state def S {\n        state off;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_action_removes_the_successions_that_point_to_it() {
+    // Arrange（同値分割：`first a1 then a3;` の文・消す要素から引く `then done;`。a2 までの流れは残す）
+    let text = "package P {\n    action def Do {\n        first start;\n        then action a1;\n        then action a2;\n        then action a3;\n        then done;\n        first a1 then a3;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["a:a3"],"ctx":"Do"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    action def Do {\n        first start;\n        then action a1;\n        then action a2;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_action_in_the_middle_keeps_the_next_action_without_its_succession() {
+    // Arrange（境界値：`then action a3;` は a2 から a3 への順序と a3 の宣言。a2 を消すと順序（then）だけが消え、a3 は残る）
+    let text = "package P {\n    action def Do {\n        first start;\n        then action a1;\n        then action a2;\n        then action a3;\n        then done;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["a:a2"],"ctx":"Do"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    action def Do {\n        first start;\n        then action a1;\n        action a3;\n        then done;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_action_removes_guarded_successions_to_it() {
+    // Arrange（ガード付きの順序 `if … then b;`・`else c;` の先を消す）
+    let (after, _) = run(FLOW, r#"{"op":"delete","keys":["a:c"],"ctx":"A"}"#);
+    // Assert
+    assert!(
+        !after.contains("else c;") && !after.contains("action c;"),
+        "{after}"
+    );
+    assert!(
+        after.contains("        if x > 0 then b;\n        action b;\n        first b then done;"),
+        "{after}"
+    );
+}
+
+#[test]
+fn delete_action_removes_the_flows_between_its_parameters() {
+    // Arrange（アクティビティ図の流れの線。消すアクションのパラメータを端にする flow の文も消す）
+    let text = "package P {\n    action def Do {\n        action a { out x; }\n        action b { in y; }\n        action c { in z; }\n        flow from a.x to b.y;\n        flow from a.x to c.z;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["a:b"],"ctx":"Do"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    action def Do {\n        action a { out x; }\n        action c { in z; }\n        flow from a.x to c.z;\n    }\n}\n"
+    );
+}
+
+// ---- 名前の「::」は断る（#297 B-3） ----
+
+#[test]
+fn names_with_double_colon_are_refused_with_the_reason() {
+    // Arrange（異常系：「::」を含む名前。引用名に書けるが、名前の区切りと区別できず、その要素への線が消えるので断る。
+    // 同値分割：要素の名前・図の名前（作成・変更）・属性の名前・メッセージの名前。境界値：「::」だけ・先頭・末尾）
+    let text = "package P {\n    part def A;\n    part a : A;\n    view v;\n    occurrence def S { part x : A; message m1 from x to x; }\n}\n";
+    for bad in ["Sub::Part", "::", "::a", "a::"] {
+        for json in [
+            format!(r#"{{"op":"rename","key":"A","name":"{bad}"}}"#),
+            format!(r#"{{"op":"saveView","name":"{bad}","kind":"general","targets":[]}}"#),
+            format!(r#"{{"op":"renameView","view":"v","name":"{bad}"}}"#),
+            format!(r#"{{"op":"setAttribute","key":"A","name":"{bad}","type":"","value":""}}"#),
+            format!(
+                r#"{{"op":"updateMessage","ctx":"S","id":"msg|0|m1","name":"{bad}","type":""}}"#
+            ),
+        ] {
+            // Act
+            let why = refused(text, &json);
+            // Assert
+            assert_eq!(why, super::ops::BAD_NAME_SEPARATOR, "{json}");
+        }
+    }
+}
+
+#[test]
+fn names_with_a_single_colon_are_still_written_as_quoted_names() {
+    // Arrange（境界値：「:」1 つは名前の区切りではないので、これまでどおり引用名で書く）
+    let text = "package P {\n    part def A;\n    part a : A;\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"A","name":"a:b"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def 'a:b';\n    part a : 'a:b';\n}\n"
+    );
+}
+
+// ---- ほかのファイルが使っている要素の削除は、正しい理由で断る（#297 B-5） ----
+
+#[test]
+fn deleting_an_element_that_a_view_of_another_file_shows_is_refused_with_the_real_reason() {
+    // Arrange（異常系：ほかのファイルの図がその要素だけを出している（修飾名・import した名前）。消す要素は表示中のファイルにあるので、
+    // 「ほかのファイルの要素」（file）ではなく、図に出しているファイル（shown_in）を添えて断る）
+    let text = "package A {\n    part def X;\n}\n";
+    for other in [
+        "package V {\n    view v {\n        expose A::X;\n    }\n}\n",
+        "package V {\n    import A::*;\n    view v {\n        expose X;\n    }\n}\n",
+    ] {
+        // Act
+        let got = run_with(text, other, r#"{"op":"delete","keys":["X"]}"#);
+        // Assert
+        assert_eq!(
+            got,
+            Err(Refused {
+                reason: SHOWN_IN_OTHER_FILE.to_owned(),
+                file: None,
+                shown_in: Some(1)
+            }),
+            "{other}"
+        );
+    }
+}
+
+#[test]
+fn deleting_an_element_of_another_file_is_still_refused_as_an_element_of_that_file() {
+    // Arrange（境界値：消す要素そのものがほかのファイルにあり、そのファイルの図にも出ている。要素のあるファイル（file）を優先して断る）
+    let text = "package A {\n    import V::*;\n    part y : Y;\n}\n";
+    let other = "package V {\n    part def Y;\n    view v {\n        expose V::Y;\n    }\n}\n";
+    // Act
+    let got = run_with(text, other, r#"{"op":"delete","keys":["Y"]}"#);
+    // Assert
+    assert_eq!(
+        got,
+        Err(Refused {
+            reason: IN_OTHER_FILE.to_owned(),
+            file: Some(1),
+            shown_in: None
+        })
+    );
+}
+
+#[test]
+fn deleting_an_element_that_another_file_only_types_or_exposes_with_its_package_is_not_refused() {
+    // Arrange（境界値：型で使うだけ・関係の文で指すだけ・package の中身をまとめて出す expose（その要素だけを出してはいない）・
+    // 別の要素を出す expose は、削除を止めない。ファイルをまたぐ書き換えはしない（ADR-0021 §5））
+    let text = "package A {\n    part def X;\n    part def Y;\n}\n";
+    for other in [
+        "package B {\n    part y : A::X;\n}\n",
+        "package B {\n    requirement def R;\n    satisfy R by A::X;\n}\n",
+        "package V {\n    view v {\n        expose A::*;\n    }\n}\n",
+        "package V {\n    view v {\n        expose A::Y;\n    }\n}\n",
+    ] {
+        // Act
+        let got = run_with(text, other, r#"{"op":"delete","keys":["X"]}"#);
+        // Assert
+        assert_eq!(
+            got.as_deref(),
+            Ok("package A {\n    part def Y;\n}\n"),
+            "{other}"
         );
     }
 }

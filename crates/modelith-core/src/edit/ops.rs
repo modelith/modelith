@@ -1141,7 +1141,8 @@ fn delete(d: &Doc<'_>, keys: &[String], ctx: Option<&str>) -> Result<Change, Ref
 }
 
 /// 消す要素を指して残ってしまう文の範囲（バイト）。図の線になる関係の文（`satisfy`・`connect` など、
-/// `ParseResult.rels` の文そのもの）と、作成した図がその要素だけを出している `expose`（#239）。
+/// `ParseResult.rels` の文そのもの）と、作成した図がその要素だけを出している `expose`（#239）、
+/// 状態遷移図・アクティビティ図の要素を端にする遷移・順序・流れの文（`behavior_spans`。#297）。
 /// 宣言の中に書いた関係（`part def Car :> Vehicle` の `:>` など）は、宣言ごと消してしまうので含めない。
 ///
 /// # 引数
@@ -1182,6 +1183,7 @@ fn dangling_spans(d: &Doc<'_>, gone: &[usize]) -> (Vec<Range>, HashSet<Range>) {
             .collect();
     let exact: HashSet<Range> = partial.iter().copied().collect();
     out.extend(partial);
+    out.extend(behavior_spans(d, gone));
     for (v, _) in
         d.p.entries
             .iter()
@@ -1197,6 +1199,86 @@ fn dangling_spans(d: &Doc<'_>, gone: &[usize]) -> (Vec<Range>, HashSet<Range>) {
         }
     }
     (out, exact)
+}
+
+/// 状態遷移図・アクティビティ図で、消す要素（とその中の要素）を端にする遷移・順序・流れの文の範囲（バイト。#297）。
+/// 図の線（端が見つかった文）に加えて、消す要素の直後に書いた短い書き方の文（`then b;`・`accept E then b;`）も、
+/// 相手が見つからなくても含める。残すと、その前の要素から引いた文に変わってしまうため。
+/// `then action b;` のように順序と宣言を 1 つの文に書いたものは、順序（`then`）だけの範囲にする（宣言は残す）。
+/// 消す要素の中に書いた文は、宣言ごと消えるので、呼び出し側が外側の範囲だけを使う。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `gone`：消す宣言の番号
+///
+/// # 戻り値
+///
+/// 一緒に消す範囲（重なってよい）。消す要素が状態遷移図・アクティビティ図の要素でなければ空。
+///
+/// # 例
+///
+/// ```text
+/// // "state def S { entry; then a; state a; state b; then a; transition first a then b; }" で b を消すとき
+/// behavior_spans(d, [b]) → ["then a;"（b の後ろ）の範囲, "transition first a then b;" の範囲]   // "entry; then a;" は含めない
+/// // "action def A { action a; then action b; then action c; }" で b を消すとき
+/// behavior_spans(d, [b]) → ["then "（b の前）の範囲, "then "（c の前）の範囲]
+/// // "part def K;" の K を消すとき
+/// behavior_spans(d, [K]) → []
+/// ```
+fn behavior_spans(d: &Doc<'_>, gone: &[usize]) -> Vec<Range> {
+    let is_gone = |entry: usize| {
+        std::iter::successors(Some(entry), |&i| d.e(i).pe).any(|i| gone.contains(&i))
+    };
+    // 図の要素のキー（状態定義・アクション定義ごとに別）のうち、消すものと、その宣言
+    let mut keys: Vec<HashSet<&str>> = Vec::new();
+    let mut entries: HashSet<usize> = HashSet::new();
+    let mut edges: Vec<&[crate::model::Edge]> = Vec::new();
+    let states = d.m.state_machines.iter().map(|s| {
+        let nodes = s.nodes.iter().map(|n| (n.key.as_str(), n.entry));
+        (nodes.collect::<Vec<_>>(), s.edges.as_slice())
+    });
+    let flows = d.m.action_flows.iter().map(|f| {
+        let nodes = f.nodes.iter().map(|n| (n.key.as_str(), n.entry));
+        (nodes.collect::<Vec<_>>(), f.edges.as_slice())
+    });
+    for (nodes, diagram_edges) in states.chain(flows) {
+        let mine = nodes.iter().filter_map(|&(key, entry)| {
+            let entry = entry.filter(|&i| is_gone(i))?;
+            entries.insert(entry);
+            Some(key)
+        });
+        keys.push(mine.collect());
+        edges.push(diagram_edges);
+    }
+    let in_open_file = |start: usize| crate::project::merge::file_of(start) == 0;
+    let mut out: Vec<Range> = keys
+        .iter()
+        .zip(&edges)
+        .flat_map(|(keys, edges)| {
+            edges
+                .iter()
+                .filter(move |e| keys.contains(e.from.as_str()) || keys.contains(e.to.as_str()))
+        })
+        .filter(|e| in_open_file(e.src.start))
+        .map(|e| (d.b(e.src.start), d.b(e.src.end)))
+        .collect();
+    // 直前の要素から引く短い書き方の文は、線になっていなくても（相手が見つからなくても）消す
+    out.extend(
+        d.p.rels
+            .iter()
+            .filter(|r| in_open_file(r.start))
+            .filter(|r| {
+                let source = match &r.kind {
+                    RelKind::Transition { from_entry, .. } => *from_entry,
+                    RelKind::Succession { a_entry, .. } => *a_entry,
+                    _ => None,
+                };
+                source.is_some_and(|i| entries.contains(&i))
+            })
+            .map(|r| (d.b(r.start), d.b(r.end + 1))),
+    );
+    out
 }
 
 /// 相手が複数ある依存の文（`dependency from A to B, C;`・`#derivation dependency …`）のうち、

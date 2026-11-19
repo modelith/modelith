@@ -2340,3 +2340,138 @@ fn element_of_another_file_is_still_not_rewritten_when_the_open_file_has_the_sam
         );
     }
 }
+
+// ---- 状態・アクションを削除すると、それを指す遷移・順序の文も消える（#297 B-2） ----
+
+#[test]
+fn delete_state_removes_the_transitions_that_point_to_it() {
+    // Arrange（同値分割：先が消す状態の遷移・元が消す状態の遷移。関わらない遷移と最初の遷移は残す）
+    let text = "package P {\n    state def Mode {\n        entry; then idle;\n        state idle;\n        state run;\n        state stop;\n        transition t1 first idle accept Go then run;\n        transition first run then stop;\n        transition first idle then stop;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["s:run"],"ctx":"Mode"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    state def Mode {\n        entry; then idle;\n        state idle;\n        state stop;\n        transition first idle then stop;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_state_removes_the_first_transition_but_keeps_the_entry_action() {
+    // Arrange（境界値：最初の遷移の先を消す。`entry;` は状態の振る舞いなので残す）
+    let text = "package P {\n    state def Mode {\n        entry action init; then idle;\n        state idle;\n        state run;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["s:idle"],"ctx":"Mode"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    state def Mode {\n        entry action init; \n        state run;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_state_removes_the_shorthand_transitions_that_follow_it() {
+    // Arrange（境界値：直前の状態から引く短い書き方。消す状態 b の後ろの `then c;`・`accept E then a;` は b からの遷移なので消す。
+    // 残すと、前の状態 a からの遷移に変わってしまう。b の前の `then b;` は a から b への遷移なので消す）
+    let text = "package P {\n    state def S {\n        state a;\n        then b;\n        state b;\n        then c;\n        accept E then a;\n        state c;\n        then a;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["s:b"],"ctx":"S"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    state def S {\n        state a;\n        state c;\n        then a;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_state_removes_a_following_shorthand_transition_to_a_missing_state() {
+    // Arrange（異常系：相手が見つからない短い書き方の遷移。線にはなっていないが、残すと前の状態からの遷移に変わる）
+    let text = "package P {\n    state def S {\n        state a;\n        state b;\n        then nope;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["s:b"],"ctx":"S"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    state def S {\n        state a;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_state_keeps_the_transitions_of_other_states() {
+    // Arrange（境界値：消す状態の前の状態の遷移、同じ名前の別の状態定義の遷移は残す）
+    let text = "package P {\n    state def S {\n        state a;\n        then c;\n        state b;\n        state c;\n    }\n    state def T {\n        state b;\n        state c;\n        transition first b then c;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["s:b"],"ctx":"S"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    state def S {\n        state a;\n        then c;\n        state c;\n    }\n    state def T {\n        state b;\n        state c;\n        transition first b then c;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_state_removes_the_transitions_to_the_states_inside_it() {
+    // Arrange（入れ子：消す状態の中の状態を指す、外に書いた遷移も消す）
+    let text = "package P {\n    state def S {\n        state off;\n        state on {\n            state low;\n        }\n        transition first off then on.low;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["s:on"],"ctx":"S"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    state def S {\n        state off;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_action_removes_the_successions_that_point_to_it() {
+    // Arrange（同値分割：`first a1 then a3;` の文・消す要素から引く `then done;`。a2 までの流れは残す）
+    let text = "package P {\n    action def Do {\n        first start;\n        then action a1;\n        then action a2;\n        then action a3;\n        then done;\n        first a1 then a3;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["a:a3"],"ctx":"Do"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    action def Do {\n        first start;\n        then action a1;\n        then action a2;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_action_in_the_middle_keeps_the_next_action_without_its_succession() {
+    // Arrange（境界値：`then action a3;` は a2 から a3 への順序と a3 の宣言。a2 を消すと順序（then）だけが消え、a3 は残る）
+    let text = "package P {\n    action def Do {\n        first start;\n        then action a1;\n        then action a2;\n        then action a3;\n        then done;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["a:a2"],"ctx":"Do"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    action def Do {\n        first start;\n        then action a1;\n        action a3;\n        then done;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn delete_action_removes_guarded_successions_to_it() {
+    // Arrange（ガード付きの順序 `if … then b;`・`else c;` の先を消す）
+    let (after, _) = run(FLOW, r#"{"op":"delete","keys":["a:c"],"ctx":"A"}"#);
+    // Assert
+    assert!(
+        !after.contains("else c;") && !after.contains("action c;"),
+        "{after}"
+    );
+    assert!(
+        after.contains("        if x > 0 then b;\n        action b;\n        first b then done;"),
+        "{after}"
+    );
+}
+
+#[test]
+fn delete_action_removes_the_flows_between_its_parameters() {
+    // Arrange（アクティビティ図の流れの線。消すアクションのパラメータを端にする flow の文も消す）
+    let text = "package P {\n    action def Do {\n        action a { out x; }\n        action b { in y; }\n        action c { in z; }\n        flow from a.x to b.y;\n        flow from a.x to c.z;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"delete","keys":["a:b"],"ctx":"Do"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    action def Do {\n        action a { out x; }\n        action c { in z; }\n        flow from a.x to c.z;\n    }\n}\n"
+    );
+}

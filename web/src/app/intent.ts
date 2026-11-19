@@ -1,7 +1,7 @@
 // 図の操作を意図としてコアに渡す（ADR-0016）。コアが返したテキストの編集を当て、画面への反映は呼び出し側が setText で行う。
 
 import { applyTextEdits, STALE_EDIT, type Intent } from "../core";
-import { guideToFile } from "./other-file";
+import { guideToFile, guideToShowingFile } from "./other-file";
 import { S } from "./state";
 import { coreClient, toast } from "./sync";
 
@@ -29,7 +29,7 @@ export async function opsIdle(): Promise<void> {
 
 /**
  * 意図をコアに渡し、返ってきた編集を今のテキスト（S.text）に当てる。操作できなければ理由をトーストで知らせて null
- * （ほかのファイルの要素なら、トーストの代わりにそのファイルを開くかを尋ねる）。
+ * （ほかのファイルの要素か、ほかのファイルの図に出している要素の削除なら、トーストの代わりにそのファイルを開くかを尋ねる）。
  * 返事を待つ間にテキストが変わったら、古い位置を書き換えないよう、その操作はやめる（ADR-0016 §4）。
  * テキストそのもの（S.text）はここでは書き換えない。画面への反映は呼び出し側が setText で行う。
  *
@@ -54,6 +54,8 @@ export async function perform(intent: Intent): Promise<Performed | null> {
   if ("refused" in r) {
     // ほかのファイルの要素なら、そのファイルを開けるように案内する（ADR-0021 §5）
     if (r.file) void guideToFile(r.file);
+    // ほかのファイルの図に出している要素の削除は、その図のあるファイルを開けるように案内する（#297）
+    else if (r.shownIn) void guideToShowingFile(r.shownIn);
     else toast(r.refused);
     return null;
   }

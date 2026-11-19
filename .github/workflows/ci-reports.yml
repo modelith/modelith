@@ -1,0 +1,86 @@
+name: CI reports
+
+# CI（ci.yml）のテストが失敗したとき、テスト結果のページ（Playwright のレポートと操作の記録）を、
+# アプリとは別のオリジンの置き場所 https://modelith-dev.github.io/ に置き、PR にリンクをコメントする（docs/development/testing.md）。
+# 成果物を取り出せない環境（エージェントなど）でも、画面と操作の再生を見られるようにするため。
+#
+# 安全のための決まり（変えるときは、docs/development/testing.md の「安全の考え方」も読む）:
+# - workflow_run は、フォークの PR の実行のあとでも、secret を持って、このリポジトリの文脈で動く。
+#   だから PR のコードを checkout しない・実行しない。checkout するのは、既定ブランチ（dev）にある自分のスクリプトだけ。
+# - 成果物は PR の中身から作られた、信頼できない入力。写すだけで、中のものを読まない・実行しない。
+# - ブランチ名などの信頼できない文字列を、式（${{ }}）でシェルの文に埋め込まない。実行の情報は、実行の ID から API で取り直す。
+# - トークンは、要る手順にだけ env で渡す。置き場所へ書くトークンは、成果物を扱い終えてから作る。
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  # 試すためのもの。過去の実行の ID を渡すと、その実行の結果を置く（check ジョブが失敗した実行だけ）
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "CI の実行の ID（Actions の URL の runs/ のあとの数）"
+        required: true
+      comment:
+        description: "その実行の PR に、リンクのコメントも付ける"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read          # 実行・ジョブ・成果物を読む
+  pull-requests: write   # PR にコメントを付ける
+
+# 置き場所は 1 つなので、同時に動かさない（途中のものは止めない）
+concurrency:
+  group: ci-reports
+  cancel-in-progress: false
+
+env:
+  CI_REPORTS_REPOSITORY: https://github.com/modelith-dev/modelith-dev.github.io.git
+  CI_REPORTS_SITE_URL: https://modelith-dev.github.io
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # ref を指定しない：workflow_run では既定ブランチ（dev）になる。失敗した実行のコミット（PR のコード）は取らない
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          check-latest: true  # 毎回その時点の、.nvmrc の版の最新（26.x）を使う（セキュリティリリースをすぐ取り込む）
+      # npm の依存は入れない（web/tools/ci-reports*.ts は Node だけで動く）
+      - name: Fetch the test reports of the failed run
+        id: fetch
+        run: scripts/ci-reports.sh fetch "$RUN_ID" "$RUNNER_TEMP/ci-reports"
+        env:
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+          GH_TOKEN: ${{ github.token }}
+      - name: Assemble the site（今回の分を足し、古い分を消し、一覧を作り直す）
+        if: steps.fetch.outputs.found == 'true'
+        run: scripts/ci-reports.sh assemble "$RUNNER_TEMP/ci-reports"
+      # 置き場所（modelith-dev/modelith-dev.github.io）にだけ入れた GitHub App の、1 時間で切れるトークン。権限は Contents の書き込みだけ
+      - name: Create a token for the reports site
+        id: app
+        if: steps.fetch.outputs.found == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.CI_REPORTS_APP_ID }}
+          private-key: ${{ secrets.CI_REPORTS_APP_PRIVATE_KEY }}
+          owner: modelith-dev
+          repositories: modelith-dev.github.io
+          permission-contents: write
+      - name: Push the site
+        if: steps.fetch.outputs.found == 'true'
+        run: scripts/ci-reports.sh push "$RUNNER_TEMP/ci-reports"
+        env:
+          CI_REPORTS_TOKEN: ${{ steps.app.outputs.token }}
+      - name: Comment on the pull request
+        if: steps.fetch.outputs.found == 'true' && (github.event_name == 'workflow_run' || inputs.comment)
+        run: scripts/ci-reports.sh comment "$RUNNER_TEMP/ci-reports"
+        env:
+          GH_TOKEN: ${{ github.token }}

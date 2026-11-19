@@ -86,6 +86,7 @@ jobs:
       - name: Harness check（静的検査 → 単体 → 結合 → 統合）
         run: scripts/check.sh
       # 人が読むテストレポート（要求別の表・Playwright の HTML・UI の差分）。失敗したときほど要るので必ず残す
+      # このジョブが失敗すると、ci-reports.yml がこの成果物を https://modelith-dev.github.io/ に置く（ジョブと成果物の名前に頼っている）
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

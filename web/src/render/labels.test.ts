@@ -1,7 +1,7 @@
 // 画面に出す名前（ADR-0014、docs/development/ui-writing.md）。
 import { describe, expect, it } from "vitest";
 import { standardViewName, stdViewLabel } from "../core";
-import { attrText, diagramName, docChangedMessage, savedViewHint, tabTitle, v2ViewNote, viewHint } from "./labels";
+import { attrText, diagramName, docChangedMessage, savedViewHint, shownEdgeLabel, shownName, tabTitle, v2ViewNote, viewHint } from "./labels";
 import { VIEWS } from "./view-content";
 
 describe("diagramName（ビューの名前を「〜の図」と呼べる形にする）", () => {
@@ -227,5 +227,51 @@ describe("docChangedMessage（説明を書き換えたときのトースト。F-
     expect(changed).toBe("「R」の要求の文章を変えました");
     expect(removed).toBe("「A」の説明を消しました");
     expect(replaced).toBe("「A」の説明を変えました。「*/」はテキストに書けないため「* /」にしました");
+  });
+});
+
+describe("shownName（引用名のエスケープを、表す文字に戻して見せる。#297）", () => {
+  it("「\\'」「\\\"」「\\\\」を、表す文字に戻す（同値分割：3 つのエスケープ）", () => {
+    // Act
+    const names = ["a\\'b", 'say \\"hi\\"', "x\\\\y"].map(shownName);
+    // Assert
+    expect(names).toEqual(["a'b", 'say "hi"', "x\\y"]);
+  });
+
+  it("エスケープの無い名前は変えない（正常系・境界値：空の名前）", () => {
+    // Act
+    const names = ["Engine", "電気 ケトル", "it:s", ""].map(shownName);
+    // Assert
+    expect(names).toEqual(["Engine", "電気 ケトル", "it:s", ""]);
+  });
+
+  it("「\\\\」の後ろの「'」を、もう一度エスケープとして読まない（境界値：続いたエスケープ）", () => {
+    // Act（テキストでは 'a\\\'b'：バックスラッシュ 1 つと「'」）
+    const name = shownName("a\\\\\\'b");
+    // Assert
+    expect(name).toBe("a\\'b");
+  });
+
+  it("改行やタブのエスケープと、終わりに 1 つだけ残ったバックスラッシュは書いたままにする（異常系）", () => {
+    // Act
+    const names = ["a\\nb", "a\\tb", "a\\"].map(shownName);
+    // Assert
+    expect(names).toEqual(["a\\nb", "a\\tb", "a\\"]);
+  });
+});
+
+describe("shownEdgeLabel（線のラベルの見せ方。#297）", () => {
+  it("部品として持つ線のラベル（部品の名前）は、エスケープを戻す", () => {
+    // Act
+    const label = shownEdgeLabel({ kind: "comp", label: "q\\'r" });
+    // Assert
+    expect(label).toBe("q'r");
+  });
+
+  it("ほかの線のラベル（式を含むことがある）と、空のラベルはそのまま", () => {
+    // Act
+    const labels = [{ kind: "transition", label: "Go [x == '\\\\']" }, { kind: "comp", label: "" }].map(shownEdgeLabel);
+    // Assert
+    expect(labels).toEqual(["Go [x == '\\\\']", ""]);
   });
 });

@@ -68,3 +68,44 @@ describe("svgDocument（F-EXP-1・F-EXP-4）", () => {
     expect(image.svg).not.toContain("var(--");
   });
 });
+
+describe("引用名のエスケープ（#297）", () => {
+  // テキストでは part def 'a\'b' と、その型の部品 'q\'r' : 'a\'b'、属性 'x\\y'
+  const TEXT = "package P { part def 'a\\'b' { attribute 'x\\\\y' : Real; } part def C { part 'q\\'r' : 'a\\'b'; } part 'k\\'1' : 'a\\'b'; }";
+
+  it("SVG の要素の名前・型・区画の行は、エスケープを表す文字に戻して書く。要素を探すキーは書いたまま", () => {
+    // Arrange
+    const { c, L } = structure(TEXT);
+    // Act
+    const { svg } = svgDocument(c, L, { view: "structure", edgeStyle: "ortho", phases: false });
+    // Assert（部品として持つ線のラベル（部品の名前 'q\'r'）も戻す）
+    expect(svg).toContain(">a'b</text>");
+    expect(svg).toContain(">k'1 : a'b</text>");
+    expect(svg).toContain(">x\\y : Real</text>");
+    expect(svg).toContain(">q'r</text>");
+    expect(svg).not.toContain("\\'b</text>");
+    expect(svg).toContain(`data-key="a\\'b"`);
+  });
+
+  it("draw.io の要素の名前・型・区画の行・部品として持つ線のラベルも、エスケープを表す文字に戻して書く", () => {
+    // Arrange
+    const { c, L } = structure(TEXT);
+    // Act
+    const xml = drawioDocument(c, L, { view: "structure", edgeStyle: "ortho" });
+    // Assert
+    expect(xml).toContain("&lt;b&gt;a&#39;b&lt;/b&gt;");
+    expect(xml).toContain("&lt;b&gt;k&#39;1 : a&#39;b&lt;/b&gt;");
+    expect(xml).toContain("x\\y : Real");
+    expect(xml).toContain('value="q&#39;r"');
+    expect(xml).not.toContain("\\&#39;");
+  });
+
+  it("エスケープの無い名前は、これまでどおり（正常系）", () => {
+    // Arrange
+    const { c, L } = structure("package P { part def '電気 ケトル'; }");
+    // Act
+    const { svg } = svgDocument(c, L, { view: "structure", edgeStyle: "ortho", phases: false });
+    // Assert
+    expect(svg).toContain(">電気 ケトル</text>");
+  });
+});

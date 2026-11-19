@@ -6,6 +6,7 @@ import { flowDetail, flowShape } from "./action-flow";
 import { esc } from "./escape";
 import { boundaryBoxes, boxesOf, computeRoutes, keywordOf, laneRects, linesOf, pinPoint, pinsOf, regionSeparators, stateTitle, type Box, type NodeBox } from "./geometry";
 import type { ViewLayout } from "./layout";
+import { shownEdgeLabel, shownName } from "./labels";
 import { isPseudoState } from "./state-machine";
 import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, seqRowY, svgMarkup, type ColorFn, type EdgeStyle } from "./svg";
 import { viewDef, type ViewContent } from "./view-content";
@@ -129,13 +130,14 @@ export function drawioEventCell(ev: ModelSequenceEvent, lane: number): { style: 
 export function drawioFlowCell(n: ModelNode): { style: string; value: string } {
   const ink = LC("ink"), c = LC("k-beh"), bg = LC("k-beh-bg");
   const shape = flowShape(n.kind);
+  const name = shownName(n.name);
   if (shape === "start") return { style: `ellipse;html=1;fillColor=${ink};strokeColor=${ink};`, value: "" };
   if (shape === "done") return { style: `ellipse;html=1;shape=endState;fillColor=${ink};strokeColor=${ink};`, value: "" };
-  if (shape === "bar") return { style: `html=1;fillColor=${ink};strokeColor=none;labelPosition=right;align=left;verticalLabelPosition=top;verticalAlign=bottom;`, value: esc(n.name) };
-  if (shape === "diamond") return { style: `rhombus;html=1;fillColor=${bg};strokeColor=${c};labelPosition=right;align=left;`, value: esc(n.name) };
+  if (shape === "bar") return { style: `html=1;fillColor=${ink};strokeColor=none;labelPosition=right;align=left;verticalLabelPosition=top;verticalAlign=bottom;`, value: esc(name) };
+  if (shape === "diamond") return { style: `rhombus;html=1;fillColor=${bg};strokeColor=${c};labelPosition=right;align=left;`, value: esc(name) };
   const detail = flowDetail(n);
   const plain = ["action", "perform action", "state"].includes(n.kind);
-  const lines = [plain ? "" : `«${n.kind}»`, n.name ? `<b>${esc(n.name + (plain && detail ? " " + detail : ""))}</b>` : "", !plain && detail ? esc(detail) : ""];
+  const lines = [plain ? "" : `«${n.kind}»`, name ? `<b>${esc(name + (plain && detail ? " " + detail : ""))}</b>` : "", !plain && detail ? esc(detail) : ""];
   const base = shape === "send" ? "shape=mxgraph.sysml.sendSigAct;" : shape === "accept" ? "shape=mxgraph.sysml.accEvent;" : "rounded=1;arcSize=20;";
   return { style: `${base}html=1;whiteSpace=wrap;fillColor=${bg};strokeColor=${c};`, value: lines.filter(Boolean).join("<br>") };
 }
@@ -195,7 +197,7 @@ export function drawioDocument(cc: ViewContent, L: ViewLayout, opts: DrawioOptio
     const Hh = seqGeom(cc).H;
     cc.nodes.forEach((l, i) => {
       map.set(l.key, "n" + id);
-      cells += `<mxCell id="n${id++}" value="${drawioText(l.name + (l.entry.type ? " : " + l.entry.type : ""))}" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;outlineConnect=0;size=${SEQ.h};fillColor=#E6EFF8;strokeColor=#2D5A87;" vertex="1" parent="1"><mxGeometry x="${i * SEQ.dx}" y="0" width="${SEQ.w}" height="${Hh}" as="geometry"/></mxCell>`;
+      cells += `<mxCell id="n${id++}" value="${drawioText(shownName(l.name) + (l.entry.type ? " : " + shownName(l.entry.type) : ""))}" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;outlineConnect=0;size=${SEQ.h};fillColor=#E6EFF8;strokeColor=#2D5A87;" vertex="1" parent="1"><mxGeometry x="${i * SEQ.dx}" y="0" width="${SEQ.w}" height="${Hh}" as="geometry"/></mxCell>`;
     });
     cc.edges.forEach((e, k) => {
       if (e.kind !== "message") return;
@@ -218,7 +220,7 @@ export function drawioDocument(cc: ViewContent, L: ViewLayout, opts: DrawioOptio
       if (e.kind !== "succession" || !src || !dst) continue;
       cells += `<mxCell id="e${id++}" value="${drawioText(e.label)}" style="html=1;dashed=1;endArrow=open;endFill=0;" edge="1" parent="1" source="${src}" target="${dst}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
     }
-    return mxfileXml(page || "sd " + (cc.ctx ? cc.ctx.name : ""), cells);
+    return mxfileXml(page || "sd " + (cc.ctx ? shownName(cc.ctx.name) : ""), cells);
   }
   const rects = boxesOf(nodes, L.pos);
   const rect = (n: ModelNode): Box => rects.get(n.key) ?? { x: 0, y: 0, w: 0, h: 0 };
@@ -234,7 +236,7 @@ export function drawioDocument(cc: ViewContent, L: ViewLayout, opts: DrawioOptio
     cells += `<mxCell id="n${id++}" value="${q(`«${cc.frame.kind}»<br><b>${esc(cc.frame.title)}</b>`)}" style="html=1;whiteSpace=wrap;verticalAlign=top;align=left;spacingLeft=10;rounded=0;fillColor=#F3F7FB;strokeColor=#2D5A87;" vertex="1" parent="1"><mxGeometry x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" as="geometry"/></mxCell>`;
     // 区画は、破線の四角に «performer» と部品の道のり
     for (const l of lanes) {
-      cells += `<mxCell id="n${id++}" value="${q(`«performer»<br><b>${esc(l.lane.name)}</b>`)}" style="html=1;whiteSpace=wrap;verticalAlign=top;rounded=0;fillColor=none;dashed=1;strokeColor=#5B4B8A;" vertex="1" parent="1"><mxGeometry x="${l.r.x}" y="${l.r.y}" width="${l.r.w}" height="${l.r.h}" as="geometry"/></mxCell>`;
+      cells += `<mxCell id="n${id++}" value="${q(`«performer»<br><b>${esc(shownName(l.lane.name))}</b>`)}" style="html=1;whiteSpace=wrap;verticalAlign=top;rounded=0;fillColor=none;dashed=1;strokeColor=#5B4B8A;" vertex="1" parent="1"><mxGeometry x="${l.r.x}" y="${l.r.y}" width="${l.r.w}" height="${l.r.h}" as="geometry"/></mxCell>`;
     }
     // 対象そのもののポート（8.2.3.13）は、枠の辺の上の小さな四角
     for (const [key, r] of boundaryBoxes(frameRect, cc.boundary ?? [])) {
@@ -243,7 +245,7 @@ export function drawioDocument(cc: ViewContent, L: ViewLayout, opts: DrawioOptio
       boundaryRects.set(key, { ...r, n, pins: [] });
       const lp = n.boundary === "in" ? "labelPosition=left;align=right;" : n.boundary === "out" ? "labelPosition=right;align=left;" : "verticalLabelPosition=bottom;verticalAlign=top;";
       map.set(key, "n" + id);
-      cells += `<mxCell id="n${id++}" value="${drawioText(n.name)}" style="rounded=0;html=1;fillColor=#FFFFFF;strokeColor=#2D5A87;fontSize=9;${lp}" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
+      cells += `<mxCell id="n${id++}" value="${drawioText(shownName(n.name))}" style="rounded=0;html=1;fillColor=#FFFFFF;strokeColor=#2D5A87;fontSize=9;${lp}" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
     }
   }
   for (const n of nodes) {
@@ -253,7 +255,7 @@ export function drawioDocument(cc: ViewContent, L: ViewLayout, opts: DrawioOptio
       // n 項の接続の点（8.2.3.13 の n-ary-connection-dot）は、塗った小さな丸
       const nid = "n" + id++;
       map.set(n.key, nid);
-      cells += `<mxCell id="${nid}" value="${drawioText(n.name)}" style="ellipse;html=1;fillColor=${LC("k-con")};strokeColor=${LC("k-con")};verticalLabelPosition=top;verticalAlign=bottom;" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
+      cells += `<mxCell id="${nid}" value="${drawioText(shownName(n.name))}" style="ellipse;html=1;fillColor=${LC("k-con")};strokeColor=${LC("k-con")};verticalLabelPosition=top;verticalAlign=bottom;" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
       continue;
     }
     if (n.flow) {
@@ -276,14 +278,14 @@ export function drawioDocument(cc: ViewContent, L: ViewLayout, opts: DrawioOptio
       // メモ（8.2.3.4 の comment）は、角を折った四角に本文を書く
       const nid = "n" + id++;
       map.set(n.key, nid);
-      const text = (n.name ? `«comment» <b>${esc(n.name)}</b><br>` : "") + linesOf(n).map((x) => esc(x.t)).join("<br>");
+      const text = (n.name ? `«comment» <b>${esc(shownName(n.name))}</b><br>` : "") + linesOf(n).map((x) => esc(x.t)).join("<br>");
       cells += `<mxCell id="${nid}" value="${q(text)}" style="shape=note;size=12;html=1;whiteSpace=wrap;align=left;verticalAlign=top;spacingLeft=8;fillColor=#FFFFFF;strokeColor=${c};" vertex="1" parent="1"><mxGeometry x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" as="geometry"/></mxCell>`;
       continue;
     }
     // 中に部品を描く部品（内部ブロック図の入れ子）は、区画の行を書かない
     const lines = nodes.some((c) => c.container === n.key) ? [] : linesOf(n).map((x) => esc(x.t));
     const label =
-      `«${keywordOf(n)}»<br><b>${esc((n.short ? `<'${n.short}'> ` : "") + n.name + (!n.isDef && n.entry.type ? " : " + n.entry.type : ""))}</b>` +
+      `«${keywordOf(n)}»<br><b>${esc((n.short ? `<'${n.short}'> ` : "") + shownName(n.name) + (!n.isDef && n.entry.type ? " : " + shownName(n.entry.type) : ""))}</b>` +
       (lines.length ? `<hr><div style="text-align:left;font-size:10px">${lines.join("<br>")}</div>` : "");
     const nid = "n" + id++;
     map.set(n.key, nid);
@@ -295,7 +297,7 @@ export function drawioDocument(cc: ViewContent, L: ViewLayout, opts: DrawioOptio
         pp.side === "l" ? "labelPosition=left;align=right;" : pp.side === "r" ? "labelPosition=right;align=left;" : pp.side === "t" ? "verticalLabelPosition=top;verticalAlign=bottom;" : "verticalLabelPosition=bottom;verticalAlign=top;";
       const pid = "n" + id++;
       map.set(n.key + "|port:" + pp.port.name, pid);
-      cells += `<mxCell id="${pid}" value="${drawioText(pp.port.name)}" style="rounded=0;html=1;fillColor=#FFFFFF;strokeColor=${c};fontSize=9;${lp}" vertex="1" parent="${nid}"><mxGeometry x="${pq.x - 6}" y="${pq.y - 6}" width="12" height="12" as="geometry"/></mxCell>`;
+      cells += `<mxCell id="${pid}" value="${drawioText(shownName(pp.port.name))}" style="rounded=0;html=1;fillColor=#FFFFFF;strokeColor=${c};fontSize=9;${lp}" vertex="1" parent="${nid}"><mxGeometry x="${pq.x - 6}" y="${pq.y - 6}" width="12" height="12" as="geometry"/></mxCell>`;
     }
   }
   // 並行の状態の領域（8.2.3.18）を、破線で区切る（状態定義そのものが並行なら、対象の枠の中を区切る）
@@ -326,7 +328,7 @@ export function drawioDocument(cc: ViewContent, L: ViewLayout, opts: DrawioOptio
       if (bends.length) points = `<Array as="points">${bends.map((p) => `<mxPoint x="${p[0]}" y="${p[1]}"/>`).join("")}</Array>`;
     }
     const geom = points ? `<mxGeometry relative="1" as="geometry">${points}</mxGeometry>` : `<mxGeometry relative="1" as="geometry"/>`;
-    cells += `<mxCell id="e${id++}" value="${drawioText(e.label)}" style="html=1;rounded=1;${drawioLineShape(opts.edgeStyle)}${st}${extra}" edge="1" parent="1" source="${src}" target="${dst}">${geom}</mxCell>`;
+    cells += `<mxCell id="e${id++}" value="${drawioText(shownEdgeLabel(e))}" style="html=1;rounded=1;${drawioLineShape(opts.edgeStyle)}${st}${extra}" edge="1" parent="1" source="${src}" target="${dst}">${geom}</mxCell>`;
   }
   return mxfileXml(page || viewDef(opts.view).label, cells);
 }

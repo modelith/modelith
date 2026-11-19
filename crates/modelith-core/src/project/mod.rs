@@ -850,6 +850,14 @@ impl Ctx {
             if matches!(kind, EXTENDED_DEF_KIND | EXTENDED_USAGE_KIND) {
                 self.extended.push(idx);
             }
+            // 空の引用名（`part def '';`）は書けるが、名前で指せないので図とツリーに出せない。黙って消さず、知らせる（#297）
+            if has_empty_name(n) {
+                self.out.unsupported.push(Unsupported {
+                    start,
+                    end,
+                    head: h.to_owned(),
+                });
+            }
             let value = child(n, FEATURE_VALUE)
                 .and_then(|v| child(&v, EXPRESSION))
                 .map(|x| self.node_head(&x))
@@ -2193,6 +2201,29 @@ struct TypeRef {
     conj: bool,
     /// 修飾名全体（引用符を外し `::` でつなぐ）。特徴の連鎖なら `name` と同じ。
     path: String,
+}
+
+/// 宣言の名前が、空の引用名（`''`）か。名前を書かない宣言（`part : A;`）は空の名前ではない。
+///
+/// # 引数
+///
+/// - `n`：宣言の節
+///
+/// # 戻り値
+///
+/// 名前（`NAME` の節）の最初のトークンが `''` なら `true`。
+///
+/// # 例
+///
+/// ```text
+/// has_empty_name("part def '';")   → true
+/// has_empty_name("part def ' ';")  → false   // 空白 1 文字の名前
+/// has_empty_name("part : A;")      → false   // 名前を書いていない
+/// ```
+fn has_empty_name(n: &SyntaxNode) -> bool {
+    child(n, NAME)
+        .and_then(|c| tokens(&c).next())
+        .is_some_and(|t| t.kind() == QUOTED_NAME && t.text() == "''")
 }
 
 /// 宣言の節から、短い名前・名前・型を取り出す。

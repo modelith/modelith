@@ -447,7 +447,8 @@ package ModelithRequirements {
 
         // ---- AI との連携（ADR-0024。0.3.0 から） -----------------------
         requirement def <'F-AI-1'> McpReadReq {
-            doc /* 予定：0.3.0。AI のクライアントが MCP で、フォルダ（プロジェクト）のファイル一覧・要素の一覧（種類・修飾名・定義の位置）・要素の中身・図の一覧と、問題一覧（チェックルールの結果を含む）を得られる */
+            doc /* AI のクライアントが MCP で、フォルダ（プロジェクト）のファイル一覧・要素の一覧（種類・修飾名・定義の位置）・要素の中身・図の一覧と、問題一覧（チェックルールの結果を含む）を得られる。
+                   読むのは指定したフォルダの中だけで、モデルを書き換えない。道具を呼ぶたびにフォルダを読み直す。読めないファイルは黙って飛ばさず、問題一覧で知らせる */
         }
         requirement def <'F-AI-2'> McpWriteReq {
             doc /* 予定：0.3.0。AI のクライアントが MCP で、画面と同じ編集の意図（要素や関係の追加・名前の変更・削除・説明）を、要素を修飾名で指して渡せる。
@@ -751,7 +752,7 @@ package ModelithRequirements {
             doc /* 起動・メニュー・ヘッダー・配信の設定（web/src/main.ts・vite.config.ts・Pages） */
         }
         part def McpServer {
-            doc /* AI のクライアントとやり取りする MCP のサーバ（予定：0.3.0。ADR-0024） */
+            doc /* AI のクライアントとやり取りする MCP のサーバ（cli/。Node で動き、コアは wasm を使う。読む操作は 0.3.0 から。ADR-0024） */
         }
         part def Server {
             doc /* 自分で動かせる共同編集のサーバ（予定：0.5.0。modelith-server。ADR-0025） */
@@ -1547,6 +1548,15 @@ package ModelithRequirements {
                    要素を動かしても曲がり角は動かず、続けて 2 回押すと消えること、端を別の縁へ付け替え、draw.io に曲がり角の点と付け替えた端を書くこと */
             objective {
                 verify EdgeShapeReq;
+            }
+        }
+        verification def McpReadTest {
+            doc /* cli/src/mcp-server.test.ts：MCP のクライアントをメモリ上でつなぎ、本物のコア（wasm）と一時フォルダのプロジェクトで、道具の一覧（読むだけ・引数の形）、ファイル一覧・要素の一覧（種類・修飾名・位置。ファイルと種類での絞り込み）・図の一覧、
+                   要素の中身（説明・直下の要素・ポート・ほかのファイルとの関係）、問題一覧（見つからない型とチェックルールの結果。ファイルでの絞り込み）、道具を呼ぶたびの読み直し、失敗の伝え方（無い要素・必須の引数なし・知らない道具・読めないフォルダ）を確かめる。
+                   cli/src/tools.test.ts：道具の判断（絞り込みの同値分割と境界値、読めないファイルを問題として知らせる）。cli/src/fs-project.test.ts：フォルダの読み方（.sysml・.kerml を名前の順に、隠しフォルダ・target・node_modules を除く。設定ファイルとプラグインのファイル。UTF-8 でないファイル。シンボリックリンクをたどらずフォルダの外を読まない）。
+                   crates/modelith-core/src/read：概要（修飾名・引用名・UTF-16 の列・閉じていない括弧）、要素の詳細（同じ修飾名が 2 つ・ほかのファイルとの関係）、問題一覧（既定の重さ・選んだ重さ・設定ファイルとプラグインの問題）。crates/modelith-wasm/src/read.rs：契約の形の JSON と、読めない入力 */
+            objective {
+                verify McpReadReq;
             }
         }
         verification def CliCheckTest {

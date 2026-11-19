@@ -1,0 +1,22 @@
+{
+  "name": "@modelith/cli",
+  "private": true,
+  "version": "0.2.0-rc.2",
+  "description": "Modelith for the command line and AI clients (MCP)",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "mcp": "node src/main.ts mcp",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

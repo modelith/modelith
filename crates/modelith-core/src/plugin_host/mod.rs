@@ -16,4 +16,6 @@ pub use message::{
     CheckedMessage, PlacedDiagnostic, PlacedEdit, check_message, place_diagnostics,
     required_permission, resolve_edits,
 };
+pub(crate) use position::Positions;
+pub(crate) use snapshot::port;
 pub use snapshot::snapshot;

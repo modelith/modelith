@@ -103,7 +103,7 @@ fn element(n: &Node, parse: &ParseResult, positions: &Positions) -> ModelElement
 /// port(Port { name: "p", ty: "Power", dir: "out", … }) → { name: "p", type: Some("Power"), direction: Some(Out) }
 /// port(Port { name: "q", ty: "", dir: "?", … })        → { name: "q", type: None, direction: None }
 /// ```
-fn port(p: &Port) -> ModelPort {
+pub(crate) fn port(p: &Port) -> ModelPort {
     ModelPort {
         name: p.name.clone(),
         port_type: (!p.ty.is_empty()).then(|| p.ty.clone()),

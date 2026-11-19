@@ -1,6 +1,8 @@
 //! ブラウザ向けの wasm バインディング。Web Worker 内で読み込まれ、
 //! UI とは LSP と同じ形のメッセージでやり取りする（ADR-0003）。
 
+mod read;
+
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 

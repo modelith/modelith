@@ -164,8 +164,8 @@ pub(super) fn update_message(
     ty: &str,
 ) -> Result<Change, Refusal> {
     let name = name.trim();
-    if super::ops::has_bad_name_char(name) {
-        return Err(super::ops::BAD_RENAME.to_owned());
+    if let Some(why) = super::ops::bad_name_reason(name) {
+        return Err(why.to_owned());
     }
     let c = d.context(ctx)?;
     let (i, ms) = message_at(d, c, id)?;
@@ -1038,8 +1038,8 @@ pub(super) fn save_view(
         return Err("図の名前を入力してください".to_owned());
     }
     // 要素の名前と同じ規則にする（`'` などを含む名前は、名前の変更では付けられないため。#267）
-    if super::ops::has_bad_name_char(name) {
-        return Err(super::ops::BAD_RENAME.to_owned());
+    if let Some(why) = super::ops::bad_name_reason(name) {
+        return Err(why.to_owned());
     }
     if d.m.views.iter().any(|v| v.name == name) {
         return Err(format!(
@@ -1194,8 +1194,8 @@ pub(super) fn rename_view(d: &Doc<'_>, view: &str, name: &str) -> Result<Change,
     if name.is_empty() {
         return Err("図の名前を入力してください".to_owned());
     }
-    if super::ops::has_bad_name_char(name) {
-        return Err(super::ops::BAD_RENAME.to_owned());
+    if let Some(why) = super::ops::bad_name_reason(name) {
+        return Err(why.to_owned());
     }
     let e = d.e(v);
     if name == view {
@@ -1537,8 +1537,8 @@ pub(super) fn set_attribute(
     if name.is_empty() {
         return Err("属性の名前を入力してください".to_owned());
     }
-    if super::ops::has_bad_name_char(name) {
-        return Err(super::ops::BAD_RENAME.to_owned());
+    if let Some(why) = super::ops::bad_name_reason(name) {
+        return Err(why.to_owned());
     }
     if ty.contains(ATTR_STOP) || value.contains(ATTR_STOP) || ty.contains('=') {
         return Err(

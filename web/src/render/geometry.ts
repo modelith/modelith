@@ -3,6 +3,7 @@
 import type { Entry, Expr, ModelEdge, ModelLane, ModelNode, Port, PortDir } from "../core";
 import { flowBodyLines, flowDetail, flowShape } from "./action-flow";
 import { isPseudoState, stateActionLines } from "./state-machine";
+import { shownName } from "./labels";
 import type { Pos, Side, ViewLayout } from "./layout";
 import type { ViewContent, ViewDef } from "./view-content";
 
@@ -105,11 +106,12 @@ const SPEC_SYMBOL: Record<string, string> = { specializes: ":>", subsets: ":>", 
 export function featureText(c: Entry): string {
   const specs = c.specs ?? [], m = c.multiplicity;
   const value = c.value ? `${c.valueOp ?? "="} ${c.value}` : "";
-  if (!specs.length && !m) return value ? `${c.name} ${value}` : c.type ? `${c.name} : ${c.type}` : c.name;
+  const name = shownName(c.name), type = shownName(c.type);
+  if (!specs.length && !m) return value ? `${name} ${value}` : type ? `${name} : ${type}` : name;
   const first = specs[0];
   const unnamed = !!first && first.target.split(/::|\./).pop() === c.name;
-  const parts = [unnamed ? "" : c.name];
-  if (c.type) parts.push(`: ${c.type}`);
+  const parts = [unnamed ? "" : name];
+  if (type) parts.push(`: ${type}`);
   if (m?.range) parts.push(`[${m.range}]`);
   if (m?.ordered) parts.push("ordered");
   if (m?.nonunique) parts.push("nonunique");
@@ -184,12 +186,12 @@ export function compartment(n: ModelNode): Line[] {
     for (const c of e.children) if (c.kind === "attribute" || c.kind === "param") push(featureText(c), "attr", 1);
   }
   if (n.kind === "state def") {
-    const st = e.children.filter((c) => c.kind === "state").map((c) => c.name);
+    const st = e.children.filter((c) => c.kind === "state").map((c) => shownName(c.name));
     if (st.length) push("states: " + st.join(", "), "attr");
     for (const t of n.trans) push(t, "expr", 1);
   }
   if (n.kind === "action def") {
-    e.children.filter((c) => c.kind === "action").forEach((c, k) => push(`${k + 1}. ${c.name}`, "attr", 1));
+    e.children.filter((c) => c.kind === "action").forEach((c, k) => push(`${k + 1}. ${shownName(c.name)}`, "attr", 1));
   }
   const MAX = 8;
   if (L.length > MAX) {
@@ -337,7 +339,7 @@ const STATE_SYMBOL: Record<string, number> = { start: 22, done: 26 };
  * stateTitle(state off)          // → "off"
  * stateTitle(state m : Modes)    // → "m : Modes"
  */
-export const stateTitle = (n: ModelNode): string => n.name + (n.entry.type && !isPseudoState(n) ? ` : ${n.entry.type}` : "");
+export const stateTitle = (n: ModelNode): string => shownName(n.name) + (n.entry.type && !isPseudoState(n) ? ` : ${shownName(n.entry.type)}` : "");
 
 /**
  * 状態遷移の図（8.2.3.18）の要素の大きさ。開始・終了は決まった大きさの丸。状態は、名前と区画の行が収まる幅（STATE_W 〜 280）で、
@@ -1577,6 +1579,31 @@ export function placeView(c: ViewContent, v: ViewDef, pos: Record<string, Pos>, 
   placeNested(nodes, pos);
   placeJunctions(nodes, edges, pos);
   placeNotes(nodes, edges, pos);
+}
+
+/** 位置を決めて置く要素と、既にある要素の間に空ける間隔（freeSpot）。 */
+const SPOT_GAP = 40;
+
+/**
+ * 要素を置きたい位置が既にある要素に重なるなら、重ならなくなるまで下へずらした位置を返す（#297）。
+ * 同じ位置に続けて置いても、要素が縦に並ぶ。座標の無い要素を並べる placeView と違い、利用者が決めた位置の近くに置くときに使う。
+ *
+ * @param want 置きたい位置（要素の左上、図の座標）
+ * @param size 置く要素の大きさ
+ * @param taken 既にある要素の矩形
+ * @returns 置く位置（左上）。重ならなければ want のまま。重なれば、重なった要素の下端から 40 空け、10 単位に切り上げた y
+ * @example
+ * freeSpot([200, 170], { w: 224, h: 44 }, [])                                    // → [200, 170]
+ * freeSpot([200, 170], { w: 224, h: 44 }, [{ x: 200, y: 170, w: 224, h: 44 }])  // → [200, 260]
+ * freeSpot([200, 170], { w: 224, h: 44 }, [{ x: 424, y: 170, w: 224, h: 44 }])  // → [200, 170]（縁が接するだけ）
+ */
+export function freeSpot(want: Pos, size: { w: number; h: number }, taken: readonly Box[]): Pos {
+  const x = want[0];
+  let y = want[1];
+  const hit = (): Box | undefined => taken.find((b) => x < b.x + b.w && b.x < x + size.w && y < b.y + b.h && b.y < y + size.h);
+  // 1 回ずらすたびに、重なった要素より下へ出るので、要素の数だけ繰り返せば必ず終わる
+  for (let b = hit(), k = 0; b && k <= taken.length; b = hit(), k++) y = Math.ceil((b.y + b.h + SPOT_GAP) / 10) * 10;
+  return [x, y];
 }
 
 /** 内部ブロック図の枠の上のポートの四角の一辺。 */

@@ -225,6 +225,10 @@ pub fn edit(text: &str, intent: &Intent) -> Result<Outcome, Refusal> {
 pub const IN_OTHER_FILE: &str =
     "この要素はほかのファイルにあります。そのファイルを開いて編集してください";
 
+/// 表示中のファイルの要素を、ほかのファイルの作成した図が出しているので削除できないときの断り（#297）。
+/// 図に出している文（`expose`）はほかのファイルにあり、図からは書き換えられない（ADR-0021 §5）。画面はファイルの名前を添えて、そのファイルを開く操作を示す。
+pub const SHOWN_IN_OTHER_FILE: &str = "この要素は、ほかのファイルの図に出しているので削除できません。先にそのファイルを開いて、図から外してください";
+
 /// 操作できなかった理由と、書き換えようとした要素のあるファイル。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Refused {
@@ -233,6 +237,9 @@ pub struct Refused {
     /// ほかのファイルの要素を書き換えようとしたなら、そのファイルの番号（`merge` に渡した順で 1 から）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file: Option<usize>,
+    /// 表示中のファイルの要素を、ほかのファイルの作成した図が出しているので断ったなら、そのファイルの番号（`file` と同じ数え方）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shown_in: Option<usize>,
 }
 
 /// プロジェクトのほかのファイルとつないだモデルで、表示中のファイルに意図を当てる（ADR-0021 §5）。
@@ -247,7 +254,8 @@ pub struct Refused {
 ///
 /// # 戻り値
 ///
-/// 表示中のファイルの編集。操作できなければ理由（ほかのファイルの要素なら、そのファイルの番号も）。
+/// 表示中のファイルの編集。操作できなければ理由（ほかのファイルの要素なら、そのファイルの番号も。
+/// 表示中のファイルの要素をほかのファイルの図が出しているので削除できないなら、その図のあるファイルの番号も）。
 ///
 /// # 例
 ///
@@ -255,7 +263,10 @@ pub struct Refused {
 /// // others = [parse_file("package Fleet { part def Car; }")]
 /// edit_in("package App { part c : Fleet::Car; }", others, Rename { key: "c", name: "d" }) → Ok(…)
 /// edit_in("package App { part c : Fleet::Car; }", others, Rename { key: "Car", name: "Bus" })
-///   → Err(Refused { reason: IN_OTHER_FILE, file: Some(1) })
+///   → Err(Refused { reason: IN_OTHER_FILE, file: Some(1), shown_in: None })
+/// // others = [parse_file("package V { view v { expose A::X; } }")]
+/// edit_in("package A { part def X; }", others, Delete { keys: ["X"] })
+///   → Err(Refused { reason: SHOWN_IN_OTHER_FILE, file: None, shown_in: Some(1) })
 /// ```
 pub fn edit_in(text: &str, others: Vec<ParseResult>, intent: &Intent) -> Result<Outcome, Refused> {
     // 括弧が合っていないと、書く場所を取り違えて、ほかの要素を package の外へ出してしまう（#222）
@@ -263,6 +274,7 @@ pub fn edit_in(text: &str, others: Vec<ParseResult>, intent: &Intent) -> Result<
         return Err(Refused {
             reason: UNBALANCED.to_owned(),
             file: None,
+            shown_in: None,
         });
     }
     let doc = Doc::with(text, project::merge::join(text, others));
@@ -271,11 +283,23 @@ pub fn edit_in(text: &str, others: Vec<ParseResult>, intent: &Intent) -> Result<
         return Err(Refused {
             reason: IN_OTHER_FILE.to_owned(),
             file: Some(file),
+            shown_in: None,
+        });
+    }
+    if let Some(file) = doc.shown_in.get() {
+        return Err(Refused {
+            reason: SHOWN_IN_OTHER_FILE.to_owned(),
+            file: None,
+            shown_in: Some(file),
         });
     }
     result
         .map(|change| change.outcome(text))
-        .map_err(|reason| Refused { reason, file: None })
+        .map_err(|reason| Refused {
+            reason,
+            file: None,
+            shown_in: None,
+        })
 }
 
 /// テキストの括弧が閉じていないときに、図からの操作を断る理由の文（画面にそのまま出す。ADR-0014）。
@@ -324,6 +348,8 @@ pub(crate) struct Doc<'a> {
     utf16: Utf16,
     /// ほかのファイルの位置に触れたら、そのファイルの番号（ADR-0021。その操作は断る）。
     touched: Cell<Option<usize>>,
+    /// 消そうとした表示中のファイルの要素を、ほかのファイルの作成した図が出していたら、そのファイルの番号（その削除は断る。#297）。
+    shown_in: Cell<Option<usize>>,
 }
 
 impl<'a> Doc<'a> {
@@ -372,6 +398,7 @@ impl<'a> Doc<'a> {
             m,
             utf16: Utf16::new(text),
             touched: Cell::new(None),
+            shown_in: Cell::new(None),
         }
     }
 
@@ -399,6 +426,19 @@ impl<'a> Doc<'a> {
             self.touched.set(Some(file));
         }
         self.utf16.byte(pos)
+    }
+
+    /// 消そうとした要素を、ほかのファイルの作成した図が出していることを控える（その削除は `SHOWN_IN_OTHER_FILE` で断る）。
+    /// 2 つ以上のファイルが出しているときは、最初に控えたファイルを残す。
+    ///
+    /// # 引数
+    ///
+    /// - `view`：その要素を出している、ほかのファイルの view の宣言の番号
+    pub fn mark_shown_in(&self, view: usize) {
+        let file = project::merge::file_of(self.e(view).start);
+        if file > 0 && self.shown_in.get().is_none() {
+            self.shown_in.set(Some(file));
+        }
     }
 
     /// 宣言の番号から宣言を取り出す。

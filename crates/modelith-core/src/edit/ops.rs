@@ -11,7 +11,7 @@ use crate::syntax::{SyntaxKind, is_keyword, tokenize};
 /// 名前を変えるときに使えない文字を含む名前を断る文。
 pub(super) const BAD_RENAME: &str = "名前に「'」「\\」や改行は使えません";
 
-/// 名前に、名前を変えるときに使えない文字（`'`・`\`・改行などの制御文字）があるか（`BAD_RENAME` で断る）。
+/// 名前に、名前を変えるときに使えない文字（`'`・`\`・改行などの制御文字）があるか（`bad_name_reason` が `BAD_RENAME` で断る）。
 ///
 /// # 引数
 ///
@@ -28,9 +28,39 @@ pub(super) const BAD_RENAME: &str = "名前に「'」「\\」や改行は使え�
 /// has_bad_name_char("a\nb")   → true
 /// has_bad_name_char("電気 ケトル") → false
 /// ```
-pub(super) fn has_bad_name_char(name: &str) -> bool {
+fn has_bad_name_char(name: &str) -> bool {
     name.chars()
         .any(|c| c == '\'' || c == '\\' || c.is_control())
+}
+
+/// 「::」を含む名前を断る文。引用名（`'a::b'`）としては書けるが、名前の解決が修飾名の区切りと区別できず、
+/// その要素を指す線が消えるので付けさせない（#297）。
+pub(super) const BAD_NAME_SEPARATOR: &str =
+    "名前に「::」は使えません（「::」は、パッケージの中の要素を指すときの区切りです）";
+
+/// 付けようとする名前が使えないなら、断る理由の文を返す。使えない文字（`has_bad_name_char`）と、名前の区切りの「::」を確かめる。
+///
+/// # 引数
+///
+/// - `name`：付けようとする名前
+///
+/// # 戻り値
+///
+/// 使えなければ理由の文（`BAD_RENAME`・`BAD_NAME_SEPARATOR`）、使えれば None。
+///
+/// # 例
+///
+/// ```text
+/// bad_name_reason("it's")      → Some(BAD_RENAME)
+/// bad_name_reason("Sub::Part") → Some(BAD_NAME_SEPARATOR)
+/// bad_name_reason("a:b")       → None   // 「:」1 つは区切りではない
+/// bad_name_reason("電気 ケトル") → None
+/// ```
+pub(super) fn bad_name_reason(name: &str) -> Option<&'static str> {
+    if has_bad_name_char(name) {
+        return Some(BAD_RENAME);
+    }
+    name.contains("::").then_some(BAD_NAME_SEPARATOR)
 }
 
 /// 名前が、テキストの書き方で使う言葉（SysML v2 の予約語）なら、断る理由の文を返す（予約語の名前はテキストを壊すため。#266）。
@@ -397,11 +427,11 @@ impl Doc<'_> {
             .collect()
     }
 
-    /// 書いた順で最初の package。暫定コアの `firstPackage`（`web/src/app/ops.ts`）と同じ。
+    /// 表示中のファイルの、書いた順で最初の package（ほかのファイルの package は選ばない。ADR-0021 §5）。暫定コアの `firstPackage`（`web/src/app/ops.ts`）と同じ。
     ///
     /// # 戻り値
     ///
-    /// package の宣言の番号。package が無ければ None。
+    /// package の宣言の番号。表示中のファイルに package が無ければ None。
     ///
     /// # 例
     ///
@@ -410,9 +440,12 @@ impl Doc<'_> {
     /// first_package() → Some(P の番号)
     /// // d.text = "part def A;" のとき
     /// first_package() → None
+    /// // d.text = "part def A;" で、ほかのファイルが "package B;" のとき
+    /// first_package() → None
     /// ```
     pub(super) fn first_package(&self) -> Option<usize> {
-        self.p.entries.iter().position(|e| e.kind == "package")
+        // ほかのファイルの package には書けない（ADR-0021 §5）
+        (0..self.p.entries.len()).find(|&i| self.e(i).kind == "package" && self.in_open_file(i))
     }
 
     /// e から上へたどった、最初の @Phase の値（自分か、外側の宣言から受け継ぐ）。値が空の指定は飛ばす。
@@ -506,7 +539,7 @@ pub(super) fn unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
     n
 }
 
-/// 定義を追加する。置く package は、同じ種類の要素が最後に置かれた package（無ければ最初の package）。
+/// 定義を追加する。置く package は、表示中のファイルで同じ種類の要素が最後に置かれた package（無ければ最初の package）。
 /// package が無く `new_package` があれば、テキストの末尾（`@layout` コメントの前）に作ってそこに置く。
 /// 名前は種類ごとの `NewPart` などで、使われていれば番号を付ける。フェーズの指定は、置く package から受け継ぐ値と違うときだけ書く。
 /// 暫定コアの `OPS.addNode`（`web/src/app/ops.ts`）と同じ書き方。
@@ -538,13 +571,14 @@ fn add_node(
     phase: Option<&str>,
     new_package: Option<&str>,
 ) -> Result<Change, Refusal> {
-    let pkg =
-        d.p.entries
-            .iter()
-            .rev()
-            .find(|e| e.kind == kind && e.pe.is_some_and(|p| d.e(p).kind == "package"))
-            .and_then(|e| e.pe)
-            .or_else(|| d.first_package());
+    // 置くのは表示中のファイルなので、ほかのファイルの同じ種類の要素は見ない（ADR-0021 §5）
+    let pkg = (0..d.p.entries.len())
+        .rev()
+        .filter(|&i| d.in_open_file(i))
+        .map(|i| d.e(i))
+        .find(|e| e.kind == kind && e.pe.is_some_and(|p| d.e(p).kind == "package"))
+        .and_then(|e| e.pe)
+        .or_else(|| d.first_package());
     let (text, target, inherited) = match (pkg, new_package) {
         (Some(p), _) => (d.text.to_owned(), d.target(p), d.phase_of(p)),
         (None, Some(name)) => {
@@ -758,8 +792,8 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
     if nn.is_empty() {
         return Err("名前を入力してください".to_owned());
     }
-    if has_bad_name_char(nn) {
-        return Err(BAD_RENAME.to_owned());
+    if let Some(why) = bad_name_reason(nn) {
+        return Err(why.to_owned());
     }
     let e = d.e(f.entry);
     let old = e.name.as_str();
@@ -935,7 +969,9 @@ fn names_entry(d: &Doc<'_>, ts: &[(SyntaxKind, usize, &str)], k: usize) -> Optio
     }
     segs.reverse();
     let at = ts[k].1;
+    // ほかのファイルの宣言は、表示中のファイルのトークンを囲まない（位置に触れると操作を断る印が付く）
     let ctx = (0..d.p.entries.len())
+        .filter(|&x| d.in_open_file(x))
         .filter(|&x| (d.b(d.e(x).start)..d.b(d.e(x).end)).contains(&at))
         .max_by_key(|&x| d.b(d.e(x).start));
     crate::model::resolve_refs(&d.p, &[(segs.join("::"), ctx)])
@@ -1044,7 +1080,8 @@ fn def_reach<'a>(
     };
     let mine = reach(i);
     let hidden: Vec<std::ops::Range<usize>> = (0..d.p.entries.len())
-        .filter(|&j| j != i && d.e(j).name == old)
+        // ほかのファイルの同じ名前の宣言は、表示中のファイルの名前を隠さない
+        .filter(|&j| j != i && d.in_open_file(j) && d.e(j).name == old)
         .map(reach)
         .filter(|r| r != &mine && mine.start <= r.start && r.end <= mine.end)
         .collect();
@@ -1134,8 +1171,10 @@ fn delete(d: &Doc<'_>, keys: &[String], ctx: Option<&str>) -> Result<Change, Ref
 }
 
 /// 消す要素を指して残ってしまう文の範囲（バイト）。図の線になる関係の文（`satisfy`・`connect` など、
-/// `ParseResult.rels` の文そのもの）と、作成した図がその要素だけを出している `expose`（#239）。
+/// `ParseResult.rels` の文そのもの）と、作成した図がその要素だけを出している `expose`（#239）、
+/// 状態遷移図・アクティビティ図の要素を端にする遷移・順序・流れの文（`behavior_spans`。#297）。
 /// 宣言の中に書いた関係（`part def Car :> Vehicle` の `:>` など）は、宣言ごと消してしまうので含めない。
+/// ほかのファイルの作成した図がその要素だけを出しているときは、範囲に含めず、削除を断る印を付ける（`Doc::mark_shown_in`）。
 ///
 /// # 引数
 ///
@@ -1175,6 +1214,7 @@ fn dangling_spans(d: &Doc<'_>, gone: &[usize]) -> (Vec<Range>, HashSet<Range>) {
             .collect();
     let exact: HashSet<Range> = partial.iter().copied().collect();
     out.extend(partial);
+    out.extend(behavior_spans(d, gone));
     for (v, _) in
         d.p.entries
             .iter()
@@ -1182,14 +1222,102 @@ fn dangling_spans(d: &Doc<'_>, gone: &[usize]) -> (Vec<Range>, HashSet<Range>) {
             .filter(|(_, e)| e.exposes.is_some())
     {
         for &i in gone {
+            let exposes = d.exposes_only_for(v, i);
+            if !d.in_open_file(v) {
+                // ほかのファイルの図の expose は書き換えられない。残すと図が壊れるので、理由を示して削除を断る（#297）
+                if !exposes.is_empty() {
+                    d.mark_shown_in(v);
+                }
+                continue;
+            }
             out.extend(
-                d.exposes_only_for(v, i)
+                exposes
                     .iter()
                     .map(|x| (d.b(x.start), with_semicolon(d.text, d.b(x.end)))),
             );
         }
     }
     (out, exact)
+}
+
+/// 状態遷移図・アクティビティ図で、消す要素（とその中の要素）を端にする遷移・順序・流れの文の範囲（バイト。#297）。
+/// 図の線（端が見つかった文）に加えて、消す要素の直後に書いた短い書き方の文（`then b;`・`accept E then b;`）も、
+/// 相手が見つからなくても含める。残すと、その前の要素から引いた文に変わってしまうため。
+/// `then action b;` のように順序と宣言を 1 つの文に書いたものは、順序（`then`）だけの範囲にする（宣言は残す）。
+/// 消す要素の中に書いた文は、宣言ごと消えるので、呼び出し側が外側の範囲だけを使う。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `gone`：消す宣言の番号
+///
+/// # 戻り値
+///
+/// 一緒に消す範囲（重なってよい）。消す要素が状態遷移図・アクティビティ図の要素でなければ空。
+///
+/// # 例
+///
+/// ```text
+/// // "state def S { entry; then a; state a; state b; then a; transition first a then b; }" で b を消すとき
+/// behavior_spans(d, [b]) → ["then a;"（b の後ろ）の範囲, "transition first a then b;" の範囲]   // "entry; then a;" は含めない
+/// // "action def A { action a; then action b; then action c; }" で b を消すとき
+/// behavior_spans(d, [b]) → ["then "（b の前）の範囲, "then "（c の前）の範囲]
+/// // "part def K;" の K を消すとき
+/// behavior_spans(d, [K]) → []
+/// ```
+fn behavior_spans(d: &Doc<'_>, gone: &[usize]) -> Vec<Range> {
+    let is_gone = |entry: usize| {
+        std::iter::successors(Some(entry), |&i| d.e(i).pe).any(|i| gone.contains(&i))
+    };
+    // 図の要素のキー（状態定義・アクション定義ごとに別）のうち、消すものと、その宣言
+    let mut keys: Vec<HashSet<&str>> = Vec::new();
+    let mut entries: HashSet<usize> = HashSet::new();
+    let mut edges: Vec<&[crate::model::Edge]> = Vec::new();
+    let states = d.m.state_machines.iter().map(|s| {
+        let nodes = s.nodes.iter().map(|n| (n.key.as_str(), n.entry));
+        (nodes.collect::<Vec<_>>(), s.edges.as_slice())
+    });
+    let flows = d.m.action_flows.iter().map(|f| {
+        let nodes = f.nodes.iter().map(|n| (n.key.as_str(), n.entry));
+        (nodes.collect::<Vec<_>>(), f.edges.as_slice())
+    });
+    for (nodes, diagram_edges) in states.chain(flows) {
+        let mine = nodes.iter().filter_map(|&(key, entry)| {
+            let entry = entry.filter(|&i| is_gone(i))?;
+            entries.insert(entry);
+            Some(key)
+        });
+        keys.push(mine.collect());
+        edges.push(diagram_edges);
+    }
+    let in_open_file = |start: usize| crate::project::merge::file_of(start) == 0;
+    let mut out: Vec<Range> = keys
+        .iter()
+        .zip(&edges)
+        .flat_map(|(keys, edges)| {
+            edges
+                .iter()
+                .filter(move |e| keys.contains(e.from.as_str()) || keys.contains(e.to.as_str()))
+        })
+        .filter(|e| in_open_file(e.src.start))
+        .map(|e| (d.b(e.src.start), d.b(e.src.end)))
+        .collect();
+    // 直前の要素から引く短い書き方の文は、線になっていなくても（相手が見つからなくても）消す
+    out.extend(
+        d.p.rels
+            .iter()
+            .filter(|r| in_open_file(r.start))
+            .filter(|r| {
+                let source = match &r.kind {
+                    RelKind::Transition { from_entry, .. } => *from_entry,
+                    RelKind::Succession { a_entry, .. } => *a_entry,
+                    _ => None,
+                };
+                source.is_some_and(|i| entries.contains(&i))
+            })
+            .map(|r| (d.b(r.start), d.b(r.end + 1))),
+    );
+    out
 }
 
 /// 相手が複数ある依存の文（`dependency from A to B, C;`・`#derivation dependency …`）のうち、
@@ -1219,6 +1347,8 @@ fn dependency_parts(d: &Doc<'_>, gone: &[usize]) -> (Vec<Range>, HashSet<usize>)
             .iter()
             .filter(|r| matches!(r.kind, RelKind::Dependency { .. } | RelKind::Derive { .. }))
             .map(|r| r.start)
+            // ほかのファイルの依存の文は書き換えないので、調べない（ADR-0021 §5）
+            .filter(|&start| crate::project::merge::file_of(start) == 0)
             .collect();
     starts.sort_unstable();
     starts.dedup();
@@ -1540,7 +1670,14 @@ fn connect(
     ctx: Option<&str>,
 ) -> Result<Change, Refusal> {
     let (ea, eb) = (d.e(a.entry), d.e(b.entry));
-    let last_rel = |want: fn(&RelKind) -> bool| d.p.rels.iter().rev().find(|r| want(&r.kind));
+    // 関係は表示中のファイルに書くので、ほかのファイルの関係の隣には置かない（ADR-0021 §5）
+    let last_rel = |want: fn(&RelKind) -> bool| {
+        d.p.rels
+            .iter()
+            .rev()
+            .filter(|r| crate::project::merge::file_of(r.start) == 0)
+            .find(|r| want(&r.kind))
+    };
     let (host, snippet): (Target, String) = match rel {
         "comp" => {
             let kw = lookup(KW_FOR, &eb.kind).unwrap_or("part");

@@ -3,6 +3,7 @@
 import type { Family } from "../core";
 import { flowDetail, flowShape } from "./action-flow";
 import { esc } from "./escape";
+import { shownEdgeLabel, shownName } from "./labels";
 import {
   boundaryBoxes, BOUNDARY, boxesOf, LANE_HEAD, laneRects, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, regionSeparators, segmentMids, STATE_HEAD, stateSize, stateTitle,
   textWidth, type Box, type NodeBox, type Route,
@@ -148,12 +149,13 @@ export function packageBoxes(content: ViewContent, boxOf: (key: string) => Box |
  * // → '<g class="pkg" data-pkg="P" pointer-events="none"><rect x="0" y="0" width="48" height="18" …/><rect x="0" y="18" width="300" height="182" …/><text …>P</text></g>'
  */
 function packageMarkup(C: ColorFn, name: string, r: Box, F: string): string {
-  const tw = Math.max(48, textWidth(name) + 20), th = 18;
+  const shown = shownName(name);
+  const tw = Math.max(48, textWidth(shown) + 20), th = 18;
   return (
     `<g class="pkg" data-pkg="${esc(name)}" pointer-events="none">` +
     `<rect x="${r.x}" y="${r.y}" width="${tw}" height="${th}" fill="${C("panel")}" stroke="${C("ink2")}" stroke-width="1.2"/>` +
     `<rect x="${r.x}" y="${r.y + th}" width="${r.w}" height="${r.h - th}" fill="${C("panel")}" fill-opacity=".35" stroke="${C("ink2")}" stroke-width="1.2"/>` +
-    `<text x="${r.x + 10}" y="${r.y + 13}" font-size="11" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(name)}</text></g>`
+    `<text x="${r.x + 10}" y="${r.y + 13}" font-size="11" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(shown)}</text></g>`
   );
 }
 
@@ -224,7 +226,7 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
     es +=
       `<g class="edge${sel}" data-edge="${esc(e.id)}"><path class="line" d="${path}" fill="none" stroke="${col}" stroke-width="${e.kind === "flow" || e.kind === "connect" ? 1.8 : 1.3}"${edgeStroke(e.kind)}/>` +
       (opts.interactive ? `<path class="hit" d="${path}"/>` : "") +
-      (e.label ? `<text x="${lx}" y="${ly}" text-anchor="${la}" font-size="10.5" fill="${col}" stroke="${C("paper")}" stroke-width="4" paint-order="stroke" font-family="${F}">${esc(e.label)}</text>` : "") +
+      (e.label ? `<text x="${lx}" y="${ly}" text-anchor="${la}" font-size="10.5" fill="${col}" stroke="${C("paper")}" stroke-width="4" paint-order="stroke" font-family="${F}">${esc(shownEdgeLabel(e))}</text>` : "") +
       (e.endLabel ? endLabelMarkup(C, endLabelPos(rt.to), e.endLabel, col, F) : "") +
       `</g>`;
   }
@@ -317,7 +319,7 @@ function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: s
   s += `<text x="${b.w / 2}" y="17" text-anchor="middle" font-size="10" fill="${C("ink2")}" font-family="${F}">${esc(`«${keywordOf(n)}»`)}</text>`;
   if (opts.phases && n.phase)
     s += `<text x="${b.w}" y="-5" text-anchor="end" font-size="9" fill="${C("k-" + fam)}" font-family="${F}">${esc(phaseLabel(n.phase))}${n.phaseOwn ? "" : "（継承）"}</text>`;
-  const title = (n.short ? `<'${n.short}'> ` : "") + n.name + (!n.isDef && n.entry.type ? ` : ${n.entry.type}` : "");
+  const title = (n.short ? `<'${n.short}'> ` : "") + shownName(n.name) + (!n.isDef && n.entry.type ? ` : ${shownName(n.entry.type)}` : "");
   const tfs = title.length > 26 ? 11 : title.length > 21 ? 12 : 13;
   s += `<text x="${b.w / 2}" y="34" text-anchor="middle" font-size="${tfs}" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(title.length > 34 ? title.slice(0, 33) + "…" : title)}</text>`;
   if (L2.length) {
@@ -416,6 +418,7 @@ const FLOW_HEAD = 40;
  */
 function flowNodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: string): string {
   const n = b.n, shape = flowShape(n.kind), w = b.w, h = b.h;
+  const name = shownName(n.name);
   const isSel = opts.sel === n.key || !!opts.selSet?.has(n.key);
   const stroke = isSel ? C("sel") : C("k-beh"), sw = isSel ? 2.6 : 1.3;
   let s = `<g class="node flow${opts.pulse?.has(n.key) ? " pulse" : ""}" data-key="${esc(n.key)}" transform="translate(${b.x},${b.y})"${opts.dim?.has(n.key) ? ' opacity=".42"' : ""}>`;
@@ -425,8 +428,8 @@ function flowNodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MON
   if (shape === "start") return s + `<circle class="body" cx="${w / 2}" cy="${h / 2}" r="${w / 2}" fill="${C("ink")}" stroke="${isSel ? C("sel") : C("ink")}" stroke-width="${sw}"/></g>`;
   if (shape === "done")
     return s + `<circle class="body" cx="${w / 2}" cy="${h / 2}" r="${w / 2}" fill="${C("panel")}" stroke="${isSel ? C("sel") : C("ink")}" stroke-width="${isSel ? 2.6 : 1.6}"/><circle cx="${w / 2}" cy="${h / 2}" r="${w / 2 - 5}" fill="${C("ink")}"/></g>`;
-  if (shape === "bar") return s + `<rect class="body" width="${w}" height="${h}" rx="2" fill="${C("ink")}" stroke="${isSel ? C("sel") : C("ink")}" stroke-width="${sw}"/>${side(n.name, -4)}</g>`;
-  if (shape === "diamond") return s + `<path class="body" d="${flowPath("diamond", w, h)}" fill="${C("k-beh-bg")}" stroke="${stroke}" stroke-width="${sw}"/>${side(n.name, h / 2 + 4)}</g>`;
+  if (shape === "bar") return s + `<rect class="body" width="${w}" height="${h}" rx="2" fill="${C("ink")}" stroke="${isSel ? C("sel") : C("ink")}" stroke-width="${sw}"/>${side(name, -4)}</g>`;
+  if (shape === "diamond") return s + `<path class="body" d="${flowPath("diamond", w, h)}" fill="${C("k-beh-bg")}" stroke="${stroke}" stroke-width="${sw}"/>${side(name, h / 2 + 4)}</g>`;
   const body = shape === "action" ? `<rect class="body" width="${w}" height="${h}" rx="10"` : `<path class="body" d="${flowPath(shape, w, h)}"`;
   s += `${body} fill="${C("k-beh-bg")}"${b.holds ? ' fill-opacity=".55"' : ""} stroke="${stroke}" stroke-width="${sw}"/>`;
   const detail = flowDetail(n);
@@ -434,10 +437,10 @@ function flowNodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MON
   const cut = (t: string): string => (t.length > 24 ? t.slice(0, 23) + "…" : t);
   const cx = shape === "accept" ? w / 2 + 6 : shape === "send" ? w / 2 - 6 : w / 2;
   if (plain && n.kind === "action") {
-    s += `<text x="${cx}" y="27" text-anchor="middle" font-size="12.5" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(cut(n.name + (detail ? " " + detail : "")))}</text>`;
+    s += `<text x="${cx}" y="27" text-anchor="middle" font-size="12.5" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(cut(name + (detail ? " " + detail : "")))}</text>`;
   } else {
     s += `<text x="${cx}" y="16" text-anchor="middle" font-size="10" fill="${C("ink2")}" font-family="${F}">${esc(`«${n.kind}»`)}</text>`;
-    const main = plain ? n.name + (detail ? " " + detail : "") : n.name || detail;
+    const main = plain ? name + (detail ? " " + detail : "") : name || detail;
     s += `<text x="${cx}" y="33" text-anchor="middle" font-size="12" font-weight="700" fill="${C("ink")}" font-family="${n.name || plain ? F : MONO}">${esc(cut(main))}</text>`;
     if (!plain && n.name && detail) s += `<text x="${cx}" y="48" text-anchor="middle" font-size="10.5" fill="${C("ink")}" font-family="${MONO}">${esc(cut(detail))}</text>`;
   }
@@ -520,8 +523,8 @@ function noteMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string): string
   s += `<path class="body" d="M0,0 H${b.w - f} L${b.w},${f} V${b.h} H0 Z" fill="${C("panel")}" stroke="${stroke}" stroke-width="${isSel ? 2.6 : 1.1}"/>`;
   s += `<path d="M${b.w - f},0 V${f} H${b.w}" fill="none" stroke="${stroke}" stroke-width="1.1"/>`;
   // 別の言語での表し方（8.2.3.4 の textual-representation-node）は «rep» と名前・言語を見出しに書く
-  if (n.kind === "rep") s += `<text x="12" y="18" font-size="10" fill="${C("ink2")}" font-family="${F}">«rep»${n.name ? ` <tspan font-weight="700" fill="${C("ink")}">${esc(n.name)}</tspan>` : ""} language "${esc(n.entry.type)}"</text>`;
-  else if (n.name) s += `<text x="12" y="18" font-size="10" fill="${C("ink2")}" font-family="${F}">«comment» <tspan font-weight="700" fill="${C("ink")}">${esc(n.name)}</tspan></text>`;
+  if (n.kind === "rep") s += `<text x="12" y="18" font-size="10" fill="${C("ink2")}" font-family="${F}">«rep»${n.name ? ` <tspan font-weight="700" fill="${C("ink")}">${esc(shownName(n.name))}</tspan>` : ""} language "${esc(n.entry.type)}"</text>`;
+  else if (n.name) s += `<text x="12" y="18" font-size="10" fill="${C("ink2")}" font-family="${F}">«comment» <tspan font-weight="700" fill="${C("ink")}">${esc(shownName(n.name))}</tspan></text>`;
   linesOf(n).forEach((ln, k) => {
     s += `<text x="12" y="${top + 11 + k * LH}" font-size="11" fill="${C("ink")}" font-family="${F}">${esc(ln.t)}</text>`;
   });
@@ -549,7 +552,7 @@ function boundaryMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string): st
   return (
     `<g class="boundary" data-key="${esc(n.key)}" transform="translate(${b.x},${b.y})">` +
     `<rect class="body" width="${s}" height="${s}" fill="${C("panel")}" stroke="${isSel ? C("sel") : C("k-part")}" stroke-width="${isSel ? 2.4 : 1.4}"/>` +
-    `<text x="${tx}" y="${ty}" text-anchor="${anchor}" font-size="10.5" fill="${C("ink")}" font-family="${F}">${esc(n.name)}</text></g>`
+    `<text x="${tx}" y="${ty}" text-anchor="${anchor}" font-size="10.5" fill="${C("ink")}" font-family="${F}">${esc(shownName(n.name))}</text></g>`
   );
 }
 
@@ -569,7 +572,7 @@ function laneMarkup(C: ColorFn, name: string, r: Box, F: string): string {
   return (
     `<g class="lane" data-lane="${esc(name)}"><rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="none" stroke="${C("k-beh")}" stroke-width="1.2" stroke-dasharray="5 4"/>` +
     `<text x="${r.x + r.w / 2}" y="${r.y + 16}" text-anchor="middle" font-size="10" fill="${C("ink2")}" font-family="${F}">«performer»</text>` +
-    `<text x="${r.x + r.w / 2}" y="${r.y + 32}" text-anchor="middle" font-size="12" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(name)}</text>` +
+    `<text x="${r.x + r.w / 2}" y="${r.y + 32}" text-anchor="middle" font-size="12" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(shownName(name))}</text>` +
     `<line x1="${r.x}" x2="${r.x + r.w}" y1="${r.y + LANE_HEAD - 4}" y2="${r.y + LANE_HEAD - 4}" stroke="${C("k-beh")}" stroke-opacity=".45" stroke-dasharray="5 4"/></g>`
   );
 }
@@ -593,7 +596,7 @@ function junctionMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string): st
   return (
     `<g class="node junction${opts.pulse?.has(n.key) ? " pulse" : ""}" data-key="${esc(n.key)}" transform="translate(${b.x},${b.y})">` +
     `<circle class="body" cx="${r}" cy="${r}" r="${r}" fill="${C("k-con")}" stroke="${isSel ? C("sel") : C("k-con")}" stroke-width="${isSel ? 2.6 : 1}"/>` +
-    (n.name ? `<text x="${r}" y="-6" text-anchor="middle" font-size="10.5" fill="${C("ink2")}" font-family="${F}">${esc(n.name)}</text>` : "") +
+    (n.name ? `<text x="${r}" y="-6" text-anchor="middle" font-size="10.5" fill="${C("ink2")}" font-family="${F}">${esc(shownName(n.name))}</text>` : "") +
     `</g>`
   );
 }
@@ -625,7 +628,7 @@ function pinsMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, MONO: string): str
       ps += portGlyph(q.x, q.y, q.nx, q.ny, p.port.dir, col, C("panel"), psel ? C("sel") : col, psel ? 2.4 : 1.3);
       const lxp = q.nx ? q.x + q.nx * 9 : q.x + 9, lyp = q.nx ? q.y - 9 : q.ny > 0 ? q.y + 17 : q.y - 10;
       const anc = q.nx < 0 ? "end" : "start";
-      ps += `<text x="${lxp}" y="${lyp}" text-anchor="${anc}" font-size="9.5" fill="${C("ink2")}" stroke="${C("paper")}" stroke-width="3" paint-order="stroke" font-family="${MONO}">${esc(p.port.name)}</text>`;
+      ps += `<text x="${lxp}" y="${lyp}" text-anchor="${anc}" font-size="9.5" fill="${C("ink2")}" stroke="${C("paper")}" stroke-width="3" paint-order="stroke" font-family="${MONO}">${esc(shownName(p.port.name))}</text>`;
       if (opts.interactive) ps += `<rect x="${q.x - 11}" y="${q.y - 11}" width="22" height="22" fill="transparent"/>`;
     } else {
       ps += `<circle cx="${q.x}" cy="${q.y}" r="${psel ? 5 : 3.6}" fill="${psel ? C("sel") : col}" stroke="${C("panel")}" stroke-width="1"/>`;
@@ -696,12 +699,12 @@ export function seqMarkup(C: ColorFn, c: ViewContent, opts: Omit<MarkupOpts, "vi
   const at = new Map(events.flatMap((e) => (idx.has(e.lifeline) ? [[e.key, { i: idx.get(e.lifeline) ?? 0, row: e.row }] as const] : [])));
   const hasEvent = (lifeline: number, row: number): boolean => [...at.values()].some((p) => p.i === lifeline && p.row === row);
   let s = `<rect x="${g.x0}" y="${g.y0}" width="${g.w}" height="${g.h}" fill="none" stroke="${C("k-beh")}" stroke-width="1.3"/>`;
-  const title = "sd " + (c.ctx ? c.ctx.name : "");
+  const title = "sd " + (c.ctx ? shownName(c.ctx.name) : "");
   s += `<path d="M${g.x0},${g.y0} h${title.length * 7.6 + 24} v14 l-10,10 H${g.x0} Z" fill="${C("k-beh-bg")}" stroke="${C("k-beh")}" stroke-width="1.1"/>`;
   s += `<text x="${g.x0 + 8}" y="${g.y0 + 16}" font-size="12" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(title)}</text>`;
   c.nodes.forEach((l, i) => {
     const x = i * SEQ.dx, sel = opts.sel === l.key || !!opts.selSet?.has(l.key);
-    const label = l.name + (l.entry.type ? " : " + l.entry.type : "");
+    const label = shownName(l.name) + (l.entry.type ? " : " + shownName(l.entry.type) : "");
     s +=
       `<g class="lifeline" data-key="${esc(l.key)}">` +
       `<line x1="${X(i)}" y1="${SEQ.h}" x2="${X(i)}" y2="${g.H}" stroke="${C("ink2")}" stroke-dasharray="5 4"/>` +

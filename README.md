@@ -54,7 +54,7 @@ Modelith is published in three channels. Each keeps its own last session, drafts
 
 | Channel | URL | What it has |
 | --- | --- | --- |
-| Stable | <https://modelith.github.io/modelith/> | The latest release (the latest release candidate until 0.1.0 is out) |
+| Stable | <https://modelith.github.io/modelith/> | The latest release |
 | Release candidate | <https://modelith.github.io/modelith/rc/> | The latest release candidate, while one is out |
 | Preview | <https://modelith.github.io/modelith/preview/> | The latest alpha or beta of the next version, with features still in development |
 
@@ -86,7 +86,7 @@ The plan may change based on user feedback. If you need a notation, please let u
 
 ## Roadmap
 
-**0.1.0** is in release candidates, and the first stable version comes next. **0.2.0** is in beta in the preview channel.
+**0.1.0** is the first stable version. **0.2.0** is in beta in the preview channel.
 
 | Version | What you can do |
 | --- | --- |

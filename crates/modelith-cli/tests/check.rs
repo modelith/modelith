@@ -162,6 +162,29 @@ fn error_findings_are_printed_and_exit_with_1() {
 }
 
 #[test]
+fn chosen_levels_change_or_hide_rule_findings() {
+    // Arrange（要求の抜けを警告に下げ、ポートの抜けは出さない。F-EDIT-11）
+    let dir = project();
+    dir.write(
+        "modelith.json",
+        &MODELITH_JSON.replace(
+            "\n}\n",
+            ",\n  \"levels\": { \"jp.example.trace/req-has-satisfier\": \"warning\", \"jp.example.trace/part-has-ports\": \"off\" }\n}\n",
+        ),
+    );
+    dir.write("model.sysml", MODEL);
+    // Act
+    let out = check(&dir);
+    // Assert（エラーが無くなるので 0 で終わる）
+    assert_eq!(
+        stdout(&out),
+        "model.sysml:3:3: 警告: 要求「KeepPressure」を満たす要素がありません [jp.example.trace/req-has-satisfier]\n\
+         ファイル 1 件をチェックしました：エラー 0 件・警告 1 件・情報 0 件・ヒント 0 件\n"
+    );
+    assert_eq!(out.status.code(), Some(0));
+}
+
+#[test]
 fn warnings_only_exit_with_0() {
     // Arrange（要求はすべて満たされ、ポートの無い部品だけが残る）
     let dir = project();
@@ -200,6 +223,29 @@ fn findings_are_sorted_by_path_line_and_column_across_files() {
         ]
     );
     assert_eq!(out.status.code(), Some(0));
+}
+
+#[test]
+fn files_of_the_folder_are_checked_as_one_model() {
+    // Arrange（要求を満たす関係を、ほかのファイルに書く。ADR-0021）
+    let dir = project();
+    dir.write(
+        "reqs.sysml",
+        "package Reqs {\n  requirement def SupplyWater;\n  requirement def KeepPressure;\n}\n",
+    );
+    dir.write(
+        "parts.sysml",
+        "package Parts {\n  import Reqs::*;\n  part def Pump { port inlet; }\n  satisfy SupplyWater by Pump;\n}\n",
+    );
+    // Act
+    let out = check(&dir);
+    // Assert（満たされていない KeepPressure だけを、書いたファイルで知らせる）
+    assert_eq!(
+        stdout(&out),
+        "reqs.sysml:3:3: エラー: 要求「KeepPressure」を満たす要素がありません [jp.example.trace/req-has-satisfier]\n\
+         ファイル 2 件をチェックしました：エラー 1 件・警告 0 件・情報 0 件・ヒント 0 件\n"
+    );
+    assert_eq!(out.status.code(), Some(1));
 }
 
 #[test]

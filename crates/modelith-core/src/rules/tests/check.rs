@@ -33,7 +33,7 @@ const MODEL: &str = "package P {
 /// ルール 1 つのプラグインで `MODEL` を検査し、結果の要素のキーを返す。
 fn flagged(target: &str, require: &str) -> Vec<String> {
     let plugin = rule(target, require);
-    check_text(MODEL, &[plugin])
+    check_text(MODEL, &[], &[plugin])
         .into_iter()
         .map(|l| l.finding.element)
         .collect()
@@ -306,7 +306,7 @@ fn finding_carries_plugin_rule_severity_message_and_place() {
         "incoming: satisfy",
     );
     // Act
-    let got = check_text(MODEL, &[plugin]);
+    let got = check_text(MODEL, &[], &[plugin]);
     // Assert（宣言の始まり：6 行目の 3 列目）
     assert_eq!(got.len(), 1);
     let l = &got[0];
@@ -334,7 +334,7 @@ fn place_column_counts_utf16_units() {
     let text = "package P {\n/* 🚀日 */ part def A;\n}\n";
     let plugin = rule("kind: part def", "not: {}");
     // Act
-    let got = check_text(text, &[plugin]);
+    let got = check_text(text, &[], &[plugin]);
     // Assert（「/* 」= 3、🚀 = 2、日 = 1、「 */ 」= 4 の後。バイトなら 17 列目）
     assert_eq!(
         got[0].place,
@@ -353,7 +353,7 @@ fn every_rule_of_every_plugin_is_applied_in_order() {
     let mut second = rule("kind: concern def", "not: {}");
     second.id = "jp.example.second".to_owned();
     // Act
-    let got: Vec<(String, String, String)> = check_text(MODEL, &[first, second])
+    let got: Vec<(String, String, String)> = check_text(MODEL, &[], &[first, second])
         .into_iter()
         .map(|l| (l.finding.plugin, l.finding.rule, l.finding.element))
         .collect();
@@ -375,8 +375,8 @@ fn no_plugins_or_empty_text_give_no_findings() {
     let plugin = rule("kind: part def", "not: {}");
     // Act
     let got = (
-        check_text(MODEL, &[]).len(),
-        check_text("", &[plugin]).len(),
+        check_text(MODEL, &[], &[]).len(),
+        check_text("", &[], &[plugin]).len(),
     );
     // Assert
     assert_eq!(got, (0, 0));
@@ -411,6 +411,7 @@ fn node(name: &str, kind: &str) -> Node {
         ports: vec![],
         phase: None,
         phase_own: false,
+        file: None,
     }
 }
 
@@ -433,4 +434,91 @@ fn fill_message_does_not_expand_inside_substituted_values() {
     let got = fill_message("{name}", &n);
     // Assert
     assert_eq!(got, "{kind}");
+}
+
+// ---- 複数のファイル（ADR-0021） --------------------------------------------------
+
+#[test]
+fn relation_written_in_another_file_counts() {
+    // Arrange（S を満たす関係は、ほかのファイルに書いてある）
+    let text = "package P {\n  requirement def S;\n  requirement def T;\n}";
+    let other = "package Q { part def A; satisfy P::S by A; }";
+    let plugin = rule("kind: requirement def", "incoming: satisfy");
+    // Act
+    let got: Vec<String> = check_text(text, &[other], &[plugin])
+        .into_iter()
+        .map(|l| l.finding.element)
+        .collect();
+    // Assert
+    assert_eq!(got, ["T"]);
+}
+
+#[test]
+fn elements_of_other_files_are_not_checked() {
+    // Arrange（ほかのファイルの要素は、そのファイルを検査するときに当てる）
+    let text = "package P { part def A; }";
+    let plugin = rule("kind: part def", "not: {}");
+    // Act
+    let got = check_text(
+        text,
+        &["package Q { part def B; satisfy B by P::A; }"],
+        &[plugin],
+    );
+    // Assert
+    let names: Vec<&str> = got.iter().map(|l| l.finding.element.as_str()).collect();
+    assert_eq!(names, ["A"]);
+}
+
+#[test]
+fn every_other_file_is_checked_as_the_center() {
+    // Arrange（parts.sysml に見つからない型、notes.sysml は問題なし、app.sysml は表示中）
+    let mut files = crate::project::merge::Files::default();
+    files.set(
+        "parts.sysml",
+        "package Parts {\n  part def Car { part w : Wheel; }\n}",
+    );
+    files.set("notes.sysml", "package Notes { part def N; }");
+    files.set("app.sysml", "package Old;");
+    let app = crate::project::merge::parse_file("package App { part def Wheel; }").expect("短い");
+    let plugin = rule("kind: part def", "not: {}");
+    // Act
+    let got = super::super::check_files(&files, Some(("app.sysml", &app)), &[plugin]);
+    // Assert（表示中のファイルは数えない。parts.sysml は表示中の今の中身の Wheel を見つけられない＝import していない）
+    let paths: Vec<&str> = got.iter().map(|r| r.path.as_str()).collect();
+    assert_eq!(paths, ["notes.sysml", "parts.sysml"]);
+    let parts = &got[1];
+    assert_eq!(
+        parts
+            .problems
+            .iter()
+            .map(|p| p.msg.as_str())
+            .collect::<Vec<_>>(),
+        ["型「Wheel」が見つかりません（w）"]
+    );
+    assert_eq!(parts.problems[0].pos, 33); // そのファイルの中の位置（part w の始まり）
+    assert_eq!(
+        parts
+            .findings
+            .iter()
+            .map(|f| f.element.as_str())
+            .collect::<Vec<_>>(),
+        ["Car"]
+    );
+}
+
+#[test]
+fn other_file_sees_the_open_file_as_it_is_now() {
+    // Arrange（表示中のファイルの、保存していない今の中身に Wheel がある）
+    let mut files = crate::project::merge::Files::default();
+    files.set(
+        "parts.sysml",
+        "package Parts { import App::*; part def Car { part w : Wheel; } }",
+    );
+    files.set("app.sysml", "package App;");
+    let app = crate::project::merge::parse_file("package App { part def Wheel; }").expect("短い");
+    // Act
+    let got = super::super::check_files(&files, Some(("app.sysml", &app)), &[]);
+    // Assert
+    assert_eq!(got.len(), 1);
+    assert!(got[0].problems.is_empty(), "{:?}", got[0].problems);
 }

@@ -1,10 +1,10 @@
 //! メッセージ・フェーズ・ポート・保存された図の操作（暫定コアの `ops.ts`・`pins.ts`・`view-ops.ts`・`view-text.ts` と同じ書き方）。
 
-use super::ops::{BAD_NAME, Found, append_package, keyword_problem, messages};
+use super::ops::{Found, append_package, keyword_problem, messages, tokens};
 use super::text::{Splice, indent_at, insert_into, insert_splice, remove_range};
 use super::{Change, Doc, Refusal};
 use crate::project::{Expose, RelKind, Scope, text::is_basic_name};
-use crate::syntax::is_keyword;
+use crate::syntax::{SyntaxKind, is_keyword};
 
 // ---- メッセージ（シーケンス図） ----
 
@@ -141,7 +141,7 @@ pub(super) fn add_message(d: &Doc<'_>, ctx: &str, from: &str, to: &str) -> Resul
 /// - `d`：操作の対象のテキスト
 /// - `ctx`：シナリオのキー
 /// - `id`：メッセージの ID（`msg|順番|名前`）
-/// - `name`：新しい名前（基本名。空なら名前を書かない）
+/// - `name`：新しい名前（空なら名前を書かない。基本名でなければ引用名で書く）
 /// - `ty`：アイテムの型（空なら `of 型` を書かない）
 ///
 /// # 戻り値
@@ -153,7 +153,8 @@ pub(super) fn add_message(d: &Doc<'_>, ctx: &str, from: &str, to: &str) -> Resul
 /// ```text
 /// update_message(Doc(SEQ), "S", "msg|1|m2", "go", "Cmd") → Ok(text に "then message go of Cmd from b to a;")
 /// update_message(Doc(SEQ), "S", "msg|1|m2", "", "")      → Ok(text に "then message from b to a;")
-/// update_message(Doc(SEQ), "S", "msg|1|m2", "1x", "")    → Err(BAD_NAME)
+/// update_message(Doc(SEQ), "S", "msg|1|m2", "沸かす", "")  → Ok(text に "then message '沸かす' from b to a;")
+/// update_message(Doc(SEQ), "S", "msg|1|m2", "it's", "")  → Err(BAD_RENAME)
 /// ```
 pub(super) fn update_message(
     d: &Doc<'_>,
@@ -162,11 +163,9 @@ pub(super) fn update_message(
     name: &str,
     ty: &str,
 ) -> Result<Change, Refusal> {
-    if !name.is_empty() && !is_basic_name(name) {
-        return Err(BAD_NAME.to_owned());
-    }
-    if let Some(why) = keyword_problem(name) {
-        return Err(why);
+    let name = name.trim();
+    if super::ops::has_bad_name_char(name) {
+        return Err(super::ops::BAD_RENAME.to_owned());
     }
     let c = d.context(ctx)?;
     let (i, ms) = message_at(d, c, id)?;
@@ -180,10 +179,11 @@ pub(super) fn update_message(
     } else {
         ""
     };
+    // 日本語や空白を含む名前も、要素の名前と同じく引用名で書く（8.2.2.3。#244）
     let name = if name.is_empty() {
         String::new()
     } else {
-        format!("{name} ")
+        format!("{} ", sysml_name(name))
     };
     let of = if ty.is_empty() {
         String::new()
@@ -609,8 +609,8 @@ pub(super) fn make_port(
         let mut stmt = d.text[s..e].to_owned();
         let mut swap = |kws: &[&str], path: &str| {
             if let Some(i) = after_keyword(&stmt, kws, path) {
-                let head = path.split('.').next().unwrap_or("");
-                stmt.replace_range(i..i + path.len(), &format!("{head}.{name}"));
+                // 端は部品を指す道筋（入れ子の部品なら `a.b`）なので、その後ろにポートの名前を足す
+                stmt.replace_range(i..i + path.len(), &format!("{path}.{name}"));
             }
         };
         if fe.from {
@@ -775,6 +775,70 @@ impl Doc<'_> {
         }
         names.reverse();
         names
+    }
+
+    /// 宣言 `from` の中（またはそこ）から要素 `i` を指すときに、テキストに書く名前（#232）。
+    /// 同じ一番外の package の中なら名前だけ、別の package（ほかのファイルの package を含む）なら修飾名にする。
+    /// 修飾名は `import` が無くても解決できる（ADR-0021）。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：指す要素の宣言の番号
+    /// - `from`：参照を書く場所の宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// テキストに書く名前（必要なら引用名）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // package App { part def Other; } と、ほかのファイルの package Parts { part def Bus; } のとき
+    /// ref_text(Bus の番号, Other の番号)   → "Parts::Bus"
+    /// ref_text(Other の番号, App の番号)   → "Other"
+    /// ```
+    pub(super) fn ref_text(&self, i: usize, from: usize) -> String {
+        let (to, at) = (self.name_path(i), self.name_path(from));
+        if to.first() == at.first() || self.imported_into(i, from) {
+            sysml_name(&self.e(i).name)
+        } else {
+            self.qualified_name(i)
+        }
+    }
+
+    /// 要素 `i` が、`from` を囲む名前空間の `import` で名前だけで見えるか（`import Parts::*;`・`import Parts::Bus;`。#232）。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：指す要素の宣言の番号
+    /// - `from`：参照を書く場所の宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// `from` か、それを囲む宣言（ファイルの一番上を含む）の `import` で取り込んでいれば true。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // package App { import Fleet::*; part def Horn; } と、package Fleet { requirement def Safe; } のとき
+    /// imported_into(Safe の番号, Horn の番号) → true
+    /// ```
+    fn imported_into(&self, i: usize, from: usize) -> bool {
+        let path = self.name_path(i).join("::");
+        let owner = path.rsplit_once("::").map_or("", |(o, _)| o);
+        let mut scopes = vec![None];
+        let mut a = Some(from);
+        while let Some(x) = a {
+            scopes.push(Some(x));
+            a = self.e(x).pe;
+        }
+        self.p.import_list.iter().any(|imp| {
+            scopes.contains(&imp.pe)
+                && ((imp.members
+                    && (imp.path == owner
+                        || (imp.recursive && path.starts_with(&format!("{}::", imp.path)))))
+                    || (!imp.members && imp.path == path))
+        })
     }
 
     /// テキストに書く修飾名（P::A。名前は必要なら引用名にする）。
@@ -947,17 +1011,21 @@ fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], inden
 ///
 /// # 戻り値
 ///
-/// 書いた後のテキストと、選ぶ名前・光らせる範囲（足した view）。名前が空・既にある図や同じ package の直下の要素の名前・パッケージの名前・知らない描き方・要素が無い（または package が無い）ときは理由の文（`Err`）。
+/// 書いた後のテキストと、選ぶ名前・光らせる範囲（足した view）。名前が空・使えない文字（`'`・`\`・改行など）を含む・既にある図や同じ package の直下の要素の名前・知らない描き方・package が無い・
+/// 一般の図でないのに対象が無いときは理由の文（`Err`）。一般の図は、要素の無い空の図も作れる（F-VIEW-8）。
 ///
 /// # 例
 ///
 /// ```text
 /// save_view(Doc("package P {\n    part def A;\n    part def '電気 ケトル';\n}\n"), "全体", "general", [A, 電気 ケトル])
 ///   → Ok(text に "    view '全体' : GeneralView {\n        expose P::A;\n        expose P::'電気 ケトル';\n    }\n}")
+/// save_view(Doc("package P { part def A; }"), "w", "general", [])         → Ok(text に "view w : GeneralView {\n    }")
 /// save_view(Doc("package P { part def A; view v; }"), "v", "general", [A]) → Err("「v」という図は既にあります。別の名前にしてください")
-/// save_view(Doc("package P { part def A; view v; }"), "w", "general", [])  → Err("図に要素が無いため、保存できません")
+/// save_view(Doc("package P { part def A; }"), "w", "actionFlow", [])      → Err("図の対象を選んでください")
+/// save_view(Doc("part def A;"), "w", "general", [])                       → Err("図を置くパッケージがありません。先にパッケージを作ってください")
 /// save_view(Doc("package P { part def A; view v; }"), "A", "general", [A]) → Err("「A」という名前の要素が既にあります。…")
 /// save_view(Doc("package P { part def A; }"), "P", "general", [A])         → Err("「P」はパッケージの名前なので、…")
+/// save_view(Doc("package P { part def A; }"), "it's", "general", [])       → Err(BAD_RENAME)
 /// ```
 pub(super) fn save_view(
     d: &Doc<'_>,
@@ -969,16 +1037,22 @@ pub(super) fn save_view(
     if name.is_empty() {
         return Err("図の名前を入力してください".to_owned());
     }
+    // 要素の名前と同じ規則にする（`'` などを含む名前は、名前の変更では付けられないため。#267）
+    if super::ops::has_bad_name_char(name) {
+        return Err(super::ops::BAD_RENAME.to_owned());
+    }
     if d.m.views.iter().any(|v| v.name == name) {
         return Err(format!(
             "「{name}」という図は既にあります。別の名前にしてください"
         ));
     }
     let std = std_view_for(kind).ok_or_else(|| format!("図の描き方「{kind}」は扱えません"))?;
-    let pkg = d
-        .first_package()
-        .filter(|_| !targets.is_empty())
-        .ok_or_else(|| "図に要素が無いため、保存できません".to_owned())?;
+    if targets.is_empty() && kind != "general" {
+        return Err("図の対象を選んでください".to_owned());
+    }
+    let pkg = d.first_package().ok_or_else(|| {
+        "図を置くパッケージがありません。先にパッケージを作ってください".to_owned()
+    })?;
     // 図は package の直下に置くので、同じ package の直下の要素と同じ名前にしない（同じ名前が 2 つになり、参照が曖昧になる。#240）
     if d.e(pkg).children.iter().any(|&c| d.e(c).name == name) {
         return Err(format!(
@@ -1086,6 +1160,493 @@ pub(super) fn remove_from_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Cha
     for &(s, e) in xs.iter().rev() {
         (text, at) = remove_range(&text, s, e);
     }
+    Ok(Change {
+        text,
+        select: None,
+        flash: Some((at, at + 1)),
+    })
+}
+
+/// 作成した図の名前を変える（view の宣言の名前だけを書き換える。view は名前で参照されないので、ほかは変えない）。名前の前後の空白は除く。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `view`：今の図の名前
+/// - `name`：新しい図の名前（基本名でなければ引用名で書く）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキストと、選ぶ名前・光らせる範囲（view の宣言の頭）。同じ名前ならテキストを変えずに返す。
+/// 図が無い・名前が空・使えない文字（`'`・`\`・改行など）を含む・既にある図の名前のときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// rename_view(Doc("package P { view v : GeneralView { } }"), "v", "全体") → Ok(text = "package P { view '全体' : GeneralView { } }")
+/// rename_view(Doc("package P { view v; view w; }"), "v", "w")             → Err("「w」という図は既にあります。別の名前にしてください")
+/// rename_view(Doc("package P { view v; }"), "v", " ")                     → Err("図の名前を入力してください")
+/// rename_view(Doc("package P { view v; }"), "v", "it's")                  → Err(BAD_RENAME)
+/// ```
+pub(super) fn rename_view(d: &Doc<'_>, view: &str, name: &str) -> Result<Change, Refusal> {
+    let v = d.view_named(view)?;
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("図の名前を入力してください".to_owned());
+    }
+    if super::ops::has_bad_name_char(name) {
+        return Err(super::ops::BAD_RENAME.to_owned());
+    }
+    let e = d.e(v);
+    if name == view {
+        return Ok(Change {
+            text: d.text.to_owned(),
+            select: Some(name.to_owned()),
+            flash: None,
+        });
+    }
+    if d.m.views.iter().any(|x| x.name == name) {
+        return Err(format!(
+            "「{name}」という図は既にあります。別の名前にしてください"
+        ));
+    }
+    let (hs, he) = (d.b(e.start), d.b(e.head_end));
+    let unquote = |t: &str| t.trim_matches('\'').replace("\\'", "'");
+    let at = tokens(d.text)
+        .into_iter()
+        .filter(|t| (hs..he).contains(&t.1))
+        .skip_while(|t| t.2 != "view")
+        .find(|t| {
+            (t.0 == SyntaxKind::IDENT && t.2 == view)
+                || (t.0 == SyntaxKind::QUOTED_NAME && unquote(t.2) == view)
+        })
+        .map(|t| (t.1, t.2.len()))
+        .ok_or_else(|| format!("図「{view}」の名前が見つかりません"))?;
+    let nn = sysml_name(name);
+    let mut text = d.text.to_owned();
+    text.replace_range(at.0..at.0 + at.1, &nn);
+    let grow = nn.len() as isize - at.1 as isize;
+    Ok(Change {
+        text,
+        select: Some(name.to_owned()),
+        flash: Some((hs, (he as isize + grow) as usize)),
+    })
+}
+
+/// 作成した図を削除する（view の宣言を消す）。図に出していたモデルの要素は残す。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `view`：図の名前
+///
+/// # 戻り値
+///
+/// 消した後のテキストと、光らせる範囲（消した位置の 1 バイト）。図が無いときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// delete_view(Doc("package P {\n    part def A;\n    view v {\n        expose P::A;\n    }\n}\n"), "v")
+///   → Ok(text = "package P {\n    part def A;\n}\n")
+/// delete_view(Doc("package P { }"), "gone") → Err("図「gone」が見つかりません。…")
+/// ```
+pub(super) fn delete_view(d: &Doc<'_>, view: &str) -> Result<Change, Refusal> {
+    let e = d.e(d.view_named(view)?);
+    let (text, at) = remove_range(d.text, d.b(e.start), d.b(e.end));
+    Ok(Change {
+        text,
+        select: None,
+        flash: Some((at, at + 1)),
+    })
+}
+
+// ---- 説明（doc）の編集 ----
+
+/// 宣言の本体の直下にある最初の説明（`doc /* … */`）の、`doc` の始まりとコメントの範囲（バイト）。入れ子の要素の説明は見ない。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `i`：宣言の番号
+///
+/// # 戻り値
+///
+/// （`doc` の始まり, コメントの始まり, コメントの終わり）。説明が無ければ None。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = "requirement def R { doc /* 文 */ part p { doc /* 中 */ } }" のとき
+/// doc_span(d, R) → Some((19, 23, 31))   // 「doc /* 文 */」
+/// // d.text = "requirement def R;" のとき
+/// doc_span(d, R) → None
+/// ```
+fn doc_span(d: &Doc<'_>, i: usize) -> Option<(usize, usize, usize)> {
+    let e = d.e(i);
+    let (from, to) = (d.b(e.start), d.b(e.end));
+    let ts = tokens(d.text);
+    let mut depth = 0;
+    let mut doc_at = None;
+    for &(kind, at, s) in ts.iter().filter(|t| (from..to).contains(&t.1)) {
+        match s {
+            "{" => depth += 1,
+            "}" => depth -= 1,
+            "doc" if depth == 1 && doc_at.is_none() => doc_at = Some(at),
+            _ if kind == SyntaxKind::REGULAR_COMMENT => {
+                if let Some(start) = doc_at {
+                    return Some((start, at, at + s.len()));
+                }
+            }
+            _ if doc_at.is_some() && !kind.is_trivia() && depth == 1 && s == ";" => doc_at = None,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// 説明の文をコメントの本文にする。`*/` は書けないので `* /` にし、2 行目からは字下げを揃える。空の行は字下げを付けず空の行のまま書く。
+///
+/// # 引数
+///
+/// - `text`：説明の文（改行を含んでよい。前後の空白は除く）
+/// - `indent`：`doc` の行の字下げ
+///
+/// # 戻り値
+///
+/// `/* … */` の形のコメント。
+///
+/// # 例
+///
+/// ```text
+/// doc_comment("お湯を沸かす", "    ")        → "/* お湯を沸かす */"
+/// doc_comment("1 行目\n2 行目", "    ")     → "/* 1 行目\n       2 行目 */"
+/// doc_comment("a */ b", "")                 → "/* a * / b */"
+/// doc_comment("段落 1\n\n段落 2", "  ")      → "/* 段落 1\n\n     段落 2 */"
+/// ```
+fn doc_comment(text: &str, indent: &str) -> String {
+    let body = text.trim().replace("*/", "* /");
+    let lines: Vec<String> = body
+        .lines()
+        .map(str::trim_end)
+        .enumerate()
+        .map(|(i, l)| match (i, l.is_empty()) {
+            (0, _) | (_, true) => l.to_owned(),
+            _ => format!("{indent}   {l}"),
+        })
+        .collect();
+    format!("/* {} */", lines.join("\n"))
+}
+
+/// 要素の説明（要求の文章など、`doc /* … */`）を書き換える。説明が無ければ本体の終わりに足し、文が空なら説明を消す（F-EDIT-12）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `f`：説明を書き換える宣言
+/// - `text`：新しい説明の文（前後の空白は除く。空なら説明を消す）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキストと、光らせる範囲（書いた説明。消したときは消した位置の 1 バイト）。説明が無く文も空なら、テキストを変えずに返す。
+///
+/// # 例
+///
+/// ```text
+/// set_doc(Doc("package P { requirement def R { doc /* 古い */ } }"), R, "新しい") → Ok(text = "package P { requirement def R { doc /* 新しい */ } }")
+/// set_doc(Doc("package P { requirement def R; }"), R, "沸かす")                 → Ok(text = "package P { requirement def R {\n    doc /* 沸かす */\n} }" の形)
+/// set_doc(Doc("package P {\n    requirement def R {\n        doc /* 古い */\n    }\n}"), R, "") → Ok(text = "package P {\n    requirement def R {\n    }\n}")
+/// ```
+pub(super) fn set_doc(d: &Doc<'_>, f: &Found, text: &str) -> Result<Change, Refusal> {
+    let text = text.trim();
+    let span = doc_span(d, f.entry);
+    match span {
+        Some((doc_at, _, c1)) if text.is_empty() => {
+            let (out, at) = remove_range(d.text, doc_at, c1);
+            Ok(Change {
+                text: out,
+                select: None,
+                flash: Some((at, at + 1)),
+            })
+        }
+        Some((doc_at, c0, c1)) => {
+            let comment = doc_comment(text, indent_at(d.text, doc_at));
+            let mut out = d.text.to_owned();
+            out.replace_range(c0..c1, &comment);
+            Ok(Change {
+                text: out,
+                select: None,
+                flash: Some((doc_at, c0 + comment.len())),
+            })
+        }
+        None if text.is_empty() => Ok(Change {
+            text: d.text.to_owned(),
+            select: None,
+            flash: None,
+        }),
+        None => {
+            let e = d.e(f.entry);
+            let indent = format!("{}    ", indent_at(d.text, d.b(e.start)));
+            let line = format!("doc {}", doc_comment(text, &indent));
+            let (out, s, end) = insert_into(d.text, d.target(f.entry), &line);
+            Ok(Change {
+                text: out,
+                select: None,
+                flash: Some((s, end)),
+            })
+        }
+    }
+}
+
+// ---- 属性の編集（F-EDIT-12） ----
+
+/// 属性の型と値に書けない文字（文や本体の区切りになるもの）。
+const ATTR_STOP: &[char] = &[';', '{', '}', '\n', '\r'];
+
+/// 属性の宣言の 1 行を作る。名前は必要なら引用名にし、型・値が空ならその部分を書かない。
+///
+/// # 引数
+///
+/// - `head`：名前の前に書く語（`attribute`・`constant attribute` など）
+/// - `name`：属性の名前
+/// - `keep`：インスペクタで変えない部分（多重度と特殊化。`keep_parts` で作る）
+/// - `ty`：型（空なら書かない）
+/// - `op`：値の書き方（`=`・`:=`・`default` など）
+/// - `value`：値（空なら書かない）
+///
+/// # 戻り値
+///
+/// `attribute 名前[多重度] : 型 :> 相手 = 値;` の形の 1 行。
+///
+/// # 例
+///
+/// ```text
+/// attribute_line("attribute", "mass", &Keep::default(), "Real", "=", "1500") → "attribute mass : Real = 1500;"
+/// attribute_line("attribute", "重さ", &Keep::default(), "", "=", "")         → "attribute '重さ';"
+/// attribute_line("attribute", "t", &Keep::default(), "Real", ":=", "0")      → "attribute t : Real := 0;"
+/// // keep = { mult: "[2]", specs: " :> a" }
+/// attribute_line("attribute", "g", &keep, "Real", "=", "7")                 → "attribute g[2] : Real :> a = 7;"
+/// ```
+fn attribute_line(head: &str, name: &str, keep: &Keep, ty: &str, op: &str, value: &str) -> String {
+    let ty = if ty.is_empty() {
+        String::new()
+    } else {
+        format!(" : {ty}")
+    };
+    let value = if value.is_empty() {
+        String::new()
+    } else {
+        format!(" {op} {value}")
+    };
+    format!(
+        "{head} {}{}{ty}{}{value};",
+        sysml_name(name),
+        keep.mult,
+        keep.specs
+    )
+}
+
+/// 属性をインスペクタで書き換えるときに、そのまま書き戻す部分（インスペクタに出さない多重度と特殊化。#223）。
+#[derive(Default)]
+struct Keep {
+    /// 名前のすぐ後ろに書く多重度（`[2]`・`[0..*] ordered`。無ければ空）。
+    mult: String,
+    /// 型の後ろに書く特殊化（` :> a`・` :>> b`。無ければ空）。
+    specs: String,
+}
+
+/// 宣言の多重度と特殊化を、書き戻す文字にする（8.2.2.6 の MultiplicityPart・FeatureSpecializationPart）。
+///
+/// # 引数
+///
+/// - `e`：属性の宣言
+///
+/// # 戻り値
+///
+/// 書き戻す多重度と特殊化。どちらも無ければ空。
+///
+/// # 例
+///
+/// ```text
+/// keep_parts(attribute g[2] : Real;)          → Keep { mult: "[2]", specs: "" }
+/// keep_parts(attribute f :> a;)               → Keep { mult: "", specs: " :> a" }
+/// keep_parts(attribute h[0..*] ordered :>> k;) → Keep { mult: "[0..*] ordered", specs: " :>> k" }
+/// ```
+fn keep_parts(e: &crate::project::Entry) -> Keep {
+    let mult = e.multiplicity.as_ref().map_or(String::new(), |m| {
+        let mut s = format!("[{}]", m.range);
+        if m.ordered {
+            s.push_str(" ordered");
+        }
+        if m.nonunique {
+            s.push_str(" nonunique");
+        }
+        s
+    });
+    let specs = e
+        .specs
+        .iter()
+        .map(|sp| {
+            let sym = match sp.op {
+                "redefines" => ":>>",
+                "references" => "::>",
+                "crosses" => "=>",
+                _ => ":>",
+            };
+            format!(" {sym} {}", sp.target)
+        })
+        .collect();
+    Keep { mult, specs }
+}
+
+/// 属性を足すか、書き換える（インスペクタの「属性」。F-EDIT-12）。`attr` が無ければ足し、あればその名前の属性を書き換える。
+/// 書き換えるときは、`constant` などの修飾と値の書き方（`:=`・`default`）、多重度（`[2]`）と特殊化（`:> a`）を保つ（#223）。
+/// 名前を変えるときは、それを使う参照もまとめて変える（#231）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `f`：属性を持つ定義
+/// - `attr`：書き換える属性の今の名前（足すときは None）
+/// - `name`・`ty`・`value`：新しい名前・型・値（前後の空白は除く。型と値は空なら書かない）
+///
+/// # 戻り値
+///
+/// 書いた後のテキストと、光らせる範囲（書いた属性の宣言）。名前が空・使えない文字を含む・同じ名前の属性が既にある・
+/// 書き換える属性が見つからない・属性に本体（`{ … }`）があるときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// set_attribute(Doc("package P { part def A; }"), A, None, "mass", "Real", "1500")
+///   → Ok(text に "attribute mass : Real = 1500;")
+/// set_attribute(Doc("package P { part def A { attribute m : Real := 1; } }"), A, Some("m"), "m", "Real", "2")
+///   → Ok(text = "package P { part def A { attribute m : Real := 2; } }")
+/// set_attribute(Doc("package P { part def A { attribute m; attribute n; } }"), A, Some("m"), "n", "", "")
+///   → Err("「n」という属性は既にあります")
+/// ```
+pub(super) fn set_attribute(
+    d: &Doc<'_>,
+    f: &Found,
+    attr: Option<&str>,
+    name: &str,
+    ty: &str,
+    value: &str,
+) -> Result<Change, Refusal> {
+    let (name, ty, value) = (name.trim(), ty.trim(), value.trim());
+    if name.is_empty() {
+        return Err("属性の名前を入力してください".to_owned());
+    }
+    if super::ops::has_bad_name_char(name) {
+        return Err(super::ops::BAD_RENAME.to_owned());
+    }
+    if ty.contains(ATTR_STOP) || value.contains(ATTR_STOP) || ty.contains('=') {
+        return Err(
+            "型と値には「;」「{」「}」や改行は書けません（型には「=」も書けません）".to_owned(),
+        );
+    }
+    let owner = d.e(f.entry);
+    let attrs: Vec<usize> = owner
+        .children
+        .iter()
+        .copied()
+        .filter(|&c| d.e(c).kind == "attribute")
+        .collect();
+    let current = match attr {
+        Some(a) => Some(
+            attrs
+                .iter()
+                .copied()
+                .find(|&c| d.e(c).name == a)
+                .ok_or_else(|| {
+                    format!("属性「{a}」が見つかりません。テキストが先に変わった可能性があります")
+                })?,
+        ),
+        None => None,
+    };
+    if attrs
+        .iter()
+        .any(|&c| Some(c) != current && d.e(c).name == name)
+    {
+        return Err(format!("「{name}」という属性は既にあります"));
+    }
+    match current {
+        Some(c) => {
+            let e = d.e(c);
+            if e.close.is_some() {
+                return Err("この属性には中身があるため、テキストで直してください".to_owned());
+            }
+            if e.name != name {
+                // 名前を変えるときは、式や `:>` などの参照もまとめて変えてから、型と値を書き換える（F-EDIT-3。#231）
+                let renamed = super::ops::rename_refs(d, &Found { entry: c }, name).text;
+                let d2 = Doc::with(
+                    &renamed,
+                    crate::project::project(&renamed, &crate::syntax::parse(&renamed)),
+                );
+                return set_attribute(&d2, &Found { entry: f.entry }, Some(name), name, ty, value);
+            }
+            let head = match e.mods.as_deref() {
+                Some(m) if !m.is_empty() => format!("{m} attribute"),
+                _ => "attribute".to_owned(),
+            };
+            let head = match e.dir.as_deref() {
+                Some(dir) if !dir.is_empty() => format!("{dir} {head}"),
+                _ => head,
+            };
+            let op = e.value_op.as_deref().unwrap_or("=");
+            let line = attribute_line(&head, name, &keep_parts(e), ty, op, value);
+            let (s, end) = (d.b(e.start), d.b(e.end));
+            let mut text = d.text.to_owned();
+            text.replace_range(s..end, &line);
+            Ok(Change {
+                text,
+                select: None,
+                flash: Some((s, s + line.len())),
+            })
+        }
+        None => {
+            let line = attribute_line("attribute", name, &Keep::default(), ty, "=", value);
+            let (text, s, end) = insert_into(d.text, d.target(f.entry), &line);
+            Ok(Change {
+                text,
+                select: None,
+                flash: Some((s, end)),
+            })
+        }
+    }
+}
+
+/// 属性を消す（F-EDIT-12）。行全体を占めるなら行ごと消す。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `f`：属性を持つ定義
+/// - `attr`：消す属性の名前
+///
+/// # 戻り値
+///
+/// 消した後のテキストと、光らせる範囲（消した位置の 1 バイト）。属性が見つからないときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// remove_attribute(Doc("package P {\n    part def A {\n        attribute m;\n    }\n}"), A, "m")
+///   → Ok(text = "package P {\n    part def A {\n    }\n}")
+/// remove_attribute(Doc("package P { part def A; }"), A, "m") → Err("属性「m」が見つかりません。…")
+/// ```
+pub(super) fn remove_attribute(d: &Doc<'_>, f: &Found, attr: &str) -> Result<Change, Refusal> {
+    let c = d
+        .e(f.entry)
+        .children
+        .iter()
+        .copied()
+        .find(|&c| d.e(c).kind == "attribute" && d.e(c).name == attr)
+        .ok_or_else(|| {
+            format!("属性「{attr}」が見つかりません。テキストが先に変わった可能性があります")
+        })?;
+    let e = d.e(c);
+    let (text, at) = remove_range(d.text, d.b(e.start), d.b(e.end));
     Ok(Change {
         text,
         select: None,

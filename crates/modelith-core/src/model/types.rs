@@ -33,6 +33,9 @@ pub struct Node {
     pub ports: Vec<Port>,
     pub phase: Option<String>,
     pub phase_own: bool,
+    /// ほかのファイルの要素なら、そのファイルの番号（1 から、`merge` に渡した順。ADR-0021）。表示中のファイルの要素は None。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<usize>,
 }
 
 /// 図に描く関係。
@@ -76,6 +79,12 @@ pub struct Problem {
     pub msg: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kind: Option<&'static str>,
+    /// 知らせの種類（重さを選べる種類。F-EDIT-11）。`trace.derive`・`trace.satisfy`・`trace.verify`・`unsupported`。エラーは None。
+    #[serde(skip)]
+    pub code: Option<&'static str>,
+    /// プロジェクトの設定で選んだ重さ（`error`・`warning`・`info`）。既定の重さのままなら None（F-EDIT-11）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level: Option<&'static str>,
 }
 
 /// 図に出した package（package そのものを expose したもの）。枠として描き、中の要素を枠の中に示す（F-VIEW-9）。
@@ -106,7 +115,8 @@ pub struct View {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FlowNode {
-    /// 図の要素のキー（`a:名前`。名前の無い要素は `a:#番号`、開始・終了は `a:start`・`a:done`）。配置はこのキーで覚える。
+    /// 図の要素のキー（`a:名前`。名前の無い要素は `a:#番号`、開始・終了は `a:start`・`a:done`。入れ子の本体の要素は `a:外.中`・`a:外.start`）。
+    /// 配置はこのキーで覚える。
     pub key: String,
     /// 名前（名前の無い要素は空）。
     pub name: String,
@@ -115,6 +125,12 @@ pub struct FlowNode {
     /// 宣言（`ParseResult.entries` の番号）。開始・終了は宣言を持たないので `None`。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entry: Option<usize>,
+    /// パラメータ（向き `in`・`out`・`inout` の付いた特徴量。8.2.3.17 の parameter）。本体に無く型があれば、型の定義のパラメータ。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ports: Vec<Port>,
+    /// 入れ子の本体の要素なら、その本体を持つアクションのキー（中に描く）。アクション定義の直下なら `None`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container: Option<String>,
 }
 
 /// アクション定義 1 つの、アクションの流れの図（ActionFlowView、8.2.3.17）。
@@ -127,8 +143,28 @@ pub struct ActionFlow {
     pub entry: usize,
     /// 要素（開始、書いた順の要素、終了の順）。
     pub nodes: Vec<FlowNode>,
-    /// 継起（種類 `succession`）と順序付きの流れ（種類 `successionFlow`）の線。端は `nodes` のキー。
+    /// アクション定義そのもののパラメータ（枠の上に描く。8.2.3.17 の parameter）。図のキーは `b:名前`。
+    pub params: Vec<Port>,
+    /// 区画（8.2.3.17 の swimlane）。要素を受け持つ部品（`perform 使用.要素;` を書いた部品）ごとに、書いた順。無ければ空。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub lanes: Vec<Lane>,
+    /// 継起（種類 `succession`）・順序付きの流れ（種類 `successionFlow`）・流れ（種類 `flow`）の線。
+    /// 端は `nodes` のキーか、アクション定義そのもののパラメータ（`b:名前`）。流れの端のパラメータは `fromPort`・`toPort`（`port:名前`）。
     pub edges: Vec<Edge>,
+}
+
+/// アクションの流れの図の区画 1 つ（8.2.3.17 の swimlane）。受け持つ部品と、その部品が受け持つ要素。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Lane {
+    /// 区画のキー（`lane:部品の道のり`）。
+    pub key: String,
+    /// 受け持つ部品の道のり（`kettle.heater`。外の部品から）。
+    pub name: String,
+    /// 受け持つ部品の宣言（`ParseResult.entries` の番号）。
+    pub entry: usize,
+    /// 受け持つ要素のキー（`perform` を書いた順）。
+    pub nodes: Vec<String>,
 }
 
 /// 状態遷移の図（8.2.3.18）の要素 1 つ。状態と、本体ごとの開始（最初の遷移の元）・終了（`done`）の記号。

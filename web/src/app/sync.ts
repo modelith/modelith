@@ -3,16 +3,19 @@
 import { CORE_STOPPED, lineOf, type CoreClient, type CoreSupervisorHooks, type Model, type ParseResult, type PlacedDiagnostic, type Problem, type RuleFinding } from "../core";
 import { $, esc } from "./dom";
 import { errorText } from "./error-text";
-import { autoPlace, placeJunctions, placeNested, placeNotes, placeStates, stackedHeight, stackedWidth } from "./geometry";
+import { placeView } from "../render/geometry";
 import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
-import { emptyView, type Layout } from "./layout";
+import { emptyView, type Layout } from "../render/layout";
 import { serializeLayout } from "./layout-file";
 import { MAX_PROBLEM_ROWS, problemRows } from "./problem-rows";
 import { renderPalette, renderSub, renderTabs, renderTree } from "./panels";
 import { droppedDiagnosticsNote, MAX_DIAGNOSTICS } from "../plugins/limits";
 import { diagnosticText, findingText, SEVERITY_MARK } from "./plugins";
 import { prunePins } from "./pins";
+import { LEVEL_MARK, problemLevel } from "./notice-levels";
+import type { CopyRow } from "./problem-copy";
+import { otherFiles, problemClass, type FileProblems } from "./project-problems";
 import { highlight, render } from "./render";
 import { S } from "./state";
 import { curLayout, curView, syncModelViewKind, VK, viewContent } from "./views";
@@ -115,9 +118,19 @@ export function onAnalyzed(version: number, P: ParseResult, M: Model, findings: 
   waiters = [];
   for (const w of ws) w();
   analyzedListener(version);
+  projectListener();
 }
 
 let analyzedListener: (version: number) => void = () => {};
+let projectListener: () => void = () => {};
+/**
+ * 今の版の解析結果を画面に反映した後に、フォルダのほかのファイルの問題を数え直す処理を登録する（ADR-0021 §6）。前に登録した処理は置き換える。
+ *
+ * @param fn 反映するたびに呼ばれる処理
+ */
+export function onAnalyzedProject(fn: () => void): void {
+  projectListener = fn;
+}
 /**
  * 今の版の解析結果を画面に反映した後の処理（v1 のプラグインへの didChange）を登録する。前に登録した処理は置き換える。
  *
@@ -180,6 +193,7 @@ export function reparse(fromText: boolean): void {
  * @param fromText テキストの直接編集による変更なら true（前回から中身が変わった要素を S.pulse に入れて光らせる）
  */
 function refresh(fromText: boolean): void {
+  awaitingModel = false;
   syncModelViewKind();
   prunePins();
   const sig = new Map<string, string>();
@@ -202,34 +216,14 @@ function refresh(fromText: boolean): void {
 }
 
 /**
- * 表示中のビューで座標の無い要素を自動で並べる（S.layout を書き換える。F-VIEW-3）。
- * 既に置かれた要素があれば、その一番下から 80 下に並べる。中の部品（内部ブロック図の入れ子）は外の部品の中に縦に積み、
- * n 項の接続の点は、つながる要素の重心に、メモは注釈する要素の近くに置く。幅の狭い要素（アクションの流れの図の記号）は列の中央に置く。
- * 状態遷移の図は、状態の入れ子と遷移の向きで並べる（placeStates）。シーケンス図では何もしない。
+ * 表示中のビューで座標の無い要素を自動で並べる（S.layout を書き換える。F-VIEW-3）。並べ方は placeView（シーケンス図では何もしない）。
+ * 文書を切り替えて、その文書の解析結果がまだ届いていない間も何もしない（今のモデルは前の文書のものなので。#224）。
  */
 export function ensureLayout(): void {
-  if (S.view === "seq") return;
+  if (S.view === "seq" || awaitingModel) return;
   const v = curView();
-  if (S.view === "stm") {
-    const c = viewContent(S.M, v);
-    placeStates(c.nodes, c.edges, c.regions ?? [], curLayout().pos);
-    return;
-  }
-  const { nodes, edges } = viewContent(S.M, v);
-  const L = curLayout().pos;
-  const heightOf = (n: (typeof nodes)[number]): number => stackedHeight(n, nodes);
-  const missing = nodes.filter((n) => !L[n.key] && !n.junction && !n.container && !n.note);
-  if (missing.length) {
-    const placed = nodes.flatMap((n) => {
-      const p = L[n.key];
-      return p && !n.junction && !n.container ? [p[1] + heightOf(n)] : [];
-    });
-    const oy = placed.length ? Math.max(...placed) + 80 : 0;
-    autoPlace(missing, edges, L, v, S.M.phases?.[0] ?? null, oy, heightOf, (n) => stackedWidth(n, nodes));
-  }
-  placeNested(nodes, L);
-  placeJunctions(nodes, edges, L);
-  placeNotes(nodes, edges, L);
+  const c = viewContent(S.M, v);
+  placeView(c, v, curLayout().pos, S.M.phases?.[0] ?? null);
 }
 
 // 確定した配置（配置ファイルの文字列）。自動で置いただけの座標は含めない。
@@ -249,14 +243,19 @@ export function committedLayout(): string {
 
 /**
  * 表示する文書の配置にする（文書を切り替えたとき・元に戻したとき）。S.layout を置き換え、確定した配置として記録する。
- * 描き直しは呼び出し側の setText に任せる。
+ * 描き直しは呼び出し側の setText に任せる。その文書の解析結果が届くまで、座標の無い要素を自動で並べない（ensureLayout）。
  *
  * @param layout 文書の配置（配置ファイルから読んだもの）
  */
 export function loadLayout(layout: Layout): void {
   S.layout = layout;
   committed = serializeLayout(layout);
+  awaitingModel = true;
 }
+
+// 配置を読み込んでから、その文書の解析結果が届くまで true。その間の S.M は前の文書のものなので、
+// 座標の無い要素を自動で並べない（前の文書の要素の位置を、この文書の配置に書き込まないため。#224）
+let awaitingModel = false;
 
 let layoutListener: (layout: string) => void = () => {};
 /**
@@ -310,6 +309,14 @@ export function toast(msg: string): void {
 }
 
 /**
+ * 出ているトーストを消す（前の操作の知らせが、何も起きなかった操作の後まで残って見えないように。#244）。
+ */
+export function dismissToast(): void {
+  clearTimeout(toastTimer);
+  $("#toast").classList.remove("on");
+}
+
+/**
  * 失敗をトーストで知らせる。理由はブラウザの英語の文を見せず日本語の文（errorText）にし、詳しい内容（投げられた値）はコンソールに残す（Q-4・Q-6）。
  *
  * @param what できなかったこと（「保存できませんでした」など。句点なし）
@@ -352,14 +359,41 @@ export function setSync(cls: "" | "busy" | "bad", txt: string): void {
 
 /**
  * 今のモデルから、同期の状態（問題の件数）と、テキスト欄の見出しの要素と関係の数を書き換える。
- * 問題の件数は、まだ扱えない構文とトレースの抜けを除いた件数に、チェックルールと v1 のプラグインの診断のエラーと警告、プラグインについての行を足したもの。
+ * 問題の件数は、エラーの重さのモデルの問題（F-EDIT-11）に、チェックルールと v1 のプラグインの診断のエラーと警告、プラグインについての行を足したもの。
  */
 export function updateSync(): void {
   const serious = (s: string): boolean => s === "error" || s === "warning";
   const rules = S.findings.filter((f) => serious(f.severity)).length + currentDiagnostics().filter((d) => serious(d.item.severity)).length;
-  const n = S.M.nodes.length, e = S.M.edges.length, p = S.M.problems.filter((x) => !x.kind).length + rules + S.pluginNotes.length;
+  const n = S.M.nodes.length, e = S.M.edges.length, p = S.M.problems.filter((x) => problemLevel(x) === "error").length + rules + S.pluginNotes.length;
   setSync(p ? "bad" : "", p ? `同期済み（問題 ${p} 件）` : "同期済み");
   $("#textInfo").textContent = `SysML v2 テキスト：要素 ${n}、関係 ${e}`;
+}
+
+/** 問題一覧の 1 行（画面の HTML と、コピーする内容）。own は表示中のファイルの行（ファイル名はコピーするときに決める）。 */
+interface ProblemRow {
+  html: (copy: number) => string;
+  own: boolean;
+  path: string | null;
+  line: number | null;
+  text: string;
+}
+
+/** 今の問題一覧の、コピーできる行（一覧に出す上限を超えた分も含む。F-EDIT-13）。 */
+let rows: ProblemRow[] = [];
+
+/**
+ * 問題一覧の行を、コピーする内容にする（F-EDIT-13）。表示中のファイルの行には、今のファイル名を付ける。
+ *
+ * @param which 行の番号（無ければすべて）
+ * @returns コピーする行（一覧の順。番号が範囲の外なら空）
+ * @example
+ * // 表示中の app.sysml の 3 行目に問題が 1 件
+ * problemCopyRows()  // → [{ path: "app.sysml", line: 3, text: "…" }]
+ * problemCopyRows(5) // → []（番号が範囲の外）
+ */
+export function problemCopyRows(which?: number): CopyRow[] {
+  const picked = which === undefined ? rows : rows.slice(which, which + 1);
+  return picked.map((r) => ({ path: r.own ? S.docPath : r.path, line: r.line, text: r.text }));
 }
 
 /**
@@ -369,33 +403,83 @@ export function updateSync(): void {
  * テキストの中の位置があるもの（モデルの問題・チェックルールの結果・プラグインの診断）は行番号を付け、押すとその行に移る。
  * トレースの抜けの行には何件目の抜けか（data-gap）を付け、図が見えていれば図の要素へ移れるようにする。
  * 足りないプラグインの行は、押すと追加を始める（data-plugin-add）。
+ * 一覧の上に「すべてコピー」を、各行にコピーする行の番号（data-copy）を付ける（F-EDIT-13）。
  */
 export function renderProblems(): void {
-  // エラー → まだ扱えない構文 → トレースの抜け、の順に並べる
-  const order = (k: Problem["kind"]): number => (k === undefined ? 0 : k === "unsupported" ? 1 : 2);
-  const sorted = [...S.M.problems].sort((a, b) => order(a.kind) - order(b.kind));
-  const mark = { gap: "△", unsupported: "ℹ" } as const;
+  // エラーの重さの問題 → まだ扱えない構文 → トレースの抜け、の順に並べる（重さはプロジェクトで選べる。F-EDIT-11）
+  const order = (p: Problem): number => (problemLevel(p) === "error" ? 0 : p.kind === "unsupported" ? 1 : 2);
+  const sorted = [...S.M.problems].sort((a, b) => order(a) - order(b));
   // トレースの抜けの行には、何件目の抜けか（data-gap）を付ける。押したときに図の要素へ移るため（F-TRACE-2）
   const gapIndex = new Map(S.M.problems.filter((p) => p.kind === "gap").map((p, i) => [p, i]));
-  const model = (p: Problem): string =>
-    `<button data-pos="${p.pos}"${gapIndex.has(p) ? ` data-gap="${gapIndex.get(p)}"` : ""} class="${p.kind ?? ""}">${p.kind ? mark[p.kind] : "⚠"} ${lineOf(S.text, p.pos)} 行目：${esc(p.msg)}</button>`;
-  const rule = (f: RuleFinding): string =>
-    `<button data-pos="${f.pos}" class="rule ${f.severity}">${SEVERITY_MARK[f.severity]} ${lineOf(S.text, f.pos)} 行目：${esc(findingText(f, S.pluginNames))}</button>`;
-  const notes = S.pluginNotes.map((n) => `<button class="plugin"${n.add ? ` data-plugin-add="${esc(n.add)}"` : ""}>⚠ ${esc(n.msg)}</button>`);
-  const diagnostic = ({ plugin, item }: { plugin: string; item: PlacedDiagnostic }): string =>
-    `<button data-pos="${item.pos}" class="rule ${item.severity}">${SEVERITY_MARK[item.severity]} ${lineOf(S.text, item.pos)} 行目：${esc(diagnosticText(item, S.pluginNames.get(plugin) ?? plugin))}</button>`;
+  const own = (pos: number, text: string, html: (copy: number) => string): ProblemRow => ({ html, own: true, path: null, line: lineOf(S.text, pos), text });
+  const note = (text: string, html: (copy: number) => string): ProblemRow => ({ html, own: false, path: null, line: null, text });
+  const model = (p: Problem): ProblemRow =>
+    own(p.pos, p.msg, (c) => `<button data-pos="${p.pos}"${gapIndex.has(p) ? ` data-gap="${gapIndex.get(p)}"` : ""} data-copy="${c}" class="${problemClass(p)}">${LEVEL_MARK[problemLevel(p)]} ${lineOf(S.text, p.pos)} 行目：${esc(p.msg)}</button>`);
+  const rule = (f: RuleFinding): ProblemRow => {
+    const text = findingText(f, S.pluginNames);
+    return own(f.pos, text, (c) => `<button data-pos="${f.pos}" data-copy="${c}" class="rule ${f.severity}">${SEVERITY_MARK[f.severity]} ${lineOf(S.text, f.pos)} 行目：${esc(text)}</button>`);
+  };
+  const notes = S.pluginNotes.map((n) => note(n.msg, (c) => `<button class="plugin"${n.add ? ` data-plugin-add="${esc(n.add)}"` : ""} data-copy="${c}">⚠ ${esc(n.msg)}</button>`));
+  const diagnostic = ({ plugin, item }: { plugin: string; item: PlacedDiagnostic }): ProblemRow => {
+    const text = diagnosticText(item, S.pluginNames.get(plugin) ?? plugin);
+    return own(item.pos, text, (c) => `<button data-pos="${item.pos}" data-copy="${c}" class="rule ${item.severity}">${SEVERITY_MARK[item.severity]} ${lineOf(S.text, item.pos)} 行目：${esc(text)}</button>`);
+  };
   const dropped = S.pluginDiagnostics
     .filter((d) => d.version === applied && d.dropped > 0)
-    .map((d) => `<button class="plugin">⚠ ${esc(droppedDiagnosticsNote(S.pluginNames.get(d.plugin) ?? d.plugin, d.dropped, MAX_DIAGNOSTICS))}</button>`);
-  const items = [
-    ...sorted.filter((p) => !p.kind).map(model),
+    .map((d) => {
+      const text = droppedDiagnosticsNote(S.pluginNames.get(d.plugin) ?? d.plugin, d.dropped, MAX_DIAGNOSTICS);
+      return note(text, (c) => `<button class="plugin" data-copy="${c}">⚠ ${esc(text)}</button>`);
+    });
+  const mine = [
+    ...sorted.filter((p) => order(p) === 0).map(model),
     ...S.findings.map(rule),
     ...dropped,
     ...currentDiagnostics().map(diagnostic),
     ...notes,
-    ...sorted.filter((p) => p.kind).map(model),
+    ...sorted.filter((p) => order(p) > 0).map(model),
   ];
-  $("#problems").innerHTML = problemRows(items, MAX_PROBLEM_ROWS).join("");
+  const fileProblems = otherFiles(S.fileProblems, S.shownPath);
+  const others = fileProblems.map((f) => f.rows.map((r): ProblemRow => ({
+    html: (c) => `<button data-path="${esc(f.path)}" data-at="${r.pos}" data-copy="${c}" class="${r.cls}">${r.mark} ${r.line} 行目：${esc(r.text)}</button>`,
+    own: false,
+    path: f.path,
+    line: r.line,
+    text: r.text,
+  })));
+  rows = [...mine, ...others.flat()];
+  if (!rows.length) {
+    $("#problems").innerHTML = "";
+    return;
+  }
+  const head = `<div class="phead"><span>問題 ${rows.length} 件</span><button type="button" class="pcopy" data-levels title="知らせの種類ごとに、エラー・警告・情報・出さないのどれで知らせるかを選ぶ">知らせの重さ…</button><button type="button" class="pcopy" data-copy-all title="一覧のすべての問題を「ファイル名:行: メッセージ」の形でコピーする">すべてコピー</button></div>`;
+  let at = mine.length;
+  const files = fileProblems.map((f, i) => {
+    const html = otherFileHtml(f, (others[i] ?? []).map((r, j) => r.html(at + j)));
+    at += f.rows.length;
+    return html;
+  });
+  $("#problems").innerHTML = head + problemRows(mine.map((r, i) => r.html(i)), MAX_PROBLEM_ROWS).join("") + files.join("");
+}
+
+/** 問題一覧に出す、ほかのファイル 1 つの行の上限（多いファイルで一覧が埋まらないように）。 */
+const MAX_FILE_ROWS = 20;
+
+/**
+ * 問題一覧の、ほかのファイル 1 つのまとまりの HTML（ADR-0021 §6）。見出しにファイルのパスと件数、その下に行を並べる。
+ * 行には data-path と data-at（そのファイルの中の位置）を付け、押すとそのファイルを開いてその行へ移る。問題の無いファイルは出さない。
+ *
+ * @param f ほかのファイルの問題
+ * @param rowsHtml 行の HTML（f.rows の順）
+ * @returns まとまりの HTML。行が無ければ ""
+ * @example
+ * otherFileHtml({ path: "parts.sysml", status: { errors: 1, warnings: 0 }, rows: [r] }, ['<button data-path="parts.sysml" …>⚠ 2 行目：…</button>'])
+ * // → '<div class="pfile">parts.sysml<small>エラー 1・警告 0</small></div><button data-path="parts.sysml" …>⚠ 2 行目：…</button>'
+ */
+function otherFileHtml(f: FileProblems, rowsHtml: readonly string[]): string {
+  if (!f.rows.length) return "";
+  const head = `<div class="pfile">${esc(f.path)}<small>エラー ${f.status.errors}・警告 ${f.status.warnings}</small></div>`;
+  const more = f.rows.length > MAX_FILE_ROWS ? [`<div class="pfile-more">ほか ${f.rows.length - MAX_FILE_ROWS} 件</div>`] : [];
+  return head + rowsHtml.slice(0, MAX_FILE_ROWS).join("") + more.join("");
 }
 
 /**

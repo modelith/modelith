@@ -1,8 +1,9 @@
 // アプリの状態。テキストが唯一の正本で、P（解析結果）・M（モデル）・layout はテキストから作り直す（ADR-0001）。
 
 import type { Model, ParseResult, PlacedDiagnostic, PortDir, RuleFinding } from "../core";
-import type { Layout, Side } from "./layout";
+import type { Layout, Side } from "../render/layout";
 import type { PluginNote } from "./plugins";
+import type { FileProblems } from "./project-problems";
 import type { GapFocus, GapKind } from "./trace-gap";
 
 /** 図の縁上の位置（接続点があればその ID）。 */
@@ -91,6 +92,10 @@ export interface AppState {
   gap: GapFocus | null;
   confirmDel: boolean;
   renaming: boolean;
+  /** インスペクタで説明（要求の文章など）を編集しているとき（F-EDIT-12）。 */
+  docEdit: boolean;
+  /** インスペクタで編集している属性（F-EDIT-12）。null：編集していない・"" ：新しい属性を足す・名前：その属性を書き換える。 */
+  attrEdit: string | null;
   msgEdit: boolean;
   phase: string;
   ibdCtx: string | null;
@@ -115,6 +120,12 @@ export interface AppState {
   pluginNames: Map<string, string>;
   /** v1 のプラグインが出した診断（プラグインごとに最後のもの。version はそれを出したテキストの版。dropped は件数の上限を超えて捨てた数）。 */
   pluginDiagnostics: { plugin: string; version: number; items: PlacedDiagnostic[]; dropped: number }[];
+  /** フォルダのほかのファイルの問題（ADR-0021 §6。フォルダを開いていなければ空）。 */
+  fileProblems: FileProblems[];
+  /** 表示中のファイルの名前（フォルダの中ならフォルダからのパス。問題をコピーするときに使う。F-EDIT-13）。 */
+  docPath: string;
+  /** 表示中のファイルのフォルダからのパス（フォルダの外の文書・無題の文書なら null。ほかのファイルの問題から除く。F-FILE-16）。 */
+  shownPath: string | null;
 }
 
 /** 唯一のアプリ状態。起動時に main.ts が P・M を埋める。 */
@@ -153,6 +164,8 @@ export const S: AppState = {
   gap: null,
   confirmDel: false,
   renaming: false,
+  docEdit: false,
+  attrEdit: null,
   msgEdit: false,
   phase: "",
   ibdCtx: null,
@@ -171,6 +184,9 @@ export const S: AppState = {
   pluginNotes: [],
   pluginNames: new Map(),
   pluginDiagnostics: [],
+  fileProblems: [],
+  docPath: "",
+  shownPath: null,
 };
 
 /** 選択と一時的な操作状態をすべて外す。 */
@@ -186,6 +202,8 @@ export function clearSel(): void {
   S.selPin = null;
   S.portForm = false;
   S.renaming = false;
+  S.docEdit = false;
+  S.attrEdit = null;
   S.confirmDel = false;
 }
 

@@ -35,6 +35,20 @@ export function parse(text: string): ParseResult {
   return safeParse(text, analyzeJson);
 }
 
+/** ほかのファイルの位置の区切り（Rust の `merge::FILE_STRIDE`。ADR-0021）。これより後ろの位置は、表示中のファイルのテキストに無い。 */
+export const FILE_STRIDE = 2 ** 24;
+
+/**
+ * 宣言（または位置を持つもの）が、表示中のファイルに書かれているか（ADR-0021）。
+ *
+ * @param x 宣言など、テキストの中の始まりの位置を持つもの
+ * @returns 表示中のファイルなら true。プロジェクトのほかのファイルなら false
+ * @example
+ * inOpenFile({ start: 120 })               // → true
+ * inOpenFile({ start: FILE_STRIDE + 5 })   // → false（1 つ目のほかのファイル）
+ */
+export const inOpenFile = (x: { start: number }): boolean => x.start < FILE_STRIDE;
+
 /** 解析結果ごとの、Rust が作ったモデル（番号のまま）。`build` で取り出す。 */
 const models = new WeakMap<ParseResult, RawModel>();
 /** 解析結果ごとの、チェックルールの結果（ADR-0018 §2）。`fromAnalysis` で取り出す。 */
@@ -55,9 +69,9 @@ const ruleFindings = new WeakMap<ParseResult, RuleFinding[]>();
  */
 export function safeParse(text: string, analyzeJson: (text: string) => string): ParseResult {
   try {
-    const raw = JSON.parse(analyzeJson(text)) as { parse: RawParseResult; model: RawModel; findings?: RuleFinding[] };
+    const raw = JSON.parse(analyzeJson(text)) as { parse: RawParseResult; model: RawModel; findings?: RuleFinding[]; files?: string[] };
     const P = fromRaw(raw.parse, text);
-    models.set(P, raw.model);
+    models.set(P, { ...raw.model, files: Array.isArray(raw.files) ? raw.files : [] });
     ruleFindings.set(P, Array.isArray(raw.findings) ? raw.findings : []);
     return P;
   } catch (e) {
@@ -162,7 +176,7 @@ function fromRaw(raw: RawParseResult, text: string): ParseResult {
 }
 
 type RawPort = Omit<Port, "entry"> & { entry: number };
-type RawNode = Omit<ModelNode, "entry" | "ports"> & { entry: number; ports: RawPort[] };
+type RawNode = Omit<ModelNode, "entry" | "ports" | "file"> & { entry: number; ports: RawPort[]; file?: number };
 type RawEdge = Omit<ModelEdge, "rel"> & { rel?: number };
 type RawView = Omit<ModelView, "entry" | "targets" | "frames"> & {
   entry: number;
@@ -173,13 +187,22 @@ type RawView = Omit<ModelView, "entry" | "targets" | "frames"> & {
 /** Rust の `Model`（JSON）。宣言は `entries`、関係は `rels` の番号で指す。 */
 export interface RawModel {
   nodes: RawNode[];
+  /** つないだほかのファイルのパス（`RawNode.file` が i なら i - 1 番目。ADR-0021）。解析の結果から移して持つ。 */
+  files?: string[];
   views: RawView[];
   edges: RawEdge[];
   problems: Problem[];
   phases: string[] | null;
   phaseEnum: string | null;
   notes?: { key: string; entry: number; targets: string[] }[];
-  actionFlows?: { key: string; entry: number; nodes: { key: string; name: string; kind: string; entry?: number }[]; edges: RawEdge[] }[];
+  actionFlows?: {
+    key: string;
+    entry: number;
+    nodes: { key: string; name: string; kind: string; entry?: number; ports?: RawPort[]; container?: string }[];
+    params: RawPort[];
+    lanes?: { key: string; name: string; entry: number; nodes: string[] }[];
+    edges: RawEdge[];
+  }[];
   stateMachines?: {
     key: string;
     entry: number;
@@ -230,7 +253,10 @@ function toModel(raw: RawModel, P: ParseResult): Model {
     if (!e) throw new Error(`モデルが指す宣言（${i}）がありません`);
     return e;
   };
-  const nodes: ModelNode[] = raw.nodes.map((n) => ({ ...n, entry: entry(n.entry), ports: n.ports.map((p) => ({ ...p, entry: entry(p.entry) })) }));
+  const nodes: ModelNode[] = raw.nodes.map(({ file, ...n }) => {
+    const path = file ? raw.files?.[file - 1] : undefined;
+    return { ...n, entry: entry(n.entry), ports: n.ports.map((p) => ({ ...p, entry: entry(p.entry) })), ...(path ? { file: path } : {}) };
+  });
   const nodeOf = new Map<Entry, ModelNode>(nodes.map((n) => [n.entry, n]));
   const byName = new Map<string, Entry[]>();
   for (const e of P.entries) {
@@ -257,10 +283,16 @@ function toModel(raw: RawModel, P: ParseResult): Model {
     return null;
   };
   const notes = (raw.notes ?? []).map((n) => ({ ...n, entry: entry(n.entry) }));
+  const port = (p: RawPort): Port => ({ ...p, entry: entry(p.entry) });
   const actionFlows = (raw.actionFlows ?? []).map((f) => ({
     key: f.key,
     entry: entry(f.entry),
-    nodes: f.nodes.map((n) => ({ key: n.key, name: n.name, kind: n.kind, entry: n.entry == null ? null : entry(n.entry) })),
+    nodes: f.nodes.map((n) => ({
+      key: n.key, name: n.name, kind: n.kind, entry: n.entry == null ? null : entry(n.entry), ports: (n.ports ?? []).map(port),
+      ...(n.container ? { container: n.container } : {}),
+    })),
+    params: f.params.map(port),
+    lanes: (f.lanes ?? []).map((l) => ({ ...l, entry: entry(l.entry) })),
     edges: f.edges.map(({ rel: _rel, ...e }) => e),
   }));
   const stateMachines = (raw.stateMachines ?? []).map((f) => ({
@@ -310,7 +342,12 @@ export type Intent =
   | { op: "deletePort"; key: string; port: string; ctx?: string }
   | { op: "saveView"; name: string; kind: string; targets: string[] }
   | { op: "addToView"; view: string; key: string }
-  | { op: "removeFromView"; view: string; key: string };
+  | { op: "removeFromView"; view: string; key: string }
+  | { op: "renameView"; view: string; name: string }
+  | { op: "deleteView"; view: string }
+  | { op: "setDoc"; key: string; text: string; ctx?: string }
+  | { op: "setAttribute"; key: string; attr?: string; name: string; type: string; value: string; ctx?: string }
+  | { op: "removeAttribute"; key: string; attr: string; ctx?: string };
 
 /** テキストの編集（古いテキストの [start, end) を text に置き換える。位置は UTF-16）。 */
 export interface TextEdit {
@@ -329,6 +366,8 @@ export interface EditResult {
 /** 操作できなかったとき、その理由（画面にそのまま出す文）。 */
 export interface Refused {
   refused: string;
+  /** ほかのファイルの要素を書き換えようとして断ったなら、そのファイルのパス（ADR-0021 §5。画面はそのファイルを開く操作を示す）。 */
+  file?: string;
 }
 
 /** プロジェクトが使うプラグイン 1 つの設定（modelith.json の `plugins` の値、ADR-0019）。不明な項目もそのまま持つ。 */
@@ -345,7 +384,22 @@ export interface ProjectFile {
   /** 画面に出すプロジェクト名。無ければフォルダ名を出す。 */
   name?: string;
   plugins: Record<string, PluginUse>;
+  /** 知らせの種類ごとの重さ（F-EDIT-11）。書いていない種類は既定の重さ。 */
+  levels?: Record<string, ProblemLevel>;
   [key: string]: unknown;
+}
+
+/** 知らせの重さ（形は crates/modelith-core/src/project_file の Level。F-EDIT-11）。 */
+export type ProblemLevel = "error" | "warning" | "info" | "off";
+
+/** 重さを選べる、モデルの知らせの種類 1 つ（形は crates/modelith-core/src/levels の Kind）。 */
+export interface ProblemKind {
+  /** 設定に書く種類の名前（`trace.verify` など）。 */
+  code: string;
+  /** 画面に出す名前。 */
+  label: string;
+  /** 何も選んでいないときの重さ。 */
+  default: ProblemLevel;
 }
 
 /** 設定ファイルの問題 1 件。行・列は 1 始まり（列は UTF-16 の単位）、message は画面にそのまま出す文。 */
@@ -369,6 +423,14 @@ export interface CreatedProjectFile {
 
 /** チェックルールの結果の重さ（plugin-sdk の DiagnosticSeverity）。 */
 export type RuleSeverity = "error" | "warning" | "information" | "hint";
+
+/** プロジェクトのほかのファイル 1 つの問題とチェックルールの結果（ADR-0021 §6）。位置はそのファイルの UTF-16。 */
+export interface FileReport {
+  /** フォルダからのパス。 */
+  path: string;
+  problems: Problem[];
+  findings: RuleFinding[];
+}
 
 /** チェックルールの結果 1 件（ADR-0018 §2）。pos は要素の宣言の始まり（UTF-16）。 */
 export interface RuleFinding {
@@ -431,6 +493,8 @@ export interface PluginSummary {
   manifest: PluginInfo | null;
   /** 使えるルールの数。 */
   rules: number;
+  /** 使えるルールの ID（書いた順。知らせの重さを選ぶ画面に並べる。F-EDIT-11）。 */
+  ruleIds?: string[];
   problems: PluginLoadProblem[];
 }
 

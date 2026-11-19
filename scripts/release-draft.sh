@@ -27,6 +27,10 @@ if [[ $arg == --auto && $branch != "$expected" ]]; then
   echo "$version は $expected で出す版なので、$branch では下書きを作りません"
   exit 0
 fi
+# dev の版（alpha・beta）は、main に入れたものが dev に戻っていなければ出さない（ADR-0022 §2。候補で直したのにプレビューで直っていない、を防ぐ）
+if [[ $expected == dev ]]; then
+  scripts/check-main-in-dev.sh origin/main HEAD
+fi
 node web/tools/release-notes-cli.ts check "$version"
 
 existing=$(gh release list --limit 100 --json tagName --jq ".[] | select(.tagName == \"$tag\") | .tagName")

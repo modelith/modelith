@@ -122,6 +122,30 @@ test.describe("狭い画面", () => {
     await expect(page.locator(".treepane")).toBeVisible();
     await expect(page.locator(".diagrampane")).toBeHidden();
   });
+
+  for (const colorScheme of ["light", "dark"] as const) {
+    test.describe(colorScheme === "light" ? "明るい配色" : "暗い配色", () => {
+      test.use({ colorScheme });
+
+      test(`F-VIEW-4・Q-2: 幅 390px でインスペクタを開いても、全体図が拡大・縮小のボタン（「全体図」まで）に重ならない（${colorScheme === "light" ? "明るい" : "暗い"}配色）`, async ({ page }) => {
+        // Arrange
+        await openApp(page);
+        await expect(page.locator("#mini")).toBeVisible();
+        // Act
+        await page.locator("#gNodes .node").first().click();
+        await expect(page.locator("#insp")).toBeVisible();
+        // Assert（4 つ目のボタン「全体図」を含め、どのボタンとも矩形が交わらない）
+        const mini = await page.locator("#mini").boundingBox();
+        expect(mini).not.toBeNull();
+        for (const id of ["#zIn", "#zOut", "#zFit", "#zMini"]) {
+          const b = await page.locator(id).boundingBox();
+          expect(b).not.toBeNull();
+          const apart = b!.x + b!.width <= mini!.x || mini!.x + mini!.width <= b!.x || b!.y + b!.height <= mini!.y || mini!.y + mini!.height <= b!.y;
+          expect(apart, `${id} と全体図が重なっている`).toBe(true);
+        }
+      });
+    });
+  }
 });
 
 /** ダウンロードしたファイルの中身を文字列で読む。 */

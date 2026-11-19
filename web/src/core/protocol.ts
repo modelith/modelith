@@ -6,11 +6,16 @@ import type { Intent, PluginChange, PluginFiles, ProjectProblem } from "./rust";
 /** 画面 → コア。 */
 export type CoreRequest =
   | { type: "init"; wasmUrl: string }
-  | { type: "didChange"; version: number; text: string }
+  | { type: "didChange"; version: number; text: string; path?: string | null }
+  | { type: "projectFiles"; id: number; clear: boolean; set: ProjectFileText[]; remove: string[] }
+  | { type: "projectProblems"; version: number; id: number }
   | { type: "edit"; version: number; id: number; intent: Intent }
   | { type: "parseProject"; id: number; text: string }
   | { type: "createProject"; id: number; name: string }
   | { type: "updateProject"; id: number; text: string; plugin: string; change: PluginChange }
+  | { type: "updateLevel"; id: number; text: string; kind: string; level: string }
+  | { type: "setLevels"; id: number; levels: Record<string, string> }
+  | { type: "problemKinds"; id: number }
   | { type: "setPlugins"; id: number; plugins: PluginFiles[] }
   | { type: "describePlugin"; id: number; text: string }
   | { type: "modelSnapshot"; version: number; id: number }
@@ -35,7 +40,17 @@ export type CoreResponse =
   | ({ type: "pluginsSet"; id: number; json: string } & Failure)
   | ({ type: "pluginDescribed"; id: number; json: string } & Failure)
   | ({ type: "snapshotMade"; version: number; id: number; json: string } & Failure)
-  | ({ type: "pluginMessageChecked"; version: number; id: number; json: string } & Failure);
+  | ({ type: "pluginMessageChecked"; version: number; id: number; json: string } & Failure)
+  | ({ type: "projectFilesSet"; id: number; json: string } & Failure)
+  | ({ type: "levelsSet"; id: number; json: string } & Failure)
+  | ({ type: "kindsListed"; id: number; json: string } & Failure)
+  | ({ type: "problemsCounted"; version: number; id: number; json: string } & Failure);
+
+/** プロジェクトのほかのファイル 1 つ（フォルダからのパスとテキスト。ADR-0021）。 */
+export interface ProjectFileText {
+  path: string;
+  text: string;
+}
 
 /** 依頼への返事（起動の `ready`・`failed` を除く）。 */
 export type CoreReply = Exclude<CoreResponse, { type: "ready" } | { type: "failed" }>;
@@ -55,6 +70,8 @@ export interface LoadedRules {
   summary(): string;
   /** テキストを解析し、使うプラグインのルールを当てた `{ parse, model, findings }` の JSON。 */
   analyze(text: string): string;
+  /** 覚えたほかのファイルごとの問題に、使うプラグインのルールの結果を添えた JSON（ADR-0021 §6）。 */
+  projectProblems(text: string): string;
   /** wasm の中のメモリを返す。 */
   free(): void;
 }
@@ -66,6 +83,12 @@ export interface CoreFns {
   parseProjectFile: (text: string) => string;
   createProjectFile: (name: string) => string;
   updateProjectPlugin: (text: string, id: string, change: string) => string;
+  /** 設定ファイルの知らせの重さを 1 つ書き換える（wasm の `updateProjectLevel`。F-EDIT-11。重さが空なら既定に戻す）。 */
+  updateProjectLevel: (text: string, kind: string, level: string) => string;
+  /** 知らせの重さを覚える（wasm の `setProblemLevels`。`modelith.json` の `levels` の JSON）。 */
+  setProblemLevels: (json: string) => void;
+  /** 重さを選べるモデルの知らせの種類の JSON（wasm の `problemKinds`）。 */
+  problemKinds: () => string;
   /** プラグインのファイルの JSON（`PluginFiles` の配列）を読み込む（wasm の `new RulePlugins(json)`）。 */
   loadPlugins: (json: string) => LoadedRules;
   describePlugin: (text: string) => string;
@@ -73,6 +96,16 @@ export interface CoreFns {
   modelSnapshot: (text: string) => string;
   /** プラグインから届いたメッセージを確かめる（wasm の `checkPluginMessage`。権限は JSON の並び）。 */
   checkPluginMessage: (text: string, message: string, permissions: string) => string;
+  /** プロジェクトのファイルを覚える（wasm の `setProjectFile`。ADR-0021）。 */
+  setProjectFile: (path: string, text: string) => void;
+  /** プロジェクトのファイルを忘れる（wasm の `removeProjectFile`）。 */
+  removeProjectFile: (path: string) => void;
+  /** プロジェクトのファイルをすべて忘れる（wasm の `clearProjectFiles`）。 */
+  clearProjectFiles: () => void;
+  /** 表示中のファイルのパスを決める（wasm の `setFocusFile`。フォルダの外のファイルなら undefined）。 */
+  setFocusFile: (path?: string) => void;
+  /** 覚えたほかのファイルごとの問題の JSON（wasm の `projectProblems`。ADR-0021 §6）。 */
+  projectProblems: (text: string) => string;
 }
 
 /** コアの状態（最後に受け取ったテキストと、読み込んだプラグイン）。 */
@@ -84,10 +117,11 @@ export interface CoreState {
 
 /**
  * 1 つの依頼を処理して返事を作る（`init` 以外。届いた順に処理するので、`edit` は直前に届いたテキストに対して計算する）。
- * Worker の中でも、テストで同じスレッドでも、同じこの関数を使う。`didChange` なら state.text を、`setPlugins` なら state.plugins を書き換える。
+ * Worker の中でも、テストで同じスレッドでも、同じこの関数を使う。`didChange` なら state.text と表示中のファイルのパスを、`setPlugins` なら state.plugins を、
+ * `projectFiles` ならコアが覚えるプロジェクトのファイル（ADR-0021）を、`setLevels` ならコアが覚える知らせの重さ（F-EDIT-11）を書き換える。
  *
  * @param state コアの状態（最後に受け取ったテキストと、読み込んだプラグイン）
- * @param req 画面からの依頼（`didChange`・`edit`・`parseProject`・`createProject`・`updateProject`・`setPlugins`・`describePlugin`・`modelSnapshot`・`checkPluginMessage`）
+ * @param req 画面からの依頼（`didChange`・`edit`・`parseProject`・`createProject`・`updateProject`・`updateLevel`・`setLevels`・`problemKinds`・`setPlugins`・`describePlugin`・`modelSnapshot`・`checkPluginMessage`・`projectFiles`・`projectProblems`）
  * @param fns コアの中身（wasm の関数。テストでは差し替える）
  * @returns 依頼への返事（`analyzed`・`edited` は依頼と同じ版、ほかは同じ id）。fns が例外を投げればそのまま投げる
  * @example
@@ -101,11 +135,16 @@ export interface CoreState {
  * // → { type: "pluginsSet", id: 9, json: '{"plugins":[]}' }（state.plugins は null）
  * handle(state, { type: "checkPluginMessage", version: 1, id: 10, message: '{"type":"ready"}', permissions: [] }, fns)
  * // → { type: "pluginMessageChecked", version: 1, id: 10, json: fns.checkPluginMessage(state.text, '{"type":"ready"}', "[]") }
+ * handle(state, { type: "projectFiles", id: 11, clear: false, set: [{ path: "b.sysml", text: "package B;" }], remove: [] }, fns)
+ * // → { type: "projectFilesSet", id: 11, json: "{}" }（コアが b.sysml を覚える）
+ * handle(state, { type: "projectProblems", version: 1, id: 12 }, fns)
+ * // → { type: "problemsCounted", version: 1, id: 12, json: fns.projectProblems(state.text) }（プラグインがあれば state.plugins.projectProblems）
  */
 export function handle(state: CoreState, req: Exclude<CoreRequest, { type: "init" }>, fns: CoreFns): CoreResponse {
   switch (req.type) {
     case "didChange":
       state.text = req.text;
+      fns.setFocusFile(req.path ?? undefined);
       return { type: "analyzed", version: req.version, json: state.plugins ? state.plugins.analyze(req.text) : fns.analyze(req.text) };
     case "edit":
       return { type: "edited", version: req.version, id: req.id, json: fns.edit(state.text, JSON.stringify(req.intent)) };
@@ -115,6 +154,13 @@ export function handle(state: CoreState, req: Exclude<CoreRequest, { type: "init
       return { type: "projectCreated", id: req.id, json: fns.createProjectFile(req.name) };
     case "updateProject":
       return { type: "projectUpdated", id: req.id, json: fns.updateProjectPlugin(req.text, req.plugin, JSON.stringify(req.change)) };
+    case "updateLevel":
+      return { type: "projectUpdated", id: req.id, json: fns.updateProjectLevel(req.text, req.kind, req.level) };
+    case "setLevels":
+      fns.setProblemLevels(JSON.stringify(req.levels));
+      return { type: "levelsSet", id: req.id, json: "{}" };
+    case "problemKinds":
+      return { type: "kindsListed", id: req.id, json: fns.problemKinds() };
     case "setPlugins":
       return { type: "pluginsSet", id: req.id, json: setPlugins(state, req.plugins, fns) };
     case "describePlugin":
@@ -123,6 +169,13 @@ export function handle(state: CoreState, req: Exclude<CoreRequest, { type: "init
       return { type: "snapshotMade", version: req.version, id: req.id, json: fns.modelSnapshot(state.text) };
     case "checkPluginMessage":
       return { type: "pluginMessageChecked", version: req.version, id: req.id, json: fns.checkPluginMessage(state.text, req.message, JSON.stringify(req.permissions)) };
+    case "projectFiles":
+      if (req.clear) fns.clearProjectFiles();
+      for (const path of req.remove) fns.removeProjectFile(path);
+      for (const f of req.set) fns.setProjectFile(f.path, f.text);
+      return { type: "projectFilesSet", id: req.id, json: "{}" };
+    case "projectProblems":
+      return { type: "problemsCounted", version: req.version, id: req.id, json: state.plugins ? state.plugins.projectProblems(state.text) : fns.projectProblems(state.text) };
   }
 }
 
@@ -187,7 +240,12 @@ function failedReplyBody(req: Exclude<CoreRequest, { type: "init" }>, message: s
     case "createProject":
       return { type: "projectCreated", id: req.id, json: JSON.stringify({ refused: `プロジェクトの設定ファイルを作成できませんでした（${message}）` }) };
     case "updateProject":
+    case "updateLevel":
       return { type: "projectUpdated", id: req.id, json: JSON.stringify({ refused: `プロジェクトの設定を変更できませんでした（${message}）` }) };
+    case "setLevels":
+      return { type: "levelsSet", id: req.id, json: JSON.stringify({ error: message }) };
+    case "problemKinds":
+      return { type: "kindsListed", id: req.id, json: "[]" };
     case "setPlugins":
       return { type: "pluginsSet", id: req.id, json: JSON.stringify({ error: `プラグインを読み込めませんでした（${message}）` }) };
     case "describePlugin":
@@ -196,6 +254,10 @@ function failedReplyBody(req: Exclude<CoreRequest, { type: "init" }>, message: s
       return { type: "snapshotMade", version: req.version, id: req.id, json: JSON.stringify({ error: message }) };
     case "checkPluginMessage":
       return { type: "pluginMessageChecked", version: req.version, id: req.id, json: JSON.stringify({ refused: `メッセージを確かめられませんでした（${message}）` }) };
+    case "projectFiles":
+      return { type: "projectFilesSet", id: req.id, json: JSON.stringify({ error: message }) };
+    case "projectProblems":
+      return { type: "problemsCounted", version: req.version, id: req.id, json: "[]" };
   }
 }
 

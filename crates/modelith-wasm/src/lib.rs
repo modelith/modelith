@@ -1,8 +1,12 @@
 //! ブラウザ向けの wasm バインディング。Web Worker 内で読み込まれ、
 //! UI とは LSP と同じ形のメッセージでやり取りする（ADR-0003）。
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+use modelith_core::levels::{self, Levels};
+use modelith_core::project::ParseResult;
+use modelith_core::project::merge::Files;
 use modelith_core::rules::{self, LoadedPlugin};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
@@ -146,6 +150,65 @@ pub fn update_project_plugin(text: &str, id: &str, change: &str) -> String {
     update_project_plugin_json(text, id, change)
 }
 
+/// 設定ファイルの知らせの重さを 1 つ書き換え、`{ text }` か `{ refused }` を JSON で返す（F-EDIT-11）。不明な項目は残す。
+///
+/// 中身は `update_project_level_json` に任せる。
+///
+/// # 引数
+///
+/// - `text`：今の `modelith.json` のテキスト全体
+/// - `kind`：知らせの種類（`trace.verify`・`プラグインの ID/ルールの ID` など）
+/// - `level`：`"error"`・`"warning"`・`"info"`・`"off"`。空文字列なら既定の重さに戻す
+///
+/// # 戻り値
+///
+/// `{ "text": "書き換えた後のテキスト" }`。書き換えられなければ `{ "refused": "画面に出す文" }`。
+///
+/// # 例
+///
+/// ```text
+/// updateProjectLevel("{}", "unsupported", "off") → r#"{"text":"{\n  \"plugins\": {},\n  \"levels\": {\n    \"unsupported\": \"off\"\n  }\n}\n"}"#
+/// updateProjectLevel("{}", "unsupported", "loud") → r#"{"refused":"重さ「loud」は選べません"}"#
+/// ```
+#[wasm_bindgen(js_name = updateProjectLevel)]
+pub fn update_project_level(text: &str, kind: &str, level: &str) -> String {
+    update_project_level_json(text, kind, level)
+}
+
+/// 知らせの重さを覚える（プロジェクトの設定を読んだとき・書き換えたとき。F-EDIT-11）。以後の解析とほかのファイルの問題に当てる。
+///
+/// # 引数
+///
+/// - `json`：`modelith.json` の `levels`（`{ "trace.verify": "error", … }`）。読めなければ、既定の重さに戻す
+///
+/// # 例
+///
+/// ```text
+/// setProblemLevels(r#"{"unsupported":"off"}"#) // → 以後の解析で、まだ扱えない書き方を出さない
+/// setProblemLevels("{}")                      // → 既定の重さに戻す
+/// ```
+#[wasm_bindgen(js_name = setProblemLevels)]
+pub fn set_problem_levels(json: &str) {
+    let parsed = serde_json::from_str::<Levels>(json).unwrap_or_default();
+    LEVELS.with(|l| *l.borrow_mut() = parsed);
+}
+
+/// 重さを選べる、モデルの知らせの種類を JSON で返す（画面の「知らせの重さ」の一覧。F-EDIT-11）。
+///
+/// # 戻り値
+///
+/// `[{ "code", "label", "default" }]` の JSON（画面の並び順）。
+///
+/// # 例
+///
+/// ```text
+/// problemKinds() → r#"[{"code":"trace.derive","label":"トレースの抜け：…","default":"warning"},…]"#
+/// ```
+#[wasm_bindgen(js_name = problemKinds)]
+pub fn problem_kinds() -> String {
+    serde_json::to_string(levels::KINDS).unwrap_or_else(|_| "[]".to_owned())
+}
+
 /// プラグインのマニフェスト（`modelith-plugin.json`）を読み、名前・版・種類を `{ plugin }` の JSON で返す（「追加」の確認に使う）。
 ///
 /// 中身は `describe_plugin_json` に任せる。
@@ -220,6 +283,151 @@ pub fn check_plugin_message(text: &str, message: &str, permissions: &str) -> Str
     check_plugin_message_json(text, message, permissions)
 }
 
+thread_local! {
+    /// プロジェクトのファイルごとの解析結果（ADR-0021 §3）。Worker が 1 つ持ち、解析と編集でつなぐ。
+    static FILES: RefCell<Files> = RefCell::new(Files::default());
+    /// 表示中のファイルのパス（プロジェクトのフォルダからの）。フォルダの外のファイルなら None。
+    static FOCUS: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// プロジェクトの設定で選んだ知らせの重さ（F-EDIT-11）。プロジェクトが無ければ空（既定の重さ）。
+    static LEVELS: RefCell<Levels> = const { RefCell::new(Levels::new()) };
+}
+
+/// プロジェクトのファイルを覚える（同じパスなら解析し直して置き換える。ADR-0021 §3）。
+/// 表示中のファイルも覚えてよい（解析のときは、覚えたものではなく今のテキストを使う）。
+///
+/// # 引数
+///
+/// - `path`：プロジェクトのフォルダからのパス
+/// - `text`：ファイルのテキスト
+///
+/// # 例
+///
+/// ```text
+/// setProjectFile("parts.sysml", "package Parts { part def Car; }") → 以後の analyze で Parts::Car が見える
+/// ```
+#[wasm_bindgen(js_name = setProjectFile)]
+pub fn set_project_file(path: &str, text: &str) {
+    FILES.with(|f| f.borrow_mut().set(path, text));
+}
+
+/// プロジェクトのファイルを忘れる（消した・名前を変えたとき）。
+///
+/// # 引数
+///
+/// - `path`：プロジェクトのフォルダからのパス
+///
+/// # 例
+///
+/// ```text
+/// removeProjectFile("parts.sysml") → 以後の analyze で Parts::Car が見えない
+/// ```
+#[wasm_bindgen(js_name = removeProjectFile)]
+pub fn remove_project_file(path: &str) {
+    FILES.with(|f| f.borrow_mut().remove(path));
+}
+
+/// プロジェクトのファイルをすべて忘れる（フォルダを閉じた・別のフォルダを開いたとき）。
+///
+/// # 例
+///
+/// ```text
+/// clearProjectFiles() → 以後の analyze は表示中のファイルだけ
+/// ```
+#[wasm_bindgen(js_name = clearProjectFiles)]
+pub fn clear_project_files() {
+    FILES.with(|f| f.borrow_mut().clear());
+}
+
+/// 表示中のファイルのパスを決める（そのパスの覚えたファイルは、ほかのファイルとしてつながない）。
+///
+/// # 引数
+///
+/// - `path`：プロジェクトのフォルダからのパス。フォルダの外のファイル・無題のファイルなら undefined
+///
+/// # 例
+///
+/// ```text
+/// setFocusFile("app.sysml") → analyze は app.sysml 以外の覚えたファイルをつなぐ
+/// setFocusFile(undefined)   → analyze は覚えたファイルをすべてつなぐ
+/// ```
+#[wasm_bindgen(js_name = setFocusFile)]
+pub fn set_focus_file(path: Option<String>) {
+    FOCUS.with(|f| *f.borrow_mut() = path);
+}
+
+/// 表示中のファイルの今のテキストをつないで、覚えたほかのファイルごとの問題とチェックルールの結果を JSON で返す（ADR-0021 §6）。
+///
+/// # 引数
+///
+/// - `text`：表示中のファイルの今のテキスト
+///
+/// # 戻り値
+///
+/// `[{ "path", "problems": [{ pos, msg, kind? }], "findings": [...] }]`（パスの順。位置はそのファイルの UTF-16）。
+///
+/// # 例
+///
+/// ```text
+/// projectProblems("package App;") → r#"[{"path":"parts.sysml","problems":[{"pos":33,"msg":"型「Wheel」が見つかりません（w）"}],"findings":[]}]"#
+/// ```
+#[wasm_bindgen(js_name = projectProblems)]
+pub fn project_problems(text: &str) -> String {
+    project_problems_json(text, &[])
+}
+
+/// `projectProblems` の本体。覚えたファイルと表示中のファイルのパスを読み、ファイルごとに数える。
+///
+/// # 引数
+///
+/// - `text`：表示中のファイルの今のテキスト
+/// - `plugins`：当てるプラグイン
+///
+/// # 戻り値
+///
+/// ファイルごとの問題と結果の JSON（`project_problems` と同じ形）。覚えたファイルが無ければ `[]`。
+///
+/// # 例
+///
+/// ```text
+/// project_problems_json("package App;", &[]) → "[]"   // 覚えたファイルが無い
+/// ```
+fn project_problems_json(text: &str, plugins: &[LoadedPlugin]) -> String {
+    let focus = FOCUS.with(|f| f.borrow().clone());
+    let now = modelith_core::project::merge::parse_file(text);
+    let open = focus.as_deref().zip(now.as_ref());
+    let reports = FILES.with(|f| rules::check_files(&f.borrow(), open, plugins));
+    // 選んだ知らせの重さを当てる（F-EDIT-11）
+    let reports: Vec<rules::FileReport> = LEVELS.with(|l| {
+        let levels = l.borrow();
+        reports
+            .into_iter()
+            .map(|r| rules::FileReport {
+                path: r.path,
+                problems: levels::apply_problems(r.problems, &levels),
+                findings: levels::apply_findings(r.findings, &levels),
+            })
+            .collect()
+    });
+    serde_json::to_string(&reports).unwrap_or_else(|_| "[]".to_owned())
+}
+
+/// 表示中のファイルを除いた、覚えたほかのファイルのパスと解析結果（`Files::others`）。
+///
+/// # 戻り値
+///
+/// （パスの並び、解析結果の並び）。i 番目のパスのファイルは、モデルでファイルの番号 i + 1 になる。
+///
+/// # 例
+///
+/// ```text
+/// // parts.sysml・app.sysml を覚え、表示中が app.sysml のとき
+/// others() → (["parts.sysml"], [parts の解析結果])
+/// ```
+fn others() -> (Vec<String>, Vec<ParseResult>) {
+    let focus = FOCUS.with(|f| f.borrow().clone());
+    FILES.with(|f| f.borrow().others(focus.as_deref()))
+}
+
 /// 読み込んだチェックルールのプラグイン（ADR-0018 §2）。Worker が持ち続け、解析のたびにルールを当てる。
 #[wasm_bindgen]
 pub struct RulePlugins {
@@ -284,6 +492,26 @@ impl RulePlugins {
     pub fn analyze(&self, text: &str) -> String {
         analysis_json(text, &self.set.active)
     }
+
+    /// 覚えたほかのファイルごとの問題に、使う（有効な）プラグインのルールの結果を添えて JSON で返す（`projectProblems` と同じ形。ADR-0021 §6）。
+    ///
+    /// # 引数
+    ///
+    /// - `text`：表示中のファイルの今のテキスト
+    ///
+    /// # 戻り値
+    ///
+    /// `[{ "path", "problems", "findings" }]` の JSON。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// plugins.projectProblems("package App;") → r#"[{"path":"parts.sysml","problems":[],"findings":[{"plugin":"jp.x",…}]}]"#
+    /// ```
+    #[wasm_bindgen(js_name = projectProblems)]
+    pub fn project_problems(&self, text: &str) -> String {
+        project_problems_json(text, &self.set.active)
+    }
 }
 
 /// 画面から渡されたプラグイン 1 つ（ID・使うか・ファイル）。
@@ -311,6 +539,9 @@ struct PluginSummary<'a> {
     installed: bool,
     manifest: Option<&'a rules::ManifestInfo>,
     rules: usize,
+    /// 使えるルールの ID（書いた順。知らせの重さを選ぶ画面に並べる。F-EDIT-11）。
+    #[serde(rename = "ruleIds")]
+    rule_ids: Vec<&'a str>,
     problems: &'a [rules::LoadProblem],
 }
 
@@ -367,6 +598,7 @@ fn load_plugin_set(json: &str) -> PluginSet {
             installed: p.installed,
             manifest: p.manifest.as_ref(),
             rules: p.rules.len(),
+            rule_ids: p.rules.iter().map(|r| r.id.as_str()).collect(),
             problems: &p.problems,
         })
         .collect();
@@ -403,6 +635,39 @@ fn update_project_plugin_json(text: &str, id: &str, change: &str) -> String {
         .map_err(|e| format!("変更を読み込めませんでした（{e}）"))
         .and_then(|c| modelith_core::project_file::update_plugin(text, id, &c));
     match result {
+        Ok(text) => serde_json::json!({ "text": text }),
+        Err(refused) => serde_json::json!({ "refused": refused }),
+    }
+    .to_string()
+}
+
+/// 知らせの重さを書き換え、`{ text }` か `{ refused }` の JSON にする（`update_project_level` の中身）。
+///
+/// # 引数
+///
+/// - `text`：今の `modelith.json` のテキスト全体
+/// - `kind`：知らせの種類
+/// - `level`：重さの名前（空文字列なら既定の重さに戻す）
+///
+/// # 戻り値
+///
+/// `{ "text": … }` か `{ "refused": … }` の JSON 文字列。
+///
+/// # 例
+///
+/// ```text
+/// update_project_level_json("{}", "unsupported", "")     → r#"{"text":"{\n  \"plugins\": {}\n}\n"}"#
+/// update_project_level_json("{}", "unsupported", "loud") → r#"{"refused":"重さ「loud」は選べません"}"#
+/// ```
+fn update_project_level_json(text: &str, kind: &str, level: &str) -> String {
+    let chosen = if level.is_empty() {
+        Ok(None)
+    } else {
+        serde_json::from_value::<modelith_core::project_file::Level>(serde_json::json!(level))
+            .map(Some)
+            .map_err(|_| format!("重さ「{level}」は選べません"))
+    };
+    match chosen.and_then(|l| modelith_core::project_file::update_level(text, kind, l)) {
         Ok(text) => serde_json::json!({ "text": text }),
         Err(refused) => serde_json::json!({ "refused": refused }),
     }
@@ -574,12 +839,44 @@ fn refused_json(reason: &str) -> String {
 /// edit_json(…, r#"{"op":"rename"}"#) → "{\"refused\":\"操作を読み込めませんでした（…）\"}"
 /// ```
 fn edit_json(text: &str, intent: &str) -> String {
-    let result = serde_json::from_str::<modelith_core::edit::Intent>(intent)
-        .map_err(|e| format!("操作を読み込めませんでした（{e}）"))
-        .and_then(|i| modelith_core::edit::edit(text, &i));
-    let json = match result {
+    let (paths, parsed) = others();
+    edit_json_in(text, &paths, parsed, intent)
+}
+
+/// `edit_json` の本体。ほかのファイルとつないだモデルで意図を当て、ほかのファイルの要素を書き換えようとしたら、
+/// そのファイルのパスを添えて断る（ADR-0021 §5）。
+///
+/// # 引数
+///
+/// - `text`：表示中のファイルの今のテキスト全体
+/// - `paths`：ほかのファイルのパス（`parsed` と同じ順）
+/// - `parsed`：ほかのファイルの解析結果
+/// - `intent`：図の操作の意図の JSON
+///
+/// # 戻り値
+///
+/// 編集の結果の JSON。断るときは `{"refused":"…"}`、ほかのファイルの要素なら `{"refused":"…","file":"parts.sysml"}`。
+///
+/// # 例
+///
+/// ```text
+/// edit_json_in("package App { part c : Parts::Car; }", ["parts.sysml"], [parts], r#"{"op":"rename","key":"Car","name":"Bus"}"#)
+///   → r#"{"refused":"この要素はほかのファイルにあります。…","file":"parts.sysml"}"#
+/// ```
+fn edit_json_in(text: &str, paths: &[String], parsed: Vec<ParseResult>, intent: &str) -> String {
+    let intent = match serde_json::from_str::<modelith_core::edit::Intent>(intent) {
+        Ok(i) => i,
+        Err(e) => return refused_json(&format!("操作を読み込めませんでした（{e}）")),
+    };
+    let json = match modelith_core::edit::edit_in(text, parsed, &intent) {
         Ok(out) => serde_json::to_string(&out),
-        Err(refused) => Ok(refused_json(&refused)),
+        Err(r) => {
+            let file = r.file.and_then(|f| paths.get(f - 1));
+            Ok(match file {
+                Some(path) => serde_json::json!({ "refused": r.reason, "file": path }).to_string(),
+                None => refused_json(&r.reason),
+            })
+        }
     };
     json.unwrap_or_else(|e| refused_json(&e.to_string()))
 }
@@ -589,6 +886,8 @@ struct Analysis {
     parse: modelith_core::project::ParseResult,
     model: modelith_core::model::Model,
     findings: Vec<rules::Finding>,
+    /// つないだほかのファイルのパス（`Node.file` が i なら i - 1 番目。ADR-0021）。
+    files: Vec<String>,
 }
 
 /// テキストを解析・投影してモデルを作り、`{ parse, model }` を JSON にする（`analyze` の中身）。
@@ -632,14 +931,52 @@ fn analyze_json(text: &str) -> String {
 /// analysis_json("", [])                                                              → "…\"findings\":[]}"
 /// ```
 fn analysis_json(text: &str, plugins: &[LoadedPlugin]) -> String {
-    let parse = modelith_core::project::project(text, &modelith_core::syntax::parse(text));
-    let model = modelith_core::model::build(&parse);
-    let findings = rules::check(plugins, &parse, &model);
+    let (paths, parsed) = others();
+    analysis_json_in(text, paths, parsed, plugins)
+}
+
+/// `analysis_json` の本体。ほかのファイルとつないだモデルを作り、ルールはファイルをまたぐ関係も数えて当てる（ADR-0021）。
+///
+/// # 引数
+///
+/// - `text`：表示中のファイルのテキスト全体
+/// - `paths`：ほかのファイルのパス（`parsed` と同じ順）
+/// - `parsed`：ほかのファイルの解析結果
+/// - `plugins`：当てるプラグイン
+///
+/// # 戻り値
+///
+/// `{ parse, model, findings, files }` の JSON。`model` は表示中のファイルの要素と、それが参照するほかのファイルの要素だけ。
+/// 問題と検査の結果には、覚えた知らせの重さ（F-EDIT-11）を当てる。
+///
+/// # 例
+///
+/// ```text
+/// analysis_json_in("package App { part c : Parts::Car; }", ["parts.sysml"], [parts], [])
+///   → "…"nodes":[{"key":"c",…},{"key":"Car",…,"file":1}]…"files":["parts.sysml"]}"
+/// ```
+fn analysis_json_in(
+    text: &str,
+    paths: Vec<String>,
+    parsed: Vec<ParseResult>,
+    plugins: &[LoadedPlugin],
+) -> String {
+    let parse = modelith_core::project::merge::join(text, parsed);
+    let whole = modelith_core::model::build_whole(&parse);
+    let findings = rules::check(plugins, &parse, &whole);
+    let mut model = modelith_core::model::narrow(whole, &parse);
+    // 選んだ知らせの重さを当てる（F-EDIT-11）
+    let findings = LEVELS.with(|l| {
+        let levels = l.borrow();
+        model.problems = levels::apply_problems(std::mem::take(&mut model.problems), &levels);
+        levels::apply_findings(findings, &levels)
+    });
     // 文字列のキーだけの構造なので、JSON への変換は失敗しない
     serde_json::to_string(&Analysis {
         parse,
         model,
         findings,
+        files: paths,
     })
     .unwrap_or_else(|e| format!(r#"{{"error":"{e}"}}"#))
 }
@@ -753,10 +1090,10 @@ mod tests {
         // Assert
         assert_eq!(
             set.summary,
-            r#"{"plugins":[{"enabled":true,"id":"jp.x","installed":true,"manifest":{"id":"jp.x","name":"トレーサビリティのチェック","runtime":"rules","version":"0.1.0"},"problems":[],"rules":1}]}"#
+            r#"{"plugins":[{"enabled":true,"id":"jp.x","installed":true,"manifest":{"id":"jp.x","name":"トレーサビリティのチェック","runtime":"rules","version":"0.1.0"},"problems":[],"ruleIds":["req-sat"],"rules":1}]}"#
         );
         assert!(
-            json.ends_with(r#""findings":[{"plugin":"jp.x","rule":"req-sat","severity":"warning","message":"「R」を満たす要素がありません","element":"R","pos":19}]}"#),
+            json.ends_with(r#""findings":[{"plugin":"jp.x","rule":"req-sat","severity":"warning","message":"「R」を満たす要素がありません","element":"R","pos":19}],"files":[]}"#),
             "{json}"
         );
     }
@@ -773,7 +1110,7 @@ mod tests {
             "{}",
             set.summary
         );
-        assert!(json.ends_with(r#""findings":[]}"#), "{json}");
+        assert!(json.ends_with(r#""findings":[],"files":[]}"#), "{json}");
     }
 
     #[test]
@@ -882,5 +1219,152 @@ mod tests {
             bad.starts_with(r#"{"refused":"modelith-plugin.json の 2 行目："#),
             "{bad}"
         );
+    }
+
+    /// ほかのファイル parts.sysml の解析結果。
+    fn parts() -> (Vec<String>, Vec<ParseResult>) {
+        let p = modelith_core::project::merge::parse_file("package Parts { part def Car; }")
+            .expect("短い");
+        (vec!["parts.sysml".to_owned()], vec![p])
+    }
+
+    #[test]
+    fn analysis_names_the_files_of_other_elements() {
+        // Arrange
+        let (paths, parsed) = parts();
+        // Act
+        let json = analysis_json_in("package App { part c : Parts::Car; }", paths, parsed, &[]);
+        // Assert（ほかのファイルの要素は、ファイルの番号と、その番号のパスを持つ）
+        let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(v["files"], serde_json::json!(["parts.sysml"]));
+        let car = v["model"]["nodes"]
+            .as_array()
+            .and_then(|ns| ns.iter().find(|n| n["key"] == "Car"))
+            .expect("Car");
+        assert_eq!(car["file"], 1);
+    }
+
+    #[test]
+    fn edit_of_another_file_is_refused_with_its_path() {
+        // Arrange（異常系：ほかのファイルの要素の名前を変える）
+        let (paths, parsed) = parts();
+        // Act
+        let json = edit_json_in(
+            "package App { part c : Parts::Car; }",
+            &paths,
+            parsed,
+            r#"{"op":"rename","key":"Car","name":"Bus"}"#,
+        );
+        // Assert
+        let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(v["file"], "parts.sysml");
+        assert_eq!(v["refused"], modelith_core::edit::IN_OTHER_FILE);
+    }
+
+    #[test]
+    fn project_problems_are_counted_for_each_remembered_file() {
+        // Arrange（parts.sysml は表示中の app.sysml の Wheel を import している）
+        clear_project_files();
+        set_project_file(
+            "parts.sysml",
+            "package Parts { import App::*; part def Car { part w : Wheel; part x : Nope; } }",
+        );
+        set_focus_file(Some("app.sysml".to_owned()));
+        // Act
+        let json = project_problems("package App { part def Wheel; }");
+        // Assert
+        let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(v[0]["path"], "parts.sysml");
+        let msgs: Vec<&str> = v[0]["problems"]
+            .as_array()
+            .expect("problems")
+            .iter()
+            .filter_map(|p| p["msg"].as_str())
+            .collect();
+        assert_eq!(msgs, ["型「Nope」が見つかりません（x）"]);
+        clear_project_files();
+        set_focus_file(None);
+    }
+
+    #[test]
+    fn chosen_levels_change_findings_and_problems_until_reset() {
+        // Arrange（ルールの結果をエラーに、まだ扱えない書き方を出さないにする）
+        let set = load_plugin_set(&plugin_input(true));
+        set_problem_levels(r#"{"jp.x/req-sat":"error","unsupported":"off"}"#);
+        let text = "package P { requirement def R; }";
+        // Act
+        let chosen = analysis_json(text, &set.active);
+        set_problem_levels("{");
+        let reset = analysis_json(text, &set.active);
+        // Assert（読めない重さは既定に戻す）
+        assert!(chosen.contains(r#""severity":"error""#), "{chosen}");
+        assert!(reset.contains(r#""severity":"warning""#), "{reset}");
+    }
+
+    #[test]
+    fn trace_gaps_carry_the_chosen_level() {
+        // Arrange（2 つ目のフェーズの要求に、検証が無い）
+        set_problem_levels(r#"{"trace.verify":"error","trace.satisfy":"off"}"#);
+        let text = "package P { enum def Stage { enum concept; enum detail; } \
+            metadata def Phase { attribute stage : Stage; } \
+            requirement def Need { @Phase { stage = concept; } } \
+            requirement def FlowReq { @Phase { stage = detail; } } \
+            #derivation dependency from Need to FlowReq; }";
+        // Act
+        let json = analysis_json(text, &[]);
+        set_problem_levels("{}");
+        // Assert（検証の抜けはエラー、満たす要素の抜けは出さない、導出の抜けは既定のまま）
+        let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        let gaps: Vec<(String, Option<String>)> = v["model"]["problems"]
+            .as_array()
+            .expect("problems")
+            .iter()
+            .filter(|p| p["kind"] == "gap")
+            .map(|p| {
+                (
+                    p["msg"].as_str().unwrap_or_default().to_owned(),
+                    p["level"].as_str().map(str::to_owned),
+                )
+            })
+            .collect();
+        assert!(
+            gaps.iter()
+                .any(|(m, l)| m.contains("verify") && l.as_deref() == Some("error")),
+            "{gaps:?}"
+        );
+        assert!(!gaps.iter().any(|(m, _)| m.contains("satisfy")), "{gaps:?}");
+        assert!(
+            gaps.iter()
+                .any(|(m, l)| m.contains("derivation") && l.is_none()),
+            "{gaps:?}"
+        );
+    }
+
+    #[test]
+    fn update_project_level_json_returns_text_or_refusal() {
+        // Act
+        let set = update_project_level_json("{}", "unsupported", "off");
+        let reset =
+            update_project_level_json(r#"{"levels":{"unsupported":"off"}}"#, "unsupported", "");
+        let wrong = update_project_level_json("{}", "unsupported", "loud");
+        // Assert
+        assert_eq!(
+            set,
+            r#"{"text":"{\n  \"plugins\": {},\n  \"levels\": {\n    \"unsupported\": \"off\"\n  }\n}\n"}"#
+        );
+        assert_eq!(reset, r#"{"text":"{\n  \"plugins\": {}\n}\n"}"#);
+        assert_eq!(wrong, r#"{"refused":"重さ「loud」は選べません"}"#);
+    }
+
+    #[test]
+    fn problem_kinds_lists_the_model_kinds_with_defaults() {
+        // Act
+        let json = problem_kinds();
+        // Assert
+        let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(v[0]["code"], "trace.derive");
+        assert_eq!(v[0]["default"], "warning");
+        assert_eq!(v[3]["code"], "unsupported");
+        assert_eq!(v[3]["default"], "info");
     }
 }

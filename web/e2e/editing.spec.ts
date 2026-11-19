@@ -15,7 +15,8 @@ test("F-EDIT-2・C-1: パレットで要求を置くとテキストに追加さ�
   await page.locator('[data-act="del"]').click(); // 確認のためもう一度
   // Assert
   expect(added).toContain("requirement def NewRequirement {");
-  expect(await editorText(page)).not.toContain("NewRequirement");
+  // 削除は非同期にテキストへ反映されるので、反映を待って確かめる
+  await expect.poll(() => editorText(page)).not.toContain("NewRequirement");
 });
 
 test.describe("要求をつなぐ関係の追加（F-EDIT-2）", () => {
@@ -106,6 +107,167 @@ test("F-EDIT-3: 名前を変えると、参照もまとめて変わる", async (
   expect(count(after, "BoilTimeReq")).toBe(0);
   expect(count(after, "BoilingTimeReq")).toBe(before);
   expect(await nodeKeys(page)).toContain("BoilingTimeReq");
+});
+
+test("F-EDIT-3: 日本語の名前に変えると、テキストには引用名で書き、参照もまとめて変わる", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  await page.locator("#ed").fill("package P {\n    part def Kettle;\n    part def Stand { part k : Kettle; }\n}\n");
+  await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="all"]').click();
+  await page.locator('#gNodes .node[data-key="Kettle"]').click();
+  // Act
+  await page.locator('[data-act="rename"]').click();
+  await page.locator("#renameIn").fill("電気 ケトル");
+  await page.keyboard.press("Enter");
+  // Assert
+  await expect(page.locator('#gNodes .node[data-key="電気 ケトル"]')).toBeVisible();
+  expect(await editorText(page)).toBe("package P {\n    part def '電気 ケトル';\n    part def Stand { part k : '電気 ケトル'; }\n}\n");
+  await expect(page.locator("#insp .what b")).toHaveText("電気 ケトル");
+});
+
+test("F-EDIT-3: 名前に「'」は使えず、理由を伝える（異常系）", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  const text = "package P {\n    part def Kettle;\n}\n";
+  await page.locator("#ed").fill(text);
+  await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+  await page.locator(".tabadd summary").click();
+  await page.locator('[data-open="all"]').click();
+  await page.locator('#gNodes .node[data-key="Kettle"]').click();
+  // Act
+  await page.locator('[data-act="rename"]').click();
+  await page.locator("#renameIn").fill("it's");
+  await page.keyboard.press("Enter");
+  // Assert
+  await expect(page.locator("#toast")).toHaveText("名前に「'」「\\」や改行は使えません");
+  expect(await editorText(page)).toBe(text);
+});
+
+test.describe("説明の編集（F-EDIT-12）", () => {
+  const REQ = "package P {\n    requirement def BoilReq {\n        doc /* 5 分以内に沸かす */\n    }\n    part def Kettle;\n}\n";
+
+  /** モデルを書き、「すべて」の図で要素を選ぶ。 */
+  async function selectIn(page: Page, key: string): Promise<void> {
+    await openApp(page);
+    await page.locator("#ed").fill(REQ);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open="all"]').click();
+    await page.locator(`#gNodes .node[data-key="${key}"]`).click();
+  }
+
+  test("F-EDIT-12: 要求の文章をインスペクタで書き換えると、テキストの doc が変わる", async ({ page }) => {
+    // Arrange
+    await selectIn(page, "BoilReq");
+    await expect(page.locator("#insp .doc .note")).toHaveText("要求の文章5 分以内に沸かす");
+    // Act
+    await page.locator('[data-act="docEdit"]').click();
+    await page.locator("#docIn").fill("3 分以内に\n1 L を沸かす");
+    await page.locator('[data-act="docOk"]').click();
+    // Assert
+    await expect.poll(() => editorText(page)).toContain("        doc /* 3 分以内に\n           1 L を沸かす */\n");
+    await expect(page.locator("#toast")).toHaveText("「BoilReq」の要求の文章を変えました");
+    await expect.poll(() => page.locator("#insp .doc .note p").innerText()).toBe("3 分以内に\n1 L を沸かす"); // 行の区切りまで比べる（toHaveText は空白をまとめる）
+  });
+
+  test("F-EDIT-12: 空の行は空の行のまま書き、インスペクタでも段落を分けて見せる。「*/」は「* /」にして知らせる", async ({ page }) => {
+    // Arrange
+    await selectIn(page, "BoilReq");
+    // Act
+    await page.locator('[data-act="docEdit"]').click();
+    await page.locator("#docIn").fill("段落 1\n\n段落 2 */ の後");
+    await page.locator('[data-act="docOk"]').click();
+    // Assert
+    await expect.poll(() => editorText(page)).toContain("        doc /* 段落 1\n\n           段落 2 * / の後 */\n");
+    await expect(page.locator("#toast")).toHaveText("「BoilReq」の要求の文章を変えました。「*/」はテキストに書けないため「* /」にしました");
+    await expect.poll(() => page.locator("#insp .doc .note p").innerText()).toBe("段落 1\n\n段落 2 * / の後"); // 行の区切りまで比べる（toHaveText は空白をまとめる）
+  });
+
+  test("F-EDIT-12: 説明の無い要素に説明を足せる", async ({ page }) => {
+    // Arrange
+    await selectIn(page, "Kettle");
+    await expect(page.locator("#insp .doc .note")).toHaveText("説明まだありません");
+    // Act
+    await page.locator('[data-act="docEdit"]').click();
+    await page.locator("#docIn").fill("お湯を沸かす道具");
+    await page.locator('[data-act="docOk"]').click();
+    // Assert
+    await expect.poll(() => editorText(page)).toContain("    part def Kettle {\n        doc /* お湯を沸かす道具 */\n    }\n");
+  });
+
+  test("F-EDIT-12: 文を空にして保存すると説明が消え、「やめる」なら何も変えない", async ({ page }) => {
+    // Arrange
+    await selectIn(page, "BoilReq");
+    await page.locator('[data-act="docEdit"]').click();
+    await page.locator("#docIn").fill("書きかけ");
+    await page.locator('[data-act="docCancel"]').click();
+    expect(await editorText(page)).toBe(REQ);
+    // Act
+    await page.locator('[data-act="docEdit"]').click();
+    await page.locator("#docIn").fill("");
+    await page.locator('[data-act="docOk"]').click();
+    // Assert
+    await expect.poll(() => editorText(page)).toBe("package P {\n    requirement def BoilReq {\n    }\n    part def Kettle;\n}\n");
+    await expect(page.locator("#toast")).toHaveText("「BoilReq」の要求の文章を消しました");
+  });
+});
+
+test.describe("属性の編集（F-EDIT-12）", () => {
+  const PART = "package P {\n    part def Kettle {\n        attribute capacity : Real = 1.0;\n    }\n}\n";
+
+  /** モデルを書き、「すべて」の図でケトルを選ぶ。 */
+  async function selectKettle(page: Page): Promise<void> {
+    await openApp(page);
+    await page.locator("#ed").fill(PART);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open="all"]').click();
+    await page.locator('#gNodes .node[data-key="Kettle"]').click();
+  }
+
+  test("F-EDIT-12: 属性を足すと、テキストに名前・型・値を書く", async ({ page }) => {
+    // Arrange
+    await selectKettle(page);
+    await expect(page.locator("#insp .attr span")).toHaveText(["capacity : Real = 1.0"]);
+    // Act
+    await page.locator('[data-act="attrAdd"]').click();
+    await page.locator("#attrName").fill("重さ");
+    await page.locator("#attrType").fill("Real");
+    await page.locator("#attrValue").fill("1.2");
+    await page.keyboard.press("Enter");
+    // Assert
+    await expect.poll(() => editorText(page)).toContain("        attribute capacity : Real = 1.0;\n        attribute '重さ' : Real = 1.2;\n    }");
+    await expect(page.locator("#insp .attr span")).toHaveText(["capacity : Real = 1.0", "重さ : Real = 1.2"]);
+  });
+
+  test("F-EDIT-12: 属性の値を書き換え、削除できる", async ({ page }) => {
+    // Arrange
+    await selectKettle(page);
+    // Act
+    await page.locator('[data-act="attrEdit"][data-attr="capacity"]').click();
+    await page.locator("#attrValue").fill("1.5");
+    await page.locator('[data-act="attrOk"]').click();
+    await expect.poll(() => editorText(page)).toContain("        attribute capacity : Real = 1.5;\n");
+    await page.locator('[data-act="attrDel"][data-attr="capacity"]').click();
+    // Assert
+    await expect.poll(() => editorText(page)).toBe("package P {\n    part def Kettle {\n    }\n}\n");
+    await expect(page.locator("#toast")).toHaveText("属性「capacity」を消しました");
+  });
+
+  test("F-EDIT-12: 値に「;」は書けず、理由を伝える（異常系）", async ({ page }) => {
+    // Arrange
+    await selectKettle(page);
+    // Act
+    await page.locator('[data-act="attrAdd"]').click();
+    await page.locator("#attrName").fill("x");
+    await page.locator("#attrValue").fill("1; part q");
+    await page.locator('[data-act="attrOk"]').click();
+    // Assert
+    await expect(page.locator("#toast")).toHaveText("型と値には「;」「{」「}」や改行は書けません（型には「=」も書けません）");
+    expect(await editorText(page)).toBe(PART);
+  });
 });
 
 /** 要素をドラッグして動かす。 */

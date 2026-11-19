@@ -34,7 +34,9 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 
 「予定」の列は、対応するリリース（[リリース計画](../development/release-plan.md) の「SysML v2 の文法への対応」）。— は予定の無いもの。
 
-件数：テキスト記法（2 章）119 項目のうち ○ 98・△ 16・× 5・⚠ 0。
+件数：テキスト記法（2 章）119 項目のうち ○ 101・△ 13・× 5・⚠ 0。
+
+0.2.0-alpha.3 で、`assert constraint`・`assert not` の否定を記録して持ち主の区画に書き、`objective` を検証・解析の区画に書き、型の無い検証・解析の使用の中の `verify` も線にした（Rust のコアと一般ビュー。8.2.3.20〜24）。それまでは ○ 98・△ 16・× 5 だった。
 
 alpha.10 で、誤った表示（⚠）の 12 件と、黙って捨てていた短い書き方（`from` の無い `flow`・`succession flow`・`message`、`connect` の無い `interface`）と参照の形（`perform x.y;`・`exhibit s;`・`frame c;`）を直した（Rust のコアだけ。ADR-0015）。⚠ は 9 件が ○、本体付きの式が △、関係の本体の注釈と KerML の宣言が ×（捨てるが、外に漏らさない）になった。それまでは ○ 81・△ 16・× 10・⚠ 12 だった。
 
@@ -67,8 +69,8 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 2a テキスト記法 | 8.2.2 の具象構文を読み書きできる（抽象構文の適合を含む） | △ BNF に沿った Rust のパーサ（段階 A：宣言の頭まで読み、式は括弧で区切るだけ。ADR-0015）。まだ扱えない文は知らせる |
 | 2b グラフィカル記法 | 8.2.3 の記法。9.2.20 の標準ビュー定義は必ず扱う（9.2.20.1） | △ `view` を図として描く（5 種類の標準ビュー定義）。記号は 8.2.3 と細部が違う |
 | 3 意味 | 8.4・9.2 の意味での解釈（評価・実行） | × 式の評価も名前解決の意味論も無い |
-| 4 モデル交換 | `.kpar` の入出力 | × `.sysml`・`.kerml` の単一ファイルだけ（0.3.0 以降） |
-| 5 ドメインライブラリ | ISQ・SI など（任意） | × 同梱していない（0.3.0 以降） |
+| 4 モデル交換 | `.kpar` の入出力 | × `.sysml`・`.kerml` の単一ファイルだけ（0.5.0 以降） |
+| 5 ドメインライブラリ | ISQ・SI など（任意） | × 同梱していない（0.5.0 以降） |
 
 適合ツールを名乗る最低条件は 1 と 4 である。現状の Modelith は**どの区分も主張できず**、「テキスト記法の主要部分を読み書きし、図にする編集器」という位置づけになる。最初の目標は、BNF に沿った解析器を Rust コアに作り、テキスト記法の適合（2a）に近づけることである（ADR-0002・ADR-0003。作り方と対応の順序は ADR-0015）。
 
@@ -81,7 +83,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 基本名 | NAME | ○ | | |
 | 引用名 `'Fuel Tank'` | NAME | ○ | | 宣言の名前と型の参照に使える（ADR-0013） |
 | 短い名前 `<'R1'>`・`<R1>` | Identification | ○ | | 引用あり・なしの両方（ADR-0013） |
-| 修飾名 `A::B` | QualifiedName | △ | 0.2.0 | 参照した場所から外へ最初の段を探し、中へたどる（同じファイルの中）。たどれなければ「見つかりません」と示す。`import` を通した名前と他のファイルは解決しない |
+| 修飾名 `A::B` | QualifiedName | ○ | — | 参照した場所から外へ最初の段を探し、中へたどる。最初の段は、フォルダの中のほかのファイルの一番上の要素と、`import` で取り込んだ名前からも探す（ADR-0021）。たどれなければ「見つかりません」と示す |
 | コメント `/* */`・`//` | 8.2.2.1.2 | ○ | | 解析では読み飛ばす。中の括弧も数えない。`comment` を書いたコメントは要素にする（2.2 の `comment … about`） |
 | 文字列 `"a{b"` | STRING_VALUE | ○ | | 字句解析で 1 つの語にする。中の括弧で誤ったエラーを出さない（以前は ⚠） |
 | 知らない文 | — | △ | — | 予約語で始まり、どの読み方にも当たらない文は「まだ扱えない」と問題一覧に示す（エラーとしては数えない。ADR-0013）。予約語以外で始まる文と、読み飛ばしを決めている文（`import` など）は知らせない |
@@ -96,7 +98,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | `doc` | Documentation | ○ | | locale は無視 |
 | `comment … about` | Comment | ○ | | `comment c about A, B /* … */`・`comment /* … */`・`comment c locale "ja" /* … */` を種類 `comment` の要素として読み、本文（各行の頭の `*` を除く）と注釈する相手（`about` が無ければ持ち主）を残す。要素を選ぶとインスペクタに「メモ」として本文を出し、一般ビューでは、相手が図にあれば角を折った四角と矢印の無い破線で描く（8.2.3.4 の comment-node・annotation-link。名前があれば «comment» と名前も書く）。メモを図から削除するとコメントが消える。名前のあるメモはツリーにも出る。見つからない相手は「見つかりません」と示す。キーワードの無い `/* … */` は、BNF では持ち主を注釈する Comment だが、テキストの注記として使われることが多いので、これまでどおり要素にしない |
 | `rep … language` | TextualRepresentation | ○ | | 名前・言語の名前・本文（字下げを保つ）を持ち主の要素に残し、要素を選ぶとインスペクタに「別の言語での表し方（言語）」として出す。`rep` の無い `language "x" /* … */` も同じ。図の記号（8.2.3.4 の textual-representation-node）は描かない。ファイルの直下の表し方は持ち主が無いので捨てる |
-| 関係の本体の `doc`（`dependency … { doc /* … */ }`・`alias … { doc … }`） | × | — | 関係の本体を読まず、中の `doc`・`comment`・メタデータを記録しない（外側の package のものにはしない） |
+| 関係の本体の `doc`（`dependency … { doc /* … */ }`・`alias … { doc … }`） | × | 0.3.0 | 関係の本体を読まず、中の `doc`・`comment`・メタデータを記録しない（外側の package のものにはしない） |
 
 ### 2.3 パッケージ（8.2.2.5）
 
@@ -104,11 +106,11 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | --- | --- | --- | --- | --- |
 | `package`（入れ子を含む） | Package | ○ | | ツリーに出る。図のノードにはならない。作成した図（view）で package そのものを expose すると、名前を書いた枠（フォルダの形、8.2.3.5）として描き、中の要素を枠の中に示す（F-VIEW-9） |
 | `standard library package`・`library package` | LibraryPackage | △ | — | package として取り込む。ライブラリ・標準の印は記録しない |
-| `import Q::A` / `::*` / `::**` / `all` | Import 系 | × | 0.2.0 | 黙って捨てる。他のファイルは読まない。型の名前はファイル全体から単純名で探すため、`import` の無い別の package の型も見つかる（誤ったエラーは出ないが、見えないはずの名前も通す） |
-| `import Q::*[@F]` | FilterPackage | × | 0.2.0 | |
-| `alias B for A` | AliasMember | △ | 0.2.0 | 同じファイルの別名は、指す先として解決する（型付け・関係の相手・expose。別名の別名も）。他のファイルの別名と `import` は解決しない |
-| `filter @X;`（package 直下） | ElementFilterMember | × | 0.2.0 | 黙って捨てる |
-| `private` / `public` / `protected` | VisibilityIndicator | △ | 0.2.0 | 記録するだけ（import と一緒に意味を持つ） |
+| `import Q::A` / `::*` / `::**` / `all` | Import 系 | △ | 0.2.0 | 名前の解決に使う（8.2.2.5、ADR-0021）。フォルダを開いているときは、フォルダの中のほかのファイルも 1 つのモデルとして読む。`private` の要素は取り込まず、取り込んだ名前空間の `public` の `import` は 1 段だけたどる。`all`（private も取り込む）は区別しない。同じファイルの中では、これまでどおり型の名前をファイル全体から単純名で探す（`import` の無い別の package の型も見つかる） |
+| `import Q::*[@F]` | FilterPackage | × | 0.3.0 | |
+| `alias B for A` | AliasMember | △ | 0.2.0 | 同じファイルの別名は、指す先として解決する（型付け・関係の相手・expose。別名の別名も）。他のファイルの別名は解決しない |
+| `filter @X;`（package 直下） | ElementFilterMember | × | 0.3.0 | 黙って捨てる |
+| `private` / `public` / `protected` | VisibilityIndicator | ○ | — | `private`・`protected` の要素と `private import` で取り込んだ名前は、ほかのファイルの `import` で取り込ませない（ADR-0021） |
 | package の無いファイルの直下の使用 | RootNamespace | △ | — | ツリーには出るが、図には描かない |
 
 ### 2.4 定義と使用の共通部分（8.2.2.6）
@@ -116,7 +118,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 要素 | BNF | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- | --- |
 | 型付け `: A` | FeatureTyping | ○ | | |
-| 複数の型 `: A, B` | FeatureTyping | △ | — | 先頭の 1 つだけを型にする |
+| 複数の型 `: A, B` | FeatureTyping | △ | 0.3.0 | 先頭の 1 つだけを型にする |
 | `typed by` / `defined by` | TypedBy | ○ | | `defined by A`・`typed by A` は `: A` と同じく型になる（`typed by` は KerML の TYPED_BY。SysML の BNF ではメタデータの使用の宣言にだけ出るが、どこでも同じに読む） |
 | 定義の特殊化 `:> A` | SubclassificationPart | ○ | | `:> A, B` の相手をすべて記録し、両方が図の要素なら特殊化の線（実線と白抜きの三角、8.2.3 の subclassification）にする。先頭の相手はこれまでどおり型にもなる。見つからない相手（標準ライブラリなど）は知らせない。線を削除すると、その相手だけが消える |
 | `specializes` | 同上 | ○ | | `:>` と同じ |
@@ -138,7 +140,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | --- | --- | --- | --- |
 | `attribute def` / `attribute` | ○ | | |
 | `enum def`・列挙値 | ○ | | 列挙値はフェーズにも使う |
-| 値付きの列挙値 `enum b = 3;` | △ | — | 列挙値として読むが、値は記録しない |
+| 値付きの列挙値 `enum b = 3;` | △ | 0.3.0 | 列挙値として読むが、値は記録しない |
 | `enum` の使用 `enum e : E;` | ○ | | 種類 `enum` の要素になる。`enum def` の中の `enum a;` はこれまでどおり列挙値 |
 | `occurrence def` / `occurrence` | ○ | | シーケンス図の文脈 |
 | `individual` | ○ | | 修飾として記録し（isIndividual）、図の見出しを «individual part def» のように書く。種類のキーワードの無い `individual def E;`・`individual e : E;`（IndividualDefinition・IndividualUsage）は `occurrence def`・`occurrence` として読む（以前は、定義を「まだ扱えない」と知らせ、使用を型付きのパラメータと取り違えていた） |
@@ -175,7 +177,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 要素 | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- |
 | `action def` / `action` / `then action` | ○ | | 区画に手順として番号付きで並ぶ。アクションの流れ図には、角の丸い四角と継起の線で描く |
-| アクションのパラメータ `in w : W;` | △ | 0.3.0 以降 | 要素として読むが、アクティビティ図にパラメータとその間のフローを描かない |
+| アクションのパラメータ `in w : W;` | △ | 0.2.0 | 要素として読むが、アクティビティ図にパラメータとその間のフローを描かない |
 | `perform action` | ○ | | `perform action a : A;` は種類 `perform action` の使用になる |
 | 参照の形 `perform x.y;` | ○ | | 種類 `perform action` の使用（名前は y）にし、x.y を参照の相手として記録する。アクティビティ図の要素になる。`perform use case u : U;` は「まだ扱えない」と知らせる。指す先が無くても知らせない |
 | アクションの継起 `first a1 then a2;` | ○ | | `first a then b;`・`then b;`（直前の要素から。続けて書いた `then` はどれも同じ要素から）・`then action b;`（`then` だけが継起）・`first start;`（続く継起の元）を読み、アクションの流れ図に描く。開始・終了（`start`・`done`）は塗った丸と、丸の中の塗った丸（8.2.3.17）。図から 2 つの要素の間に線を引くと `first a then b;` を書き、線を消すとその文（`then action b;` は `then` だけ）を消す |
@@ -196,7 +198,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | `calc def` / `calc` / `return` | ○ | | 式は文字列 |
 | `constraint def` / `constraint` | ○ | | 式は文字列（評価しない） |
 | 本体が `true`・`false`・`not` で始まる制約・計算・`require` | ○ | | `null`・`new` も含め、式として持ち主に入れる（区画に出る）。`not satisfy` はこれまでどおり否定の satisfy |
-| `assert constraint` / `assert not` | △ | 0.3.0 以降 | `assert constraint { … }`・`assert not constraint d { … }` は式として親に入る（`x < 0` のような比べる式も誤ったエラーにしない）。本体の無い `assert constraint c : CD;` も `c : CD` を親の式として残す（`not` は `not c : CD` と残す）。本体のある形では否定（`not`）を記録しない |
+| `assert constraint` / `assert not` | ○ | | `assert constraint { … }`・`assert not constraint d { … }` の式は持ち主の式として持ち、否定（`not`）を記録する。本体の無い `assert constraint c : CD;`・`assert not constraint c : CD;` も `c : CD` を持ち主の式にして否定を記録する。図では持ち主の区画に `assert { … }`・`assert not { … }` と書く（8.2.3.20 の assert-constraints-compartment）。式は文字列のまま（評価は 0.5.0 以降） |
 | `requirement def` / `requirement` | ○ | | |
 | `subject` / `stakeholder` | ○ | | |
 | `require` / `assume constraint` | ○ | | `require constraint { … }`・`assume constraint { … }`（名前付きも）は式として入る。本体の無い `require c : CD;`・`require constraint c : CD;` も `c : CD` を式として残す（要求の区画に出る） |
@@ -207,10 +209,10 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | `concern def`、`frame concern c : C` | ○ | | |
 | 型の無い `frame c;` | ○ | | 関心事の使用 c の型への «frame» の線にする。見つからなければ「見つかりません」と示す |
 | `case def` / `case` | ○ | | ツリーに出る要素になる（図のノードにはしない）。本体（`subject`・`actor`・`objective` など）も読む |
-| `objective` | △ | — | 中身は親に入る（目的の要求そのものは要素にしない） |
+| `objective` | ○ | | 目的の説明（`doc`）と式は、検証・解析の区画に `objective: …`・`objective { … }` と書く（8.2.3.22 の objective-compartment。目的を別の要素や線にする記法は 8.2.3 に無い）。持ち主の説明は上書きしない。中の `verify` は検証の線にする |
 | `analysis def` / `analysis` | ○ | | |
 | `verification def` / `verification` | ○ | | |
-| `verify` | △ | — | 定義の中と、パッケージ直下の型付きの使用の中（型の定義から線を引く）で線になる。型の無い使用の中では線を引かない |
+| `verify` | ○ | | 定義の中・package の直下の検証と解析の使用の中（型の有無によらず、使用から線を引く。8.2.3.24）で線になる |
 | 宣言する形 `verify requirement r : R;` | ○ | | 型 R を検証する線にする |
 | `use case def` / `use case` | ○ | | 専用のビューは無い |
 | `include use case` | ○ | | 種類 `include use case` の要素になる（`include use case u : U;` は U を型にする。`include u;` は u を名前にし、型は付けない）。図の線は引かない |
@@ -221,9 +223,9 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | --- | --- | --- | --- | --- |
 | `view def` | ViewDefinition | ○ | | 標準ビュー定義の特殊化（`:>`・`specializes`）をたどる。中の `filter`・`render` は、その型の `view` に引き継ぐ。図のノードにはしない |
 | `view` | ViewUsage | ○ | | 名前のある `view` を、＋メニューから図として開ける（F-VIEW-7）。型の無い `view` は GeneralView として描く |
-| `expose`（`A`・`P::*`・`P::**`・`P::*::**`・`[...]` 付き） | Expose | △ | 0.2.0 | 修飾名は view から外へ最初の段を探し、中へたどる。同じファイルの `alias` は解決する。`import` を通した名前は解決しない |
-| ビュー内の `filter` | ElementFilterMember | ○ | | `@メタクラス`（`@SysML::PartDefinition` など）・`@メタデータ`・`istype X`・`hastype X` を、`and`・`&`・`or`・`|`・`xor`・`not` と括弧で組み合わせた式（KerML 8.2.5.8.1 の優先順位）。expose の `[ ]` も同じ。メタデータの値の比較（`level > 1` など）を含む式は、知らせたうえで使わない（0.3.0 以降、式の評価と一緒に） |
-| `render`（参照形） | ViewRenderingMember | △ | 0.3.0 以降 | `asTreeDiagram`・`asInterconnectionDiagram` と、それを特殊化・再定義・参照した `rendering`（`rendering myIbd :> asInterconnectionDiagram;`）は型より優先する。特殊化や本体が続く形（`render asTreeDiagram :> base { … }`）も読む。`asTextualNotation`・`asElementTable` は知らせて図で描く |
+| `expose`（`A`・`P::*`・`P::**`・`P::*::**`・`[...]` 付き） | Expose | △ | 0.2.0 | 修飾名は view から外へ最初の段を探し、中へたどる。同じファイルの `alias` と、ほかのファイルの名前（一番上の要素・`import`）も解決する。示したほかのファイルの要素は、ファイル名の札を付けて描く |
+| ビュー内の `filter` | ElementFilterMember | ○ | | `@メタクラス`（`@SysML::PartDefinition` など）・`@メタデータ`・`istype X`・`hastype X` を、`and`・`&`・`or`・`|`・`xor`・`not` と括弧で組み合わせた式（KerML 8.2.5.8.1 の優先順位）。expose の `[ ]` も同じ。メタデータの値の比較（`level > 1` など）を含む式は、知らせたうえで使わない（0.5.0 以降、式の評価と一緒に） |
+| `render`（参照形） | ViewRenderingMember | △ | 0.5.0 以降 | `asTreeDiagram`・`asInterconnectionDiagram` と、それを特殊化・再定義・参照した `rendering`（`rendering myIbd :> asInterconnectionDiagram;`）は型より優先する。特殊化や本体が続く形（`render asTreeDiagram :> base { … }`）も読む。`asTextualNotation`・`asElementTable` は知らせて図で描く |
 | `render`（合成形） | ViewRenderingUsage | ○ | | `render rendering r :> asTreeDiagram { … }`・`render rendering r redefines Views::asInterconnectionDiagram;` を view の中の `rendering` の使用として本体ごと読み、特殊化・再定義・参照の相手をたどって描き方を決める（以前は相手のある形を黙って捨て、ほかは「まだ扱えない」と知らせていた）。標準の表し方に行き着かない形（`render rendering r : R;`）は知らせて図で描く |
 | `viewpoint def` / `viewpoint` | ViewpointDefinition / Usage | ○ | | ツリーに出る要素になる（`view def` と同じく図のノードにはしない。`view` とは取り違えない）。中の `frame concern c : C;` は関係として記録するが、視点を図に描かないので線は引かない |
 | `rendering def` / `rendering` | RenderingDefinition / Usage | ○ | | ツリーに出る要素になる（図のノードにはしない） |
@@ -243,10 +245,10 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 
 | 要素 | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- |
-| 式・単位 `1500 [kg]` | △ | 0.3.0 以降 | 文字列として保持するだけ |
-| 本体付きの式 `a.b->collect{ in i; i*2 }` | △ | 0.3.0 以降 | `xs.{ … }`・`xs.?{ … }` も含め、対応する `}` までを式の文字列として持つ（評価しない） |
+| 式・単位 `1500 [kg]` | △ | 0.3.0（構文）・0.5.0 以降（評価と単位） | 文字列として保持するだけ |
+| 本体付きの式 `a.b->collect{ in i; i*2 }` | △ | 0.3.0（構文） | `xs.{ … }`・`xs.?{ … }` も含め、対応する `}` までを式の文字列として持つ（評価しない） |
 | 特徴量の連鎖 `a.b.v` | ○ | | 各段を、前の段の本体・型の定義（とその一般の定義）・部分集合や再定義の相手の中から探す（FeatureChain、8.2.2.6）。接続・フロー・結び付け・メッセージの端の 3 段目から先（`a.b.c.p`）も確かめ、見つからない段は「「a.b.x」の「x」が見つかりません」と示す。型の無い要素とファイルの外の型の中は確かめない。内部ブロック図では、どの深さの部品の中の部品にもつなぐ |
-| KerML のキーワード（`classifier`・`class`・`struct`・`feature`・`datatype`・`function` など） | × | 0.3.0 以降 | KerML の文法は読まない。`classifier`・`function`・`struct`・`feature` などの宣言は、本体ごと「まだ扱えない」と知らせ、中身を外の package の要素にしない。`.kerml` ファイルは開けるが、中身は読めない |
+| KerML のキーワード（`classifier`・`class`・`struct`・`feature`・`datatype`・`function` など） | × | 0.4.0 | KerML の文法は読まない。`classifier`・`function`・`struct`・`feature` などの宣言は、本体ごと「まだ扱えない」と知らせ、中身を外の package の要素にしない。`.kerml` ファイルは開けるが、中身は読めない |
 
 ## 3. 図・ビュー（言語仕様 7.26・8.2.3・9.2.20）
 
@@ -259,29 +261,29 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 
 | 標準ビュー定義 | 短い名前 | 画面の名前 | `view` の描き方 | 対応 | 予定 |
 | --- | --- | --- | --- | --- | --- |
-| GeneralView | `gv` | 一般ビュー | ノードと線の図（expose した要素と、その間の関係） | △ 図のノードにするのは、定義と、package の直下の `part`・`requirement` の使用だけ（`action`・`item`・`state`・`use case` の使用と `case def` は描かない。ユースケースの楕円・アクターの記号も無い）。特殊化・部分集合・再定義・参照・依存・割り当ての線と多重度、メモ（`comment … about`。角を折った四角と破線、8.2.3.4）は 8.2.3 の記法で描く。定義の中の特性どうしの線と、別の言語での表し方（`rep`）・`doc` の記号は無い | — |
-| InterconnectionView | `iv` | 内部ブロック図 | 内部ブロック図（expose した part def、または part の型が対象） | △ 部品の本体に書いた部品（どの深さでも）と、線の端 `a.b.p`・`a.b.c.p` が指す型の中の部品を、外の部品の中に描く。部品の型の中の線も描く。結び付けは「=」の線、n 項の接続は点と端ごとの線で描く。対象そのもののポートへの線、入れ子の部品のポートを作る操作は無い | — |
-| ActionFlowView | `afv` | アクティビティ図 | アクティビティ図（expose した action def が対象。自動の図「アクティビティ図」とツリーの「アクティビティ図で開く」でも開ける） | △ アクション・制御の節・送信と受信・開始と終了と、ガード付きの継起・順序付きの流れを 8.2.3.17 の記法で、継起の向きに上から並べて描く。アクションのパラメータとその間のフロー、入れ子の本体の流れ、区画（swim lane）は無い | 0.3.0 以降 |
+| GeneralView | `gv` | 一般ビュー | ノードと線の図（expose した要素と、その間の関係） | △ 図のノードにするのは、定義と、package の直下の `part`・`requirement`・`verification`・`analysis`・`action`・`item`・`state` の使用（`use case` の使用と `case def` は描かない。ユースケースの楕円・アクターの記号も無い）。特殊化・部分集合・再定義・参照・依存・割り当ての線と多重度、メモ（`comment … about`。角を折った四角と破線）、別の言語での表し方（`rep`。«rep» の角を折った四角と破線）、説明（`doc` の区画）は 8.2.3 の記法で描く（8.2.3.4）。定義の中の特性どうしの線は内部ブロック図で描き、一般ビューには描かない | 0.3.0 以降（ユースケースの楕円・アクターの記号） |
+| InterconnectionView | `iv` | 内部ブロック図 | 内部ブロック図（expose した part def、または part の型が対象） | △ 部品の本体に書いた部品（どの深さでも）と、線の端 `a.b.p`・`a.b.c.p` が指す型の中の部品を、外の部品の中に描く。部品の型の中の線も描く。結び付けは「=」の線、n 項の接続は点と端ごとの線で描く。対象そのもののポートへの線は、枠の辺の上のポート（入力は左・出力は右・双方向は下）へ引く（8.2.3.13）。型の無い部品は本体のポートを描き、入れ子の部品のポートも図から作れる。図から枠の上のポートへ新しく線を引く操作は無い（テキストで書く） | 0.3.0 以降（枠の上のポートから線を引く操作） |
+| ActionFlowView | `afv` | アクティビティ図 | アクティビティ図（expose した action def が対象。自動の図「アクティビティ図」とツリーの「アクティビティ図で開く」でも開ける） | ○ アクション・制御の節・送信と受信・開始と終了と、ガード付きの継起・順序付きの流れを 8.2.3.17 の記法で、継起の向きに上から並べて描く。アクションのパラメータ（`in`・`out`・`inout`）は縁の接続点に、アクション定義そのもののパラメータは枠の上に描き、パラメータの間の流れ（`flow`）を実線と矢印で描く。中にアクションの流れを書いたアクション（入れ子の本体）は、その中に要素・開始と終了・線を描く。部品の本体に書いた `perform 使用.要素;` から、要素を受け持つ部品ごとの区画（swimlane。破線の四角と «performer»）を作り、要素をその区画の列に置く | — |
 | StateTransitionView | `stv` | 状態遷移図 | 状態遷移図（expose した state def が対象。ツリーの「状態遷移図で開く」でも開ける。組み込みのビューの一覧には出さない） | △ 状態・入れ子の状態・並行の領域（破線で区切る）・entry／do／exit の区画・開始と終了の記号と、遷移を `トリガ [ガード] / 効果` のラベルの線で、8.2.3.18 の記法で描く。本体ごとに、遷移の向きに左から並べる。図から遷移を消す・引く（`transition first a then b;`）。expose した state def が複数あっても最初の 1 つだけを描き、状態の使用（`exhibit state s { … }`）の中の遷移、効果の本体の中身、線の交差を避ける配置は無い | 0.3.0 以降 |
 | SequenceView | `sv` | シーケンス図 | シーケンス図（expose した occurrence def が対象） | △ ライフライン・メッセージ・ライフラインの上のイベント（白抜きの丸と `.ev` の札。入れ子の部品のイベントは `.sub.ev`、ライフラインの型の中のイベントも）・別のライフラインのイベントの間の順序（破線と開いた矢印）を、8.2.3.9 の記法で描く。時間は上から下へ進み、メッセージとメッセージの端でないイベントが 1 段ずつ使い、段は順序（`first … then`・`then event occurrence`）を守り、ほかは書いた順にする。図から順序の線を消す。複合フラグメント（`alt`・`loop` に当たるもの）、入れ子のシーケンス図（view の参照）、ライフラインの頭のポート（sq-port）、入れ子の部品ごとのライフライン、図からイベントや順序を足す操作は無い | 0.3.0 以降 |
-| GeometryView | `gev` | ジオメトリビュー | ノードと線の図で代わりに描き、知らせる | × | 0.3.0 以降 |
-| GridView | `grv` | グリッドビュー | ノードと線の図で代わりに描き、知らせる | × | 0.3.0 以降 |
-| BrowserView | `bv` | ブラウザビュー | ノードと線の図で代わりに描き、知らせる（ツリーは別にある） | × | 0.3.0 以降 |
+| GeometryView | `gev` | ジオメトリビュー | ノードと線の図で代わりに描き、知らせる | × | 0.5.0 以降 |
+| GridView | `grv` | グリッドビュー | ノードと線の図で代わりに描き、知らせる | × | 0.5.0 以降 |
+| BrowserView | `bv` | ブラウザビュー | ノードと線の図で代わりに描き、知らせる（ツリーは別にある） | × | 0.5.0 以降 |
 
-標準のレンダリング（`Views`）：`asTreeDiagram` はノードと線の図、`asInterconnectionDiagram` は内部ブロック図で描く（△）。`asTextualNotation`・`asElementTable` に当たる描き方は無い（×、0.3.0 以降）。
+標準のレンダリング（`Views`）：`asTreeDiagram` はノードと線の図、`asInterconnectionDiagram` は内部ブロック図で描く（△）。`asTextualNotation`・`asElementTable` に当たる描き方は無い（×、0.5.0 以降）。
 「制御ループ」ビューに当たる標準のビューは無い。Modelith 独自の便利機能として扱う。
 自動の図のうち、トレーサビリティ・ブロック定義図・制御ループ・振る舞い・すべては GeneralView で描く図として、ツールチップに「SysML v2 では GeneralView で描く図」と添える。
 
 ## 4. 標準ライブラリ
 
-- 同梱も解析もしていない（0.3.0 以降）。`import` は捨てる。
+- 同梱も解析もしていない（0.5.0 以降）。標準ライブラリを指す `import` は、名前の解決に使わない（取り込む先が無い）。
 - 「型が見つかりません」の警告を抑える標準ライブラリの型は、名前で判定する（`crates/modelith-core/src/model/mod.rs` の `LIBRARY_TYPES`。`ScalarValues::Real` のような修飾名も、最後の名前で判定する）。
   - 一覧には、照合した `sysml.library` にある名前だけを入れた：Base・ScalarValues・Occurrences（`Anything`・`DataValue`・`ScalarValue`・`Boolean`・`String`・`NumericalValue`・`Number`・`Complex`・`Real`・`Rational`・`Integer`・`Natural`・`Positive`・`Occurrence`）、Systems Library の基の定義（`Part`・`Item`・`Action`・`StateAction`・`Port`・`Connection`・`Interface`・`Allocation`・`Calculation`・`ConstraintCheck`・`RequirementCheck`・`Case`・`AnalysisCase`・`VerificationCase`・`UseCase`・`View`・`Rendering`・`MetadataItem`）、VerificationCases（`VerdictKind`・`VerificationMethodKind`）、Time（`TimeInstantValue`・`DateTime`・`Date`・`TimeOfDay`・`UtcTimeInstantValue`・`Iso8601DateTime`）。
   - `…Value`・`…Kind` で終わる名前（`MassValue` など）は、ファイルが量と単位のライブラリ（`ISQ`・`ISQBase`・`ISQSpaceTime` などの ISQ の各パッケージ、`SI`・`SIPrefixes`・`USCustomaryUnits`・`Quantities`・`QuantityCalculations`・`MeasurementReferences`・`MeasurementRefCalculations`・`Time`・`TensorCalculations`・`VectorCalculations`）のどれかを `import` しているとき、または名前をそのパッケージで修飾しているとき（`ISQ::MassValue`）だけ標準とみなす。それ以外で、ファイルに定義の無い `…Value` の型は「見つかりません」と示す（alpha.6 までは、名前だけで標準とみなし、書き間違いを見逃していた）。
   - ライブラリを読んでいないので、一覧に無い標準の名前（`Flow` など）や、量のパッケージに無い `…Value` の名前は区別できない。
 - `SysML::PartDefinition`・`KerML::Feature` のように `SysML`・`KerML` で修飾したメタクラスの名前は、標準ライブラリの型とみなす（メタデータの定義の `:>> annotatedElement : SysML::PartDefinition;` など）。
 - キーワードの無い特性（`x : Real;`）を読むので、別のファイル（標準ライブラリを含む）の型を持つ特性は、ほかの使用と同じく「型が見つかりません」になる（ファイルをまたぐ名前の解決は 0.2.0）。
-- 単位 `[kg]` は解決しない（0.3.0 以降）。
+- 単位 `[kg]` は解決しない（0.5.0 以降）。
 - 標準ビュー定義（`GeneralView`・`gv` など）と標準のレンダリング（`asTreeDiagram` など）の名前だけを、組み込みで持つ。
 
 ## 5. 変換仕様（SysML v1 → v2）

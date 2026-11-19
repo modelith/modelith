@@ -1,14 +1,16 @@
 // 図・テキスト・ミニマップの描画。状態（S）を読んで DOM を書き換えるだけで、状態は変えない
 // （ビューの対象ブロックの補正と、描画済みの強調の消去を除く）。
 
-import { lineStart, type ModelNode } from "../core";
+import { FILE_STRIDE, lineStart, type ModelNode } from "../core";
 import { $, esc } from "./dom";
-import { boxesOf, pinPoint, pinsOf, type Box } from "./geometry";
+import { NOTHING_IN_FILE, nothingInFile } from "./doc-tabs";
+import { boxesOf, pinPoint, pinsOf, type Box } from "../render/geometry";
 import { relOptions } from "./relations";
 import { gapMarkTitles } from "./gap-guide";
+import { minimapPlace } from "./minimap-place";
 import { gapRelOptions } from "./trace-gap";
 import { S, type EndSpec } from "./state";
-import { CV, SEQ, seqGeom, seqMarkup, svgMarkup } from "./svg";
+import { CV, SEQ, seqGeom, seqMarkup, svgMarkup } from "../render/svg";
 import { CC, curLayout, curView, edgeById, nodeByKey, viewContent, visibleNodes } from "./views";
 
 /**
@@ -20,8 +22,11 @@ import { CC, curLayout, curView, edgeById, nodeByKey, viewContent, visibleNodes 
 export function render(): void {
   const content = viewContent(S.M, curView());
   const empty = $("#empty");
-  empty.hidden = !content.empty;
-  empty.textContent = content.empty ?? "";
+  // 図にこのファイルの要素が無くても、別の図に切り替えずに案内する（F-VIEW-17）
+  const nothing = nothingInFile(content, S.M.nodes.filter((n) => !n.file).length);
+  empty.hidden = !content.empty && !nothing;
+  if (nothing) empty.innerHTML = `<span>${esc(NOTHING_IN_FILE)}</span>${S.view === "all" ? "" : `<br><button type="button" data-open-all>「すべて」の図を開く</button>`}`;
+  else empty.textContent = content.empty ?? "";
   if (content.seq) {
     const sm = seqMarkup(CV, content, { interactive: true, sel: S.sel, selSet: S.selSet, selEdge: S.selEdge });
     $("#gEdges").innerHTML = "";
@@ -228,10 +233,13 @@ export function syncScroll(): void {
 
 /**
  * テキストの位置がある行が、テキスト欄の上の方（3 行ほど下げた所）に見えるようにスクロールする。
+ * ほかのファイルの位置（ADR-0021）なら何もしない。
  *
  * @param pos テキストの位置（UTF-16 の位置）
  */
 export function scrollEditorTo(pos: number): void {
+  // ほかのファイルの要素（ADR-0021）は、表示中のテキストに無いので動かさない
+  if (pos >= FILE_STRIDE) return;
   const ed = $<HTMLTextAreaElement>("#ed");
   const line = S.text.slice(0, pos).split("\n").length - 1;
   ed.scrollTop = Math.max(0, line * 19 - 60);
@@ -306,6 +314,23 @@ function miniGeom(): MiniGeom | null {
 }
 
 /**
+ * 全体図（ミニマップ）を、インスペクタの上に持ち上げ、狭い画面で拡大縮小のボタンにかかるならボタンの左に寄せる（全体図の style を書き換える。F-VIEW-4・Q-2）。
+ * インスペクタを描き直したときと、全体図を出したときに呼ぶ。
+ */
+export function placeMinimap(): void {
+  const mini = $("#mini"), insp = $("#insp"), wrap = $("#wrap"), zoom = $("#wrap .zoom");
+  const p = minimapPlace({
+    wrapH: wrap.clientHeight,
+    inspH: insp.hidden ? null : insp.offsetHeight,
+    miniH: mini.hidden ? 0 : mini.offsetHeight,
+    zoomBottom: zoom.offsetTop + zoom.offsetHeight,
+    zoomSpan: wrap.clientWidth - zoom.offsetLeft,
+  });
+  mini.style.bottom = p.bottom;
+  mini.style.right = p.right;
+}
+
+/**
  * ミニマップ（全体図）を描き直す。非表示に設定されていれば隠して S.mini を空にし、
  * 描くものが無ければ中身と表示範囲の枠を消す。描いたら縮尺を S.mini に記録し、表示範囲の枠を更新する（F-VIEW-4）。
  */
@@ -313,6 +338,7 @@ export function renderMinimap(): void {
   const el = $("#mini");
   el.hidden = !S.ui.mini;
   for (const id of ["#zMini", "#menuMini"]) $(id).setAttribute("aria-pressed", String(S.ui.mini));
+  placeMinimap();
   if (el.hidden) {
     S.mini = null;
     return;

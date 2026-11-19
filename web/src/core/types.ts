@@ -10,6 +10,8 @@ export interface Span {
 export interface Expr {
   text: string;
   via: string;
+  /** 否定した制約（`assert not constraint …`、8.2.2.20）。否定していなければ無い。Rust のコアだけが作る。 */
+  neg?: boolean;
 }
 
 /** 名前を持たないブロック（`objective { … }`、`@Phase { … }` など）。 */
@@ -54,6 +56,10 @@ export interface Entry {
    */
   valueOp?: string;
   doc?: string;
+  /** 説明の本文を、行の区切りと空の行を保ったもの（インスペクタで見せ、書き換える。`doc` は 1 行にまとめたもので、図に描く）。Rust のコアだけが作る。 */
+  docText?: string;
+  /** ケース・解析・検証の目的（`objective { doc /* … *\/ }`、8.2.2.21）の説明。Rust のコアだけが作る。 */
+  objective?: string;
   meta?: Record<string, Record<string, string>>;
   phaseVal?: Span;
   phaseBlock?: Scope;
@@ -218,12 +224,16 @@ export interface ModelNode {
   ports: Port[];
   phase: string | null;
   phaseOwn: boolean;
+  /** ほかのファイルの要素なら、そのファイルのパス（プロジェクトのフォルダから。ADR-0021）。表示中のファイルの要素には無い。 */
+  file?: string;
   /** 内部ブロック図の部品（使用）。 */
   usage?: boolean;
   /** シーケンス図のライフライン。 */
   lifeline?: boolean;
   /** 内部ブロック図の n 項の接続の点（8.2.3.13 の n-ary-connection-dot）。`entry` は接続の使用。 */
   junction?: boolean;
+  /** 内部ブロック図の対象そのもののポート（枠の上に描く、8.2.3.13）の向き。`entry` はポートの宣言。 */
+  boundary?: PortDir;
   /** 一般の図のメモ（8.2.3.4 の comment）。`entry` はコメントの宣言。 */
   note?: boolean;
   /**
@@ -282,6 +292,8 @@ export interface Problem {
   msg: string;
   /** 無し：エラー。gap：トレースの抜け。unsupported：まだ扱えない構文（エラーではない）。 */
   kind?: "gap" | "unsupported";
+  /** プロジェクトの設定で選んだ重さ（F-EDIT-11）。無ければ既定の重さ（トレースの抜けは警告、まだ扱えない構文は情報）。 */
+  level?: "error" | "warning" | "info";
 }
 
 export interface PhaseInfo {
@@ -436,6 +448,22 @@ export interface ModelFlowNode {
   kind: string;
   /** 宣言。開始・終了は宣言を持たないので null。 */
   entry: Entry | null;
+  /** パラメータ（8.2.3.17 の parameter）。本体に無く型があれば、型の定義のパラメータ。無ければ空。 */
+  ports: Port[];
+  /** 入れ子の本体の要素なら、その本体を持つアクションのキー（中に描く）。 */
+  container?: string;
+}
+
+/** アクションの流れの図の区画 1 つ（8.2.3.17 の swimlane）。受け持つ部品と、その部品が受け持つ要素。 */
+export interface ModelLane {
+  /** 区画のキー（`lane:部品の道のり`）。 */
+  key: string;
+  /** 受け持つ部品の道のり（`kettle.heater`）。 */
+  name: string;
+  /** 受け持つ部品の宣言。 */
+  entry: Entry;
+  /** 受け持つ要素のキー。 */
+  nodes: string[];
 }
 
 /** アクション定義 1 つの、アクションの流れの図（8.2.3.17）。 */
@@ -446,7 +474,11 @@ export interface ModelActionFlow {
   entry: Entry;
   /** 要素（開始、書いた順の要素、終了の順）。 */
   nodes: ModelFlowNode[];
-  /** 継起（succession）と順序付きの流れ（successionFlow）の線。端は nodes のキー。 */
+  /** アクション定義そのもののパラメータ（枠の上に描く。キーは `b:名前`）。 */
+  params: Port[];
+  /** 区画（8.2.3.17 の swimlane）。要素を受け持つ部品ごと。無ければ空。 */
+  lanes: ModelLane[];
+  /** 継起（succession）・順序付きの流れ（successionFlow）・流れ（flow）の線。端は nodes のキーか `b:名前`。流れの端のパラメータは fromPort・toPort。 */
   edges: ModelEdge[];
 }
 

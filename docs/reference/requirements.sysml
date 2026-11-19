@@ -67,6 +67,15 @@ package ModelithRequirements {
         requirement def <'N-10'> ExtendNeed {
             doc /* 組織の決まりに沿った検査や、ほかのツールとのやり取りを、自分たちで足したい。足したものを、画面と CI で同じように使いたい */
         }
+        requirement def <'N-11'> CollaborateNeed {
+            doc /* AI（Claude・Codex など）や、ほかの人と、一緒に同じモデルを作りたい。自分の環境に置いたサーバでも使いたい */
+        }
+        requirement def <'N-12'> FeedbackNeed {
+            doc /* 使い方や不具合が開発者に届き、Modelith が良くなってほしい。ただし、何が送られるかを確かめ、止められるようにしたい */
+        }
+        requirement def <'N-13'> LanguageNeed {
+            doc /* 自分の言語（まず英語と日本語）で、画面とマニュアルを読みたい */
+        }
     }
 
     // =================================================================
@@ -84,23 +93,42 @@ package ModelithRequirements {
             doc /* 図での操作（要素の追加・削除・関係の追加・移動）は、すべてテキストの編集として反映する（ADR-0001）。
                    関係の追加では、要求をつなぐ関係（要求と検証の「検証する」・要求と部品の「満たす」・要求と関心事の「扱う」・要求どうしの導出の両向き）を、
                    どちらの要素から線を引き始めても候補に出し、SysML v2 の規格どおりの向き（部品が要求を満たす・検証が要求を確かめる など）でテキストに書く。
+                   同じ関係（満たす・導出・検証する）が既にあるときは、2 つ目を書かずに理由を示す。
                    要素を削除するときは、その要素を指す関係の文（満たす・導出・接続など）と、作成した図がその要素だけを出す expose も一緒に消す。
                    相手を並べた関係の文（dependency from A to B, C;）では、その要素を指す相手だけを並びから外し、ほかの相手との関係は残す（一方の側の相手がすべて消えるときは文ごと消す）。
                    空白や日本語を含む名前は、関係の中でも引用名（'R one'）で書く（8.2.2.3）。
                    テキストの括弧（{ }）やコメントが閉じていない間は、書く場所を取り違えてほかの要素を動かさないよう、図からの変更を断って理由を示す */
         }
         requirement def <'F-EDIT-3'> RenameReq {
-            doc /* 要素の名前を変えると、テキスト中の参照と配置情報もまとめて変える。
+            doc /* 要素の名前を変えると、テキスト中の参照と配置情報もまとめて変える。日本語や空白を含む名前も付けられ、テキストには引用名（'電気 ケトル'）で書く（8.2.2.3）。
                    変えるのは、その要素を指す参照だけ（遷移の元 first・値の式・:> の参照を含む）。
+                   定義の中の特性（属性など）の名前を変えたら、持ち主の外からの参照も変える：修飾名（W::n）、型がその定義の使用からたどる連鎖（f.n）、
+                   その定義を型にした使用やその定義を特殊化した定義の中の再定義（:>> n）と、そこから引き継いだ名前の参照。
                    入れ子の中やほかの package で同じ名前を宣言した別の要素と、それを指す参照は変えない（名前を書いた場所から解決して確かめる。8.2.2.5）。変えるのは表示中のファイルの中だけで、知らせの文もそう書く（ほかのファイルの参照は変えない。ADR-0021）。
-                   テキストの書き方で使う言葉（part・def・end などの予約語）の名前には変えず、理由を示す */
+                   参照も宣言と同じく、引用名が要るときだけ引用名で書く（英字の名前に戻したら引用符も外す）。
+                   同じ場所（同じ持ち主の直下）に同じ名前があるときだけ、理由を示して変えない。名前を変えずに決めたときは、前の知らせを消す */
+        }
+        requirement def <'F-EDIT-12'> EditDetailsReq {
+            doc /* テキストを書かずに、インスペクタで要素の説明（要求なら要求の文章。テキストの doc）を書き換え・足し・消すことができる。
+                   文が 2 行以上でも、行の区切りを保ってテキストに書く。空の行は（字下げを付けず）空の行のまま書き、インスペクタでも行の区切りと空の行を保って見せる。
+                   テキストに書けないコメントの終わりの記号（「*」の直後の「/」）は「* /」と間を空けて書き、そのことをトーストで知らせる。定義の属性（名前・型・値）も、足す・書き換える・消すことができ、
+                   書き換えても constant などの修飾と値の書き方（:=・default）、インスペクタに出さない多重度（[2]）と特殊化（:> a）は保つ（ADR-0001）。
+                   属性の名前を変えたら、それを使う参照もまとめて変える（F-EDIT-3） */
         }
         requirement def <'F-EDIT-4'> UndoReq {
             doc /* 元に戻す・やり直すができる。履歴はファイルごとに持ち、200 段階まで */
         }
         requirement def <'F-EDIT-5'> ProblemsReq {
             doc /* 構文エラー・型や参照の見つからない箇所を、行番号付きで一覧にし、クリックでその行へ移る。
+                   見つからない相手は、型（part x : Nope;）のほか、定義の特殊化（part def P :> Nope;）・別名の指す先（alias T for Nope;）・import の相手（import Nowhere::*;）も示す。
+                   標準ライブラリの名前（ライブラリのパッケージで修飾した名前と、そこから import した名前を含む）は示さず、フォルダを開いているときはほかのファイルの名前も解決する（F-FILE-15）。
+                   import は、最初の段が標準ライブラリのパッケージでも、モデルのどこかにある名前でもないときだけ示す。
                    多すぎて一覧に出し切れないときは、出していない件数を示す */
+        }
+        requirement def <'F-EDIT-13'> ProblemCopyReq {
+            doc /* 問題一覧の行を、1 行ずつ（右クリック、または行を選んで Ctrl＋C）と、一覧のすべて（「すべてコピー」）を、
+                   「ファイル名:行: メッセージ」の形の文としてクリップボードに入れ、ほかのアプリ（チャットや課題管理）に貼り付けられる。
+                   ほかのファイルの問題も、そのファイル名で入れる。ブラウザがコピーを許さないときは、そのことを知らせる */
         }
         requirement def <'F-EDIT-6'> ParseParityReq {
             doc /* モックと同じ振る舞いの範囲では、解析とモデル構築の結果はゴールデン（モックの出力）と一致する（ADR-0002・ADR-0013） */
@@ -121,9 +149,11 @@ package ModelithRequirements {
                    「編集」ボタンで編集できるようにし、もう一度押すと読み取り専用に戻す。語をダブルタップすると、その語を選び、意味を示す（F-EDIT-9） */
         }
         requirement def <'F-EDIT-11'> ProblemLevelReq {
-            doc /* 保留：0.2.0 以降。問題一覧と図の印に出す知らせ（トレースの抜けの種類ごと・まだ扱えない構文・チェックルールの結果など）の重さを、
-                   利用者が種類ごとに「エラー」「警告」「情報」「出さない」から選べる（lint の規則の重さを変えるのと同じ）。構文エラーは出さないにできない。
-                   設定はプロジェクト（modelith.json）とこのブラウザの両方に置け、どちらが効くかは F-PROJ-2 の決まりに従う */
+            doc /* 問題一覧と図の印に出す知らせ（トレースの抜けの種類ごと（導出・満たす要素・検証）・まだ扱えない構文・チェックルールの結果のルールごと）の重さを、
+                   利用者が種類ごとに「エラー」「警告」「情報」「出さない」から選べる（lint の規則の重さを変えるのと同じ）。構文エラーと見つからない型は変えられない。
+                   選んだ重さは結果に効くので、このプロジェクトの設定（modelith.json の levels）にだけ置き（F-PROJ-2）、画面と CLI の modelith check の両方が従う。
+                   プロジェクトの無いフォルダやファイルでは既定の重さ（トレースの抜けは警告、まだ扱えない構文は情報、チェックルールはルールに書いた重さ）を使う。
+                   この版の知らない重さの値（新しい版が足したもの）は、その種類だけを既定の重さにして知らせ、設定のほかの項目は使う。値は消さずに書き戻す */
         }
 
         // ---- ビュー ------------------------------------------------
@@ -152,17 +182,59 @@ package ModelithRequirements {
                    順序に合わせて上から描く（9.2.20.2.7 SequenceView・8.2.3.9）。メッセージ・順序の相手のイベントが見つからないときと、順序が循環しているときは、問題一覧で知らせる */
         }
         requirement def <'F-VIEW-8'> CreateViewReq {
-            doc /* 図のメニューと図のツールバーの「新しい図を作成」で、表示中の図の要素と配置のまま名前の付いた図を作成し、作成した図に要素を入れたり、図から外したりできる。
+            doc /* 図のメニュー・図のツールバー・サイドバーの「図」の「新しい図を作成」で、名前と図の種類を選んで図を作成する。種類は「今の図のまま」（表示中の図の要素と配置のまま）・
+                   一般の図（空の図から始める）・内部ブロック図・アクティビティ図・状態遷移図・シーケンス図で、後の 4 つは描く対象（部品定義・アクション定義・状態定義・シナリオ）を
+                   モデルから選ぶか、新しく作る。作成した図に要素を入れたり、図から外したりできる。
                    ＋メニューでは、自動で描く図と作成した図を見出しで分けて示し、タブのツールチップでも作成した図であることを示す。テキストには標準の view と expose として書き、利用者には view・expose という言葉を見せない（ADR-0005・ADR-0014）。
                    図から外しても、モデルの要素は消さない。モデルから削除するのは別の操作にする。
-                   既にある図の名前と、パッケージの名前と、図を置く package の直下の要素の名前は、図の名前にできない（理由を示し、入れた名前のままダイアログを開き直す）。
-                   作成した図を表示しているときに「新しい図を作成」を選んだら、作れない理由を示す */
+                   既にある図の名前と、パッケージの名前と、図を置く package の直下の要素の名前は、図の名前にできない（理由を示し、入れた名前と種類のままダイアログを開き直す）。
+                   図の名前にも、要素の名前と同じく「'」「\」や改行は使えない（作成するときも名前を変えるときも、要素の名前の変更と同じ理由を示す） */
+        }
+        requirement def <'F-VIEW-12'> RequirementDiagramReq {
+            doc /* 要求図（一般ビュー）で、要求の区画に前提（assume）と満たすべき制約（assert。否定は assert not）の式を、
+                   検証・解析の区画に目的（objective）の説明と式を書く（8.2.3.20〜22）。部品定義などにも満たすべき制約を書く。
+                   package の直下の検証・解析の使用も図の要素にし、型の無い使用の中の verify からも検証の線を引く（8.2.3.24） */
+        }
+        requirement def <'F-VIEW-13'> BlockDiagramReq {
+            doc /* ブロック定義図（一般ビュー）で、package の直下の action・item・state の使用も図の要素にする。
+                   要素の説明（doc）をすべての定義の区画に書き（8.2.3.4 の documentation-compartment）、
+                   別の言語での表し方（rep）を «rep» と言語を見出しにした角を折った四角で、持ち主への破線と描く（8.2.3.4 の textual-representation-node） */
+        }
+        requirement def <'F-VIEW-14'> InterconnectionDiagramReq {
+            doc /* 内部ブロック図で、対象そのもののポート（ブロックの外とのつなぎ口）への線を、対象の枠の辺の上に置いたポートへ引く（入力は左・出力は右・双方向は下の辺。8.2.3.13）。
+                   その線も、ほかの線と同じく選んで削除できる。型の無い部品は、本体に書いたポートを描く。
+                   部品の中の部品（入れ子の部品）の接続点もポートにでき、つながっていた線は「a.x.ポート」のように部品の道のりのまま書き換える */
+        }
+        requirement def <'F-VIEW-15'> ActivityDiagramReq {
+            doc /* アクティビティ図で、アクションのパラメータ（in・out・inout）をアクションの縁の接続点に、アクション定義そのもののパラメータを枠の上に描き（入力は左・出力は右・双方向は下）、
+                   パラメータの間の流れ（flow）を実線と矢印で描く（8.2.3.17 の parameter と flow）。型のあるアクションで本体にパラメータが無ければ、型の定義のパラメータを描く。
+                   流れも段の決め方に使い、図から選んで削除できる。パラメータの向きや宣言はテキストで書き換える。
+                   中にアクションの流れを書いたアクション（入れ子の本体）は、その中に要素・開始と終了・線を描き（8.2.3.17 の action-body）、外の図と同じく選んで消したり名前を変えたりできる。
+                   図から引く順序の線は、同じアクションの中の要素どうしに限り、そのアクションの本体に書く。
+                   部品の本体に書いた perform 使用.要素（使用はそのアクション定義を型にしたアクション）から、要素を受け持つ部品ごとの区画（8.2.3.17 の swimlane）を作り、
+                   破線の四角と «performer»・部品の道のりの見出しで描き、自動で置くときは要素を受け持つ部品の列に置く。draw.io へのエクスポートにも区画を入れる */
+        }
+        requirement def <'F-VIEW-11'> ViewListReq {
+            doc /* サイドバーの「図」に作成した図を並べ、選ぶと開く。一覧とツリーの右クリックから、作成した図の名前を変えたり、削除したりできる。
+                   名前を変えても図の配置と開いているタブは保ち、削除しても図に出していたモデルの要素は残す（確認を取る）。テキストでは view の宣言の名前を変える・宣言を消す（ADR-0005） */
         }
         requirement def <'F-VIEW-9'> PackageFrameReq {
             doc /* 図に package そのものを出したとき（expose P）、package を枠（フォルダ形）として描き、中の要素を枠の中に示す（8.2.3.5 の package の記法、ADR-0005） */
         }
+        requirement def <'F-VIEW-16'> EdgeShapeReq {
+            doc /* すべての図で、線の形を手で調整できる。線を選ぶと曲がり角と区間の中ほどにつまみを出し、区間の中ほどのつまみを動かすと曲がり角を足し、
+                   曲がり角のつまみを動かすと曲がり角を動かし、続けて 2 回押す（ダブルクリック）と消す。インスペクタの「線の形を元に戻す」で、曲がり角と付け替えた端をすべて消す。
+                   線の端のつまみを、同じ要素の別の縁や接続点へ動かすと、端をそこへ付け替える。調整した線の形は配置ファイルに残し（ADR-0005）、要素を動かしても曲がり角は動かさない。
+                   エクスポートした SVG と draw.io にも、調整した形で書く。テキストは変えない */
+        }
+        requirement def <'F-VIEW-17'> TabsPerFileReq {
+            doc /* 図のタブは、ファイルごとに持つ。ファイルを切り替えると、そのファイルで最後に開いていたタブと表示中の図に戻り、初めて開くファイルは「すべて」の図から始める。
+                   ファイルごとのタブはブラウザに記憶する。表示中の図にそのファイルの要素が無いときも、別の図に切り替えずに開いたままにし、
+                   要素が無いことと、ほかの図をタブの「＋」から開けることを示し、「すべて」の図を開くボタンを添える */
+        }
         requirement def <'F-VIEW-4'> CanvasReq {
-            doc /* 拡大縮小・移動・範囲選択・複数選択と整列・全体図（ミニマップ）・右クリックメニューを使える */
+            doc /* 拡大縮小・移動・範囲選択・複数選択と整列・全体図（ミニマップ）・右クリックメニューを使える。
+                   インスペクタを開くと全体図はその上に移り、幅 390px の画面でも拡大縮小のボタン（「全体図」まで）に重ならない */
         }
         requirement def <'F-VIEW-5'> TreeReq {
             doc /* モデルの要素をツリーで一覧・絞り込みし、選ぶと図とテキストの対応箇所を示す */
@@ -183,7 +255,8 @@ package ModelithRequirements {
 
         // ---- ファイル ----------------------------------------------
         requirement def <'F-FILE-1'> OpenFolderReq {
-            doc /* ローカルのフォルダを開き、中の .sysml / .kerml ファイルをエクスプローラーにツリーで表示する */
+            doc /* ローカルのフォルダを開き、中の .sysml / .kerml ファイルをエクスプローラーにツリーで表示する。
+                   モデルのファイルを含むフォルダと、中が空のフォルダ（作ったばかりのフォルダ）を並べ、モデルのファイルの無いフォルダは並べない */
         }
         requirement def <'F-FILE-2'> OpenSaveReq {
             doc /* ファイルを開いて編集し、元のファイルに上書き保存できる（Ctrl+S）。
@@ -206,7 +279,8 @@ package ModelithRequirements {
                    図の配置（要素の位置）を保存する隣の配置ファイルも同じ（読んだときの版と比べ、変わっていれば同じ選択を出す。まだ無ければ作る） */
         }
         requirement def <'F-FILE-8'> ExternalChangeReq {
-            doc /* 画面に戻ったとき、未保存の変更が無いファイルは、他のアプリでの変更を読み直す */
+            doc /* 画面に戻ったとき、開いているファイルを確かめ、他のアプリで変わっていれば、未保存の変更が無いファイルは読み直し、あるファイルは読み直さずに印を付ける。
+                   表示中のファイルに限らず、読み直したファイルと印を付けたファイルの名前を 1 回の知らせにまとめて示す（印を付けたファイルは、初めて印を付けたときだけ） */
         }
         requirement def <'F-FILE-9'> RecentFolderReq {
             doc /* 前回開いたフォルダを、ブラウザの許可を得て再び開ける */
@@ -225,6 +299,43 @@ package ModelithRequirements {
         requirement def <'F-FILE-13'> ResumeSessionReq {
             doc /* 起動すると、前回の続き（開いていたフォルダとファイル、表示していたファイル、図のタブ）から始める。フォルダを読み直すのにブラウザの許可が要るときは、サンプルの代わりに「前回の続きを開く」を示し、1 回の操作で戻れる。設定で、起動時にサンプルを開くようにもできる */
         }
+        requirement def <'F-FILE-15'> MultiFileModelReq {
+            doc /* フォルダを開いているときは、フォルダの中の .sysml・.kerml のすべてを 1 つのモデルとして扱う（ADR-0021）。
+                   ほかのファイルの一番上の要素はその名前で、パッケージの中の要素は import（P::A・P::*・P::**）か修飾名で使え、「見つかりません」と出さない。
+                   図からほかの package の要素への関係を足すときは、import で見えていれば名前だけで、見えていなければ修飾名で書く。
+                   private の要素と private import で取り込んだ名前は、ほかのファイルへ見せない（SysML v2 8.2.2.5）。
+                   図には、表示中のファイルの要素と、それが参照するほかのファイルの要素だけを、どのファイルのものかが分かるように描く。
+                   ほかのファイルに書いた図・関係・問題は、表示中のファイルの図と問題に混ぜない。
+                   ほかのファイルの要素を図から書き換えようとしたら、書き換えずに、どのファイルにあるかを知らせ、そのファイルを開けるようにする */
+        }
+        requirement def <'F-FILE-16'> ProjectProblemsReq {
+            doc /* フォルダを開いているときは、問題一覧に、表示中のファイルの問題に続けて、フォルダの中のほかのファイルの問題をファイルごとに並べる（ADR-0021 §6）。
+                   ほかのファイルの問題も、そのファイルを中心にしたモデル（ほかのファイルとつないだもの）で数える。行を押すと、そのファイルを開いて該当の行へ移る。
+                   ファイルの一覧で、エラーのあるファイルの名前を赤く、警告だけのファイルの名前を黄色くし、件数を添える。エラーのあるファイルを中に持つフォルダにも印を付ける */
+        }
+        requirement def <'F-FILE-17'> PreviewOpenReq {
+            doc /* フォルダの一覧でファイルを 1 回クリックすると、仮に開く（開いているファイルの一覧で名前を斜体にする）。続けて別のファイルを 1 回クリックすると、
+                   仮に開いていたファイルと置き換え、開いているファイルの一覧が増え続けないようにする。仮に開いたファイルは、編集する・フォルダの一覧でダブルクリックする・
+                   開いているファイルの一覧でダブルクリックすると、開いたままにする（置き換えない）。未保存の変更のあるファイルは置き換えない。
+                   ページを読み込み直したときは、開いていたファイルを開いたままのものとして戻す（仮に開いたことは覚えない） */
+        }
+        requirement def <'F-FILE-18'> EditStartCheckReq {
+            doc /* 保存先のあるファイルを、未保存の変更が無い状態から編集し始めたとき（テキストの入力・図の操作）、開いた後に他のアプリで変わっていないかを確かめる。
+                   変わっていれば、ファイル名を示して、読み直す（いま入力した変更は捨てる）か、このまま編集する（保存するときに F-FILE-7 で選ぶ）かを選ばせる。
+                   画面に戻ったときの確かめ（F-FILE-8）が働かない場合（Modelith を表示したまま、ほかのアプリでファイルが変わった）にも、古い中身に編集を重ねないため */
+        }
+        requirement def <'F-FILE-19'> FileListMenuReq {
+            doc /* フォルダを開いているとき、ファイルの一覧のファイルとフォルダを右クリックすると、メニューを出す。
+                   ファイル：開く・名前の変更・削除・パスのコピー・相対パスのコピー。フォルダ：新しいファイル・新しいフォルダ・名前の変更・削除・パスのコピー・相対パスのコピー。
+                   名前は、選んでいるファイル（表示中のファイル）の名前をもう一度クリック・F2・メニューの「名前の変更」で、一覧の中で書き換える（Enter で決め、Esc でやめる）。
+                   使えない名前（空・「/」などを含む・同じ場所に同じ名前がある）は、理由を示して決めさせない。同じ名前は、一覧に出ないファイル（readme.md・配置ファイルなど）とも比べる。
+                   フォルダには、配置ファイルの名前（「.layout.json」で終わる名前）を付けさせない（モデルのファイルの配置を保存できなくなるため）。
+                   名前の変更では、開いているファイル（未保存の変更もそのまま）と、隣の配置ファイル（名前.layout.json）・ファイルごとの図のタブの記憶も合わせて移す。
+                   新しい名前の配置ファイルが既にあれば（ほかのファイルの配置を取り違えないよう）、何も動かさずに理由を示す。
+                   フォルダの名前の変更では、中のファイルをすべて新しい名前のフォルダへ写してから、古いフォルダを消す。
+                   削除は、消すものの名前と、元に戻せないことを示して確かめてから行い、隣の配置ファイルも消し、開いていたファイルを閉じる。未保存の変更があればそのことも示す。
+                   パスのコピーは開いたフォルダの名前から始まるパス（ブラウザはパソコンの中のフォルダの場所を教えないため）、相対パスのコピーはフォルダの中からのパスをクリップボードに入れる */
+        }
         requirement def <'F-FILE-14'> NoOpenFileReq {
             doc /* 最後のファイルを閉じても、新しいファイルを勝手に作らない。開いているファイルが無いときは、そのことと、新しいファイル・ファイルを開く・サンプルを開く操作を示す。すべて閉じて終えたら、次に開いたときもファイルを開いていない状態から始める */
         }
@@ -237,6 +348,19 @@ package ModelithRequirements {
         requirement def <'F-EXP-2'> DrawioExportReq {
             doc /* 「ファイル」メニューの「エクスポート…」で、ファイル名と形式（draw.io）を選び、表示中の図を draw.io で開ける .drawio のファイルとしてダウンロードできる。
                    ファイル名の決め方と、開いているファイルが無いときの扱いは F-EXP-1 と同じ */
+        }
+        requirement def <'F-EXP-3'> RasterExportReq {
+            doc /* 「エクスポート…」で形式に PNG 画像・JPEG 画像を選ぶと、表示中の図を、倍率（1 倍・2 倍・3 倍）を選んで画像のファイルとしてダウンロードできる。
+                   ブラウザが扱える画像の大きさを超えるときは、倍率を下げて書き出し、そのことを知らせる。ファイル名の決め方と、開いているファイルが無いときの扱いは F-EXP-1 と同じ */
+        }
+        requirement def <'F-EXP-4'> ExportRangeReq {
+            doc /* 画像の形式（SVG・PNG・JPEG）では、範囲（図の全体・選んだ要素）と背景（白・透明。JPEG は白だけ）を選べる。
+                   選んだ要素の範囲は、選んだ要素とその中の要素、それらの間の線だけを描く。要素を選んでいないときと、シーケンス図では、図の全体だけを選べる */
+        }
+        requirement def <'F-EXP-5'> ImageCopyReq {
+            doc /* 「エクスポート…」の「画像をコピー」で、選んだ範囲・倍率・背景の図を PNG 画像としてクリップボードに入れ、ほかのアプリに貼り付けられる。
+                   コピーできないときは、理由（ブラウザが画像のコピーに対応していない・クリップボードへの書き込みを許さなかった）を分けて示し、
+                   代わりにファイルとしてエクスポートできることを知らせる */
         }
 
         // ---- プラグイン（ADR-0004・ADR-0018） -------------------------
@@ -282,6 +406,22 @@ package ModelithRequirements {
         requirement def <'F-PROJ-2'> SettingsLevelReq {
             doc /* 設定は「このプロジェクトの設定」（チームで共有。結果に効くもの）と「自分の設定」（このブラウザ。見た目と操作の好み）の 2 段だけにし、1 つの項目はどちらか一方にだけ属する */
         }
+        requirement def <'F-PROJ-4'> DeleteFolderReq {
+            doc /* 開いているフォルダを、中身ごとパソコンから削除できる。取り返しがつかないので 2 回確かめる。
+                   1 回目は、フォルダの名前・中のすべて（モデルのファイル以外も）が消えること・元に戻せないこと・失われる未保存の変更を示す。
+                   2 回目は、フォルダの名前を入力してもらい、合っていたときだけ削除する。
+                   削除したら、そのフォルダのファイルを閉じ、フォルダを閉じて、プロジェクトの一覧から外す。
+                   ブラウザがフォルダそのものの削除に対応していなければ、何も消さずにそのことを知らせる */
+        }
+        requirement def <'F-PROJ-3'> ProjectListReq {
+            doc /* 開いたフォルダを、最後に開いた順に 10 件まで覚え、プロジェクトの一覧として示す（プロジェクトならプロジェクト名も）。
+                   一覧から選んで開き（ブラウザの許可が要れば求める）、開いているフォルダを別のフォルダに切り替えられる。
+                   一覧から外せる（フォルダとその中身は消さない）。開いているフォルダを閉じられる。
+                   切り替えても閉じても、開いているファイルは開いたまま残す（未保存の変更を失わないため）。
+                   開けなかった（移動・削除された）フォルダは、そのことを知らせる。
+                   一覧は、フォルダを開いていないときのエクスプローラー、開いているフォルダの見出し（名前の横の ▾。押せることが見た目で分かるようにする）、
+                   ファイルメニューの「最近開いたフォルダ」から選べ、「フォルダを閉じる」はファイルメニューと見出しのメニューにある */
+        }
 
         // ---- 文書へのリンク（ADR-0019） --------------------------------
         requirement def <'F-LINK-1'> DocumentLinkReq {
@@ -289,6 +429,56 @@ package ModelithRequirements {
         }
         requirement def <'F-LINK-2'> LinkCheckReq {
             doc /* 保留：0.2.0 以降（ADR-0019。F-LINK-1 の後）。プロジェクトの中のファイルへのリンクが切れていたら、問題一覧に示す */
+        }
+
+        // ---- AI との連携（ADR-0024。0.3.0 から） -----------------------
+        requirement def <'F-AI-1'> McpReadReq {
+            doc /* 予定：0.3.0。AI のクライアントが MCP で、フォルダ（プロジェクト）のファイル一覧・要素の一覧（種類・修飾名・定義の位置）・要素の中身・図の一覧と、問題一覧（チェックルールの結果を含む）を得られる */
+        }
+        requirement def <'F-AI-2'> McpWriteReq {
+            doc /* 予定：0.3.0。AI のクライアントが MCP で、画面と同じ編集の意図（要素や関係の追加・名前の変更・削除・説明）を、要素を修飾名で指して渡せる。
+                   書き換えは TextEdit としてテキストに入り（ADR-0001）、既定では差分を見せて利用者が受け入れてから書く。確かめずに書くかは設定で選ぶ */
+        }
+        requirement def <'F-AI-3'> HeadlessExportReq {
+            doc /* 予定：0.3.0。画面を開かずに、CLI と MCP から、.sysml と図の名前を指定して SVG・PNG・draw.io を書き出せる。画面と同じ図が出る */
+        }
+        requirement def <'F-AI-4'> CliDistributionReq {
+            doc /* 予定：0.3.0。CLI と MCP を、npm のパッケージ・リリースに付けた実行ファイル（macOS・Windows・Linux）・cargo install のどれでも入れられる。版は本体と同じ */
+        }
+
+        // ---- サーバ（ADR-0025。0.5.0 から） ----------------------------
+        requirement def <'F-SRV-1'> ServerStorageReq {
+            doc /* 予定：0.5.0。自分で動かしたサーバにプロジェクトを置き、プロジェクトの一覧から選んで開き、保存できる。ブラウザのタブごとに別のプロジェクトを開ける。
+                   サーバが無くても、ほかの機能はすべて使える（C-4） */
+        }
+        requirement def <'F-SRV-2'> ServerLoginReq {
+            doc /* 予定：0.5.0。サーバに、管理者が作るアカウントと OIDC でログインできる。既定の合言葉は無く、最初の管理者は 1 回だけ使える設定用のリンクで作る。
+                   合言葉は Argon2id で保存し、失敗が続けば止め、2 段階の確認（TOTP）を使える。OIDC を有効にしたら、合言葉でのログインを非常用の管理者だけに絞れる */
+        }
+        requirement def <'F-SRV-3'> ServerTransportReq {
+            doc /* 予定：0.5.0。サーバとの通信は既定で HTTPS・WSS にする。サーバはアプリも一緒に配り、外のネットワークに出られない環境では、社内の証明書・自己署名の証明書・暗号化しない HTTP（そのことを画面に示す）でも使える */
+        }
+        requirement def <'F-SRV-4'> ShareRolesReq {
+            doc /* 予定：0.6.0。プロジェクトにほかの人を、期限付きで 1 回だけ使えるリンクで招き、役割（持ち主・編集・閲覧）を付けられる。閲覧の人は書き換えられない */
+        }
+
+        // ---- 利用状況と不具合の報告（ADR-0026。0.3.0 から） ----------------
+        requirement def <'F-TEL-1'> UsageDataReq {
+            doc /* 予定：0.3.0。利用状況とエラーを、既定で Modelith の受け口に送る。初めて使うときに一度知らせ、「すべて送る」「エラーだけ」「送らない」から選べ、送る中身を画面で確かめられる。
+                   モデルの中身・名前・ファイル名・パスは送らず、端末に ID を残さない。まとめて日に 1 回送り、エラーだけは起きたときに送る。サーバは環境変数と DO_NOT_TRACK で止められる */
+        }
+        requirement def <'F-TEL-2'> BugReportReq {
+            doc /* 予定：0.3.0。「ヘルプ」の「不具合を報告」から、版と環境を書き込んだ報告の下書きを開き、中身を見てから送れる。モデルの中身は書き込まない */
+        }
+
+        // ---- 言語（ADR-0027。0.3.0 で土台、0.4.0 で英語） -------------------
+        requirement def <'F-L10N-1'> LanguageChoiceReq {
+            doc /* 予定：0.4.0。画面の言語を、ブラウザの言語の設定から自動で選ぶ（辞書のある言語が無ければ英語）。「設定」で「自動」か言語を 1 つ選び直せ、選んだ言語はこのブラウザに残る。
+                   言語は画面の文言だけを変え、モデルのテキスト・要素の名前・ファイル名は変えない */
+        }
+        requirement def <'F-L10N-2'> LocalizedProblemsReq {
+            doc /* 予定：0.4.0。問題一覧と設定ファイルのエラーの文が、選んだ言語で出る。画面・CLI・MCP で同じ問題には同じ文が出る。
+                   問題の種類のコードと値は言語によらず同じで、AI とプラグインはコードで判断できる。CLI と MCP の言語は、引数か OS の言語の設定（LC_ALL・LC_MESSAGES・LANG）で決まり、無ければ英語 */
         }
 
         // ---- 品質 --------------------------------------------------
@@ -341,7 +531,8 @@ package ModelithRequirements {
             doc /* モデルの正本はテキストだけとする。図の中身は標準の view としてテキストに、配置はテキストの隣の配置ファイルに保存する（ADR-0001・ADR-0005） */
         }
         requirement def <'C-2'> PrivacyReq {
-            doc /* 利用者のモデルや操作の情報を、利用者が選んだ保存先（手元のファイル、利用者自身のクラウドストレージ）以外に送らない。フォントなども同梱し、外部の CDN やアクセス解析を使わない。クラウドを使わない利用者は、配信元以外と通信しない（ADR-0012） */
+            doc /* 利用者のモデルや操作の情報を、利用者が選んだ保存先（手元のファイル、利用者自身のクラウドストレージ、利用者が選んだ Modelith のサーバ）以外に送らない。フォントなども同梱し、外部の CDN やアクセス解析を使わない。
+                   外へ出る通信は、マニュアルの一覧に載せたものだけにし、どれも止められる（利用状況とエラーの送信は ADR-0026 に従う。ADR-0012・ADR-0025） */
         }
         requirement def <'C-3'> SourceOfferReq {
             doc /* 動いている版（ビルドしたコミット）のソースコードへのリンクを画面に示す（AGPL 第 13 条） */
@@ -359,6 +550,11 @@ package ModelithRequirements {
         requirement def <'C-8'> StageNoticeReq {
             doc /* 正式版の前（alpha・beta・rc）は、見出しと「ヘルプ」に、動いている版の開発段階を示す。段階は版の名前から決め、正式版では示さない */
         }
+        requirement def <'C-10'> ReleaseChannelReq {
+            doc /* 安定版（最新の正式版、無ければ最新の rc）・リリース候補版（正式版がまだ出ていない最新の rc）・プレビュー版（最も新しい版）を、別の URL で同時に公開する。
+                   新しい版を公開しても、ほかの系列の URL の画面は変えない。リリース候補版が無いときは、その URL に安定版への案内を置く。
+                   3 つの系列のブラウザの保存（前回の続き・下書き・設定・プラグインの許可・フォルダの許可）は分け、新しい版が書いた形式を古い版に読ませない（ADR-0020・ADR-0022） */
+        }
         requirement def <'C-9'> ContentPolicyReq {
             doc /* 配信する画面に Content-Security-Policy を付け、配信元以外との通信・外から読み込むスクリプト・インラインのスクリプトを、
                    ブラウザの仕組みで止める。エスケープの漏れが 1 つあっても、それだけでは任意のスクリプトが動かないようにする（C-2 の機械的な裏付け） */
@@ -366,12 +562,16 @@ package ModelithRequirements {
         requirement def <'C-11'> CrossVersionFileReq {
             doc /* 同じフォルダを新しい版の Modelith でも開くので、新しい版が書いた配置ファイルを黙って壊さない（ADR-0023）。
                    この版の知らない項目は、保存するときにそのまま書き戻す。読めない配置ファイルと、この版の知らない機能（requires）を含む配置ファイルは、
-                   開いたときにそのことを知らせ、要素を動かしても保存しない。そのファイルを保存したときは、図の配置は保存していないことも知らせる
+                   開いたときにそのことを知らせ、要素を動かしても保存しない。JSON としては読めても、ビューの並び（views）やビューが配列や文字列・座標が 2 つの数でないなど、
+                   この版の知っている項目の形が違うものも、読めない配置ファイルとして扱う（黙って読み飛ばして、保存で消さない）。
+                   そのファイルを保存したときは、図の配置は保存していないことも知らせる
                    （動かした位置は残す場所が無いので、ほかのファイルへ切り替えると配置ファイルの位置に戻る）。
                    形式（format）が数でないものは、対応しない版の数と取り違えないよう「形式の書き方が違う」と知らせる。中身の無い配置ファイル（空・{}）は、失うものが無いので保存してよい。
+                   開いた後に他のアプリが配置ファイルを書き換え、保存のときに「上書きする」を選んだときも、今のファイルを読み直して同じように扱う。
                    ブラウザに置く下書きの一覧にある、この版の知らない形の記録（知らない項目を足した下書きを含む）も、使わないが消さず、起動したときに知らせる。
                    下書きの一覧そのものがこの版の知らない形なら、書き換えずに残し、この版の下書きを残せないことを知らせる。
-                   前回のフォルダの記録（IndexedDB）が新しい版の形なら、消さずに残し、使えないことを知らせる */
+                   前回のフォルダの記録（IndexedDB）が新しい版の形なら、消さずに残し、使えないことを知らせる。
+                   古い版が残すだけでは中身が食い違う機能（線の調整は edge-shapes）を使った配置ファイルには、その名前を requires に書き、使わなくなったら外す */
         }
         requirement def <'C-6'> NoSilentWriteReq {
             doc /* 利用者の SysML ファイルには、利用者が操作したときにだけ書き込む。配置など Modelith 独自の情報は、テキストに書かない（ADR-0005）。
@@ -379,6 +579,18 @@ package ModelithRequirements {
         }
 
         // ---- 導出 --------------------------------------------------
+        #derivation dependency from McpReadReq to CollaborateNeed;
+        #derivation dependency from McpWriteReq to CollaborateNeed;
+        #derivation dependency from HeadlessExportReq to ExportNeed;
+        #derivation dependency from CliDistributionReq to CollaborateNeed;
+        #derivation dependency from ServerStorageReq to CollaborateNeed;
+        #derivation dependency from ServerLoginReq to CollaborateNeed;
+        #derivation dependency from ServerTransportReq to SafetyNeed;
+        #derivation dependency from ShareRolesReq to CollaborateNeed;
+        #derivation dependency from UsageDataReq to FeedbackNeed;
+        #derivation dependency from BugReportReq to FeedbackNeed;
+        #derivation dependency from LanguageChoiceReq to LanguageNeed;
+        #derivation dependency from LocalizedProblemsReq to LanguageNeed;
         #derivation dependency from TextToDiagramReq to EditBothWaysNeed;
         #derivation dependency from DiagramToTextReq to EditBothWaysNeed;
         #derivation dependency from NewPackageGuideReq to EditBothWaysNeed;
@@ -388,6 +600,7 @@ package ModelithRequirements {
         #derivation dependency from RenameReq to EditBothWaysNeed;
         #derivation dependency from UndoReq to SafetyNeed;
         #derivation dependency from ProblemsReq to EditBothWaysNeed;
+        #derivation dependency from ProblemCopyReq to EditBothWaysNeed;
         #derivation dependency from ProblemLevelReq to EditBothWaysNeed;
         #derivation dependency from ParseParityReq to EditBothWaysNeed;
         #derivation dependency from BuiltInViewsReq to ViewsNeed;
@@ -395,10 +608,18 @@ package ModelithRequirements {
         #derivation dependency from LayoutReq to ViewsNeed;
         #derivation dependency from UnsavedLayoutReq to SafetyNeed;
         #derivation dependency from StandardViewReq to ViewsNeed;
+        #derivation dependency from EditDetailsReq to EditBothWaysNeed;
         #derivation dependency from CreateViewReq to ViewsNeed;
+        #derivation dependency from ViewListReq to ViewsNeed;
+        #derivation dependency from BlockDiagramReq to ViewsNeed;
+        #derivation dependency from InterconnectionDiagramReq to ViewsNeed;
+        #derivation dependency from ActivityDiagramReq to ViewsNeed;
+        #derivation dependency from RequirementDiagramReq to ViewsNeed;
         #derivation dependency from PackageFrameReq to ViewsNeed;
         #derivation dependency from SequenceReq to ViewsNeed;
         #derivation dependency from CanvasReq to ViewsNeed;
+        #derivation dependency from EdgeShapeReq to ViewsNeed;
+        #derivation dependency from TabsPerFileReq to ViewsNeed;
         #derivation dependency from TreeReq to ViewsNeed;
         #derivation dependency from PhaseReq to TraceNeed;
         #derivation dependency from TraceGapReq to TraceNeed;
@@ -416,6 +637,11 @@ package ModelithRequirements {
         #derivation dependency from CloudReq to FilesNeed;
         #derivation dependency from ResumeSessionReq to FilesNeed;
         #derivation dependency from NoOpenFileReq to FilesNeed;
+        #derivation dependency from MultiFileModelReq to FilesNeed;
+        #derivation dependency from ProjectProblemsReq to FilesNeed;
+        #derivation dependency from PreviewOpenReq to FilesNeed;
+        #derivation dependency from EditStartCheckReq to SafetyNeed;
+        #derivation dependency from FileListMenuReq to FilesNeed;
         #derivation dependency from SvgExportReq to ExportNeed;
         #derivation dependency from RuleCheckReq to ExtendNeed;
         #derivation dependency from RuleParityReq to ExtendNeed;
@@ -429,9 +655,15 @@ package ModelithRequirements {
         #derivation dependency from ProjectReq to FilesNeed;
         #derivation dependency from ProjectReq to ExtendNeed;
         #derivation dependency from SettingsLevelReq to ExtendNeed;
+        #derivation dependency from ProjectListReq to FilesNeed;
+        #derivation dependency from DeleteFolderReq to FilesNeed;
+        #derivation dependency from DeleteFolderReq to SafetyNeed;
         #derivation dependency from DocumentLinkReq to TraceNeed;
         #derivation dependency from LinkCheckReq to TraceNeed;
         #derivation dependency from DrawioExportReq to ExportNeed;
+        #derivation dependency from RasterExportReq to ExportNeed;
+        #derivation dependency from ExportRangeReq to ExportNeed;
+        #derivation dependency from ImageCopyReq to ExportNeed;
         #derivation dependency from ResponsiveReq to EditBothWaysNeed;
         #derivation dependency from NarrowScreenReq to AnywhereNeed;
         #derivation dependency from LookReq to AnywhereNeed;
@@ -450,6 +682,7 @@ package ModelithRequirements {
         #derivation dependency from StaticHostingReq to AnywhereNeed;
         #derivation dependency from LegalNoticeReq to OpenSourceNeed;
         #derivation dependency from StageNoticeReq to SafetyNeed;
+        #derivation dependency from ReleaseChannelReq to SafetyNeed;
         #derivation dependency from ContentPolicyReq to SafetyNeed;
         #derivation dependency from StaticHostingReq to OpenSourceNeed;
     }
@@ -503,6 +736,18 @@ package ModelithRequirements {
         part def AppShell {
             doc /* 起動・メニュー・ヘッダー・配信の設定（web/src/main.ts・vite.config.ts・Pages） */
         }
+        part def McpServer {
+            doc /* AI のクライアントとやり取りする MCP のサーバ（予定：0.3.0。ADR-0024） */
+        }
+        part def Server {
+            doc /* 自分で動かせる共同編集のサーバ（予定：0.5.0。modelith-server。ADR-0025） */
+        }
+        part def UsageReporter {
+            doc /* 利用状況とエラーの送信（予定：0.3.0。ADR-0026） */
+        }
+        part def Messages {
+            doc /* 問題の文を言語ごとの辞書で作る層（予定：0.3.0。crates/modelith-messages。コアは言語を知らない。ADR-0027） */
+        }
 
         part def Modelith {
             part core : Core;
@@ -518,6 +763,10 @@ package ModelithRequirements {
             part plugins : PluginHost;
             part cli : Cli;
             part project : Project;
+            part mcp : McpServer;
+            part server : Server;
+            part usage : UsageReporter;
+            part messages : Messages;
         }
 
         satisfy TextToDiagramReq by TextEditor;
@@ -527,9 +776,13 @@ package ModelithRequirements {
         satisfy WordHelpReq by TextEditor;
         satisfy PhoneTextReq by TextEditor;
         satisfy RenameReq by DiagramUI;
+        satisfy EditDetailsReq by DiagramUI;
         satisfy UndoReq by TextEditor;
         satisfy ProblemsReq by TextEditor;
+        satisfy ProblemCopyReq by TextEditor;
+        satisfy ProblemLevelReq by Core;
         satisfy ProblemLevelReq by AppShell;
+        satisfy ProblemLevelReq by Cli;
         satisfy ParseParityReq by Core;
         satisfy BuiltInViewsReq by DiagramUI;
         satisfy ViewTabsReq by DiagramUI;
@@ -537,12 +790,19 @@ package ModelithRequirements {
         satisfy UnsavedLayoutReq by Workspace;
         satisfy StandardViewReq by DiagramUI;
         satisfy CreateViewReq by DiagramUI;
+        satisfy ViewListReq by DiagramUI;
+        satisfy BlockDiagramReq by DiagramUI;
+        satisfy InterconnectionDiagramReq by DiagramUI;
+        satisfy ActivityDiagramReq by DiagramUI;
+        satisfy RequirementDiagramReq by DiagramUI;
         satisfy PackageFrameReq by DiagramUI;
         satisfy SequenceReq by DiagramUI;
         satisfy NoSilentWriteReq by Workspace;
         satisfy CrossVersionFileReq by Workspace;
         satisfy TrademarkReq by AppShell;
         satisfy CanvasReq by DiagramUI;
+        satisfy EdgeShapeReq by DiagramUI;
+        satisfy TabsPerFileReq by DiagramUI;
         satisfy TreeReq by DiagramUI;
         satisfy PhaseReq by Core;
         satisfy TraceGapReq by Core;
@@ -561,6 +821,16 @@ package ModelithRequirements {
         satisfy CloudReq by CloudProvider;
         satisfy ResumeSessionReq by Workspace;
         satisfy NoOpenFileReq by Workspace;
+        satisfy MultiFileModelReq by Core;
+        satisfy MultiFileModelReq by Workspace;
+        satisfy ProjectProblemsReq by Core;
+        satisfy ProjectProblemsReq by AppShell;
+        satisfy PreviewOpenReq by Workspace;
+        satisfy PreviewOpenReq by AppShell;
+        satisfy EditStartCheckReq by Workspace;
+        satisfy EditStartCheckReq by AppShell;
+        satisfy FileListMenuReq by Workspace;
+        satisfy FileListMenuReq by AppShell;
         satisfy SvgExportReq by Exporter;
         satisfy RuleCheckReq by RuleEngine;
         satisfy RuleParityReq by Cli;
@@ -574,9 +844,17 @@ package ModelithRequirements {
         satisfy MissingPluginReq by PluginHost;
         satisfy ProjectReq by Project;
         satisfy SettingsLevelReq by Project;
+        satisfy ProjectListReq by LocalFolderProvider;
+        satisfy ProjectListReq by AppShell;
+        satisfy DeleteFolderReq by LocalFolderProvider;
+        satisfy DeleteFolderReq by Workspace;
+        satisfy DeleteFolderReq by AppShell;
         satisfy DocumentLinkReq by DiagramUI;
         satisfy LinkCheckReq by RuleEngine;
         satisfy DrawioExportReq by Exporter;
+        satisfy RasterExportReq by Exporter;
+        satisfy ExportRangeReq by Exporter;
+        satisfy ImageCopyReq by Exporter;
         satisfy ResponsiveReq by Core;
         satisfy NarrowScreenReq by AppShell;
         satisfy LookReq by AppShell;
@@ -595,7 +873,21 @@ package ModelithRequirements {
         satisfy StaticHostingReq by AppShell;
         satisfy LegalNoticeReq by AppShell;
         satisfy StageNoticeReq by AppShell;
+        satisfy ReleaseChannelReq by AppShell;
         satisfy ContentPolicyReq by AppShell;
+        satisfy McpReadReq by McpServer;
+        satisfy McpWriteReq by McpServer;
+        satisfy HeadlessExportReq by Cli;
+        satisfy HeadlessExportReq by McpServer;
+        satisfy CliDistributionReq by Cli;
+        satisfy ServerStorageReq by Server;
+        satisfy ServerLoginReq by Server;
+        satisfy ServerTransportReq by Server;
+        satisfy ShareRolesReq by Server;
+        satisfy UsageDataReq by UsageReporter;
+        satisfy BugReportReq by AppShell;
+        satisfy LanguageChoiceReq by AppShell;
+        satisfy LocalizedProblemsReq by Messages;
     }
 
     // =================================================================
@@ -622,8 +914,12 @@ package ModelithRequirements {
             }
         }
         verification def SpecCasesTest {
-            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render・package を枠にする expose・誤った表示の修正：rep・assert not・assume・verify・viewpoint の frame・まだ扱えない構文の本体・修飾名・alias・alpha.7 で読むようにした構文：case・actor・include use case・enum の使用・event occurrence・timeslice・snapshot・typed by・constant・variant・viewpoint・rendering・metadata about・利用者定義のキーワード・satisfy の書き方・名前付きの制約の参照・標準ライブラリの型の名前、alpha.8 で描くようにした特殊化・部分集合・再定義・参照・依存の線と多重度、単独の connect・n 項の接続・結び付け・割り当て・flow def と名前付きのフロー、値の種類（=・:=・default）・individual、alpha.9 で読むようにしたアクションの節（fork・join・merge・decide・send・accept・assign・terminate・if・while・for）・継起（first … then・then・if … then・else）・succession flow と、見つからない継起の相手、遷移のトリガ・via・ガード・効果・名前と状態の中の省略形の遷移・最初の遷移・見つからない遷移の相手・状態の entry・do・exit と parallel、then event occurrence の継起・ビューの filter の and・or・xor・not・括弧と istype・hastype・render の合成形と rendering の参照・シナリオの順序の見つからない相手と循環・3 段以上の特徴量の連鎖とその見つからない段、alpha.10 で直した誤った表示：true・false・not で始まる結果の式・本体付きの式（->collect{…}）・KerML の宣言・依存と別名の本体の注釈・メタデータの本体の再定義の形（:>> x = 1）・交差（=>・crosses）・キーワードの無い特性と ref r;・名前付きの流れるもの・定義の中の型の無い部品を端にした接続と流れ・宣言する形の satisfy・verify と視点の satisfy・共役のポートの定義の名前（Pt::'~Pt'）・メタクラスのライブラリの型、alpha.10 で読むようにした from を省いた flow・succession flow・message と connect を省いた interface・既にある要素を指す perform・exhibit・frame）。期待値は仕様から手で書く（ADR-0013）。Rust のパーサとモデル構築で動かす（ADR-0015・ADR-0016）。web/src/app/geometry.test.ts：package の枠の大きさ（中の要素と中の枠を囲む）・区画の属性の行（多重度と特殊化の相手）・線の端の多重度の位置・特殊化した定義を下の段に置く配置・n 項の接続の点の位置・中の部品を囲む部品の矩形と、中の部品を縦に積む配置・区画の初期値と既定値（:=・default）・見出しの «individual …»・メモの本文の行と高さと、注釈する要素の近くに置く配置。web/src/app/svg.test.ts・export.test.ts：線の種類ごとの破線と矢印（8.2.3。割り当て・結び付け・n 項の接続・メモの破線を含む）と、メモの記号（角を折った四角）と、draw.io の線の形。web/src/app/notes.test.ts：一般ビューに、図に出した要素を注釈するメモと線を足す。web/src/app/annotations.test.ts：インスペクタのメモと別の言語での表し方（comment・rep）。web/src/app/ibd.test.ts：内部ブロック図の中身（流れと接続・名前付きのフローのラベル・結び付け・n 項の接続の点・部品の中の部品と、部品の型の中の線）と、その線の ID で Rust のコアが同じ線を消せること。web/src/app/action-flow.test.ts：アクティビティ図の中身（要素・継起とガードのラベル・順序付きの流れ）、記号（開始・終了・棒・ひし形・五角形・角の丸い四角）と線の記法（8.2.3.17）、継起の向きの段で上から並べる配置、図から引ける順序の線、要素の画面の言葉。web/src/app/state-machine.test.ts：状態遷移図の中身（状態・入れ子の状態・開始と終了の記号・遷移と トリガ [ガード] / 効果 のラベル・並行の領域）、記号（角の丸い四角と entry・do・exit の区画・塗った丸・丸の中の塗った丸・領域を区切る破線）と大きさ、本体ごとに遷移の向きに左から並べる配置と座標の無い状態の置き方、図から引ける遷移、名前の変更でのキーの付け替え、画面の言葉。export.test.ts：アクティビティ図・状態遷移図の draw.io の図形と線。web/src/app/sequence.test.ts：シーケンス図の中身（ライフライン・段の順のメッセージ・イベントとその札・イベントの間の順序の線・段の数）と記法（白抜きの丸・破線と開いた矢印・丸の縁までのメッセージ、8.2.3.9）、draw.io のイベントの図形。ibd.test.ts と geometry.test.ts：3 段以上の連鎖の端の部品と、入れ子の部品の高さと幅 */
+            doc /* web/src/core/spec.test.ts：SysML v2 仕様に合わせるケース（前置メタデータ・部分集合と再定義・引用名と短い名前・まだ扱えない文の通知・view と expose・filter・render・package を枠にする expose・誤った表示の修正：rep・assert not・assume・verify・viewpoint の frame・まだ扱えない構文の本体・修飾名・alias・alpha.7 で読むようにした構文：case・actor・include use case・enum の使用・event occurrence・timeslice・snapshot・typed by・constant・variant・viewpoint・rendering・metadata about・利用者定義のキーワード・satisfy の書き方・名前付きの制約の参照・標準ライブラリの型の名前、alpha.8 で描くようにした特殊化・部分集合・再定義・参照・依存の線と多重度、単独の connect・n 項の接続・結び付け・割り当て・flow def と名前付きのフロー、値の種類（=・:=・default）・individual、alpha.9 で読むようにしたアクションの節（fork・join・merge・decide・send・accept・assign・terminate・if・while・for）・継起（first … then・then・if … then・else）・succession flow と、見つからない継起の相手、遷移のトリガ・via・ガード・効果・名前と状態の中の省略形の遷移・最初の遷移・見つからない遷移の相手・状態の entry・do・exit と parallel、then event occurrence の継起・ビューの filter の and・or・xor・not・括弧と istype・hastype・render の合成形と rendering の参照・シナリオの順序の見つからない相手と循環・3 段以上の特徴量の連鎖とその見つからない段、alpha.10 で直した誤った表示：true・false・not で始まる結果の式・本体付きの式（->collect{…}）・KerML の宣言・依存と別名の本体の注釈・メタデータの本体の再定義の形（:>> x = 1）・交差（=>・crosses）・キーワードの無い特性と ref r;・名前付きの流れるもの・定義の中の型の無い部品を端にした接続と流れ・宣言する形の satisfy・verify と視点の satisfy・共役のポートの定義の名前（Pt::'~Pt'）・メタクラスのライブラリの型、alpha.10 で読むようにした from を省いた flow・succession flow・message と connect を省いた interface・既にある要素を指す perform・exhibit・frame）。期待値は仕様から手で書く（ADR-0013）。Rust のパーサとモデル構築で動かす（ADR-0015・ADR-0016）。web/src/render/geometry.test.ts：package の枠の大きさ（中の要素と中の枠を囲む）・区画の属性の行（多重度と特殊化の相手）・線の端の多重度の位置・特殊化した定義を下の段に置く配置・n 項の接続の点の位置・中の部品を囲む部品の矩形と、中の部品を縦に積む配置・区画の初期値と既定値（:=・default）・見出しの «individual …»・メモの本文の行と高さと、注釈する要素の近くに置く配置。web/src/render/svg.test.ts・web/src/app/export.test.ts：線の種類ごとの破線と矢印（8.2.3。割り当て・結び付け・n 項の接続・メモの破線を含む）と、メモの記号（角を折った四角）と、draw.io の線の形。web/src/render/notes.test.ts：一般ビューに、図に出した要素を注釈するメモと線を足す。web/src/app/annotations.test.ts：インスペクタのメモと別の言語での表し方（comment・rep）。web/src/render/ibd.test.ts：内部ブロック図の中身（流れと接続・名前付きのフローのラベル・結び付け・n 項の接続の点・部品の中の部品と、部品の型の中の線）と、その線の ID で Rust のコアが同じ線を消せること。web/src/render/action-flow.test.ts：アクティビティ図の中身（要素・継起とガードのラベル・順序付きの流れ）、記号（開始・終了・棒・ひし形・五角形・角の丸い四角）と線の記法（8.2.3.17）、継起の向きの段で上から並べる配置、図から引ける順序の線、要素の画面の言葉。web/src/render/state-machine.test.ts：状態遷移図の中身（状態・入れ子の状態・開始と終了の記号・遷移と トリガ [ガード] / 効果 のラベル・並行の領域）、記号（角の丸い四角と entry・do・exit の区画・塗った丸・丸の中の塗った丸・領域を区切る破線）と大きさ、本体ごとに遷移の向きに左から並べる配置と座標の無い状態の置き方、図から引ける遷移、名前の変更でのキーの付け替え、画面の言葉。export.test.ts：アクティビティ図・状態遷移図の draw.io の図形と線。web/src/render/sequence.test.ts：シーケンス図の中身（ライフライン・段の順のメッセージ・イベントとその札・イベントの間の順序の線・段の数）と記法（白抜きの丸・破線と開いた矢印・丸の縁までのメッセージ、8.2.3.9）、draw.io のイベントの図形。ibd.test.ts と geometry.test.ts：3 段以上の連鎖の端の部品と、入れ子の部品の高さと幅。0.2.0 で描くようにした要求図：検証・解析の使用の中の verify（型の無い使用からも線を引く）と、geometry.test.ts の要求の区画の前提と満たすべき制約（assert not）・部品定義の満たすべき制約・検証の目的の区画。0.2.0 のブロック定義図：notes.test.ts の別の言語での表し方の «rep» のメモと線、geometry.test.ts の部品定義の説明の区画。0.2.0 の内部ブロック図：ibd.test.ts の対象そのもののポートへの線（枠の上のポート b:名前）と、その線の ID で Rust のコアが同じ線を消せること、型の無い部品の本体のポート、geometry.test.ts の枠の上のポートの位置。0.2.0 のアクティビティ図：action-flow.test.ts のアクションのパラメータの接続点・アクション定義そのもののパラメータ（枠の上）・パラメータの間の流れの線と、流れで決める段、その記号、入れ子の本体の要素（container）と、その中と外の間に順序の線を引けないこと、中に流れを描くアクションの記号、区画とその記号、geometry.test.ts の区画の矩形と区画の列への配置 */
             objective {
+                verify ActivityDiagramReq;
+                verify InterconnectionDiagramReq;
+                verify BlockDiagramReq;
+                verify RequirementDiagramReq;
                 verify StandardViewReq;
                 verify PackageFrameReq;
                 verify SequenceReq;
@@ -633,14 +929,19 @@ package ModelithRequirements {
         verification def RustSyntaxTest {
             doc /* crates/modelith-core/src/syntax・project：Rust のパーサの字句と構文木（木の形・依存の相手の並び・接続の端（2 項・n 項・bind・allocate）・種類のキーワードの無い individual・継起の端とガード・succession flow・アクションの節（制御の節・send・accept・assign・terminate・if・while・loop・for）とその引数と本体・遷移の元と先・トリガ・ガード・効果（本体を含む）と状態の中の省略形の遷移・parallel・then event の参照の形・render の合成形の名前・キーワードで始まる結果の式・本体付きの式・KerML の宣言を本体ごと 1 つのまだ扱えない文にすること・交差（=>・crosses）・流れるものの節・connect を省いた interface の端・ロスレス・途中で切った入力や深い入れ子でも止まらない・まだ扱えない文を節として残す・構文エラーの位置）と、暫定コアと同じ形の解析結果への投影（番号での参照・UTF-16 の位置・接続・結び付け・割り当て・フローの宣言と関係・値の書き方（:=・default）・コメントの本文と注釈する相手・別の言語での表し方の言語と本文・individual・書いた語を種類にしたアクションの節・if と while の条件と本体（else の本体）・直前の要素から引く継起とガード・順序付きの流れ・遷移の名前・トリガ・via・ガード・効果と直前の状態から引く省略形の遷移・entry の直後の最初の遷移・状態の entry・do・exit と並行の状態・then event occurrence の継起と、状態の本体ではイベントを継起の元にしないこと・render の合成形の rendering と、view の表し方の相手・キーワードの無い特性と ref r; の参照の使用・メタデータの本体の再定義の形の値・依存と別名の本体を読まないこと・KerML の宣言のまだ扱えない文・宣言する形の satisfy・verify の要求・Pt::'~Pt' を共役の型にすること・from を省いたフロー・順序付きの流れ・メッセージの端・perform・exhibit・frame の参照の形）。web/src/core/rust.test.ts：コアが失敗しても例外を投げずに知らせる。ADR-0015 */
             objective {
+                verify RequirementDiagramReq;
                 verify NoSilentDropReq;
                 verify ProblemsReq;
                 verify RobustReq;
             }
         }
         verification def RustModelTest {
-            doc /* crates/modelith-core/src/model：Rust のモデル構築（キーと ID の付け方・ポートの向き・見つからない型・フェーズとトレースの抜け（文の頭の要求の名前は短い名前の有無によらず 1 回）・view の expose と filter・番号での参照・特殊化・部分集合・再定義・参照・依存・割り当ての線と、部品として持つ線の端の多重度・名前付きのフローのラベル・n 項の接続と結び付けの相手の検査・図に描く要素を注釈するメモのキーと相手・見つからないメモの相手・アクション定義ごとのアクションの流れの要素のキーと線の ID・見つからない継起の相手・ActionFlowView の描き方・状態定義ごとの状態遷移の図の要素のキー（入れ子と開始・終了の記号）と線の ID とラベル・並行の状態・見つからない遷移の相手・シナリオごとのシーケンス図のライフライン・イベント（入れ子の部品と型の中のもの）・メッセージの段と順序に合わせた段の決め方・イベントの間の順序の線・見つからない順序の相手と循環する順序・filter の論理式の読み方と優先順位・render がたどる rendering・3 段以上の特徴量の連鎖と見つからない段・定義の中の型の無い部品を端にした接続と流れ・宣言する形の satisfy・verify と視点の satisfy・frame の参照の形・交差を書く部品の線の端・メタクラスのライブラリの型・from を省いたフロー・順序付きの流れ・メッセージと connect を省いた interface の線）と、乱数で作った入力を解析とモデル構築に通しても止まらないこと（ファジング）。web/src/core/model-diff.test.ts：同じ解析結果から、Rust と暫定の TS のモデル構築が同じモデルを作る（途中まで書いた入力と、乱数で組み合わせた入力で。alpha.7 で Rust だけが直した修飾名・verify・frame・alias の読み方と、…Value・…Kind の型の判定と、alpha.9 で Rust だけが確かめる遷移の相手・特徴量の連鎖の段・シナリオの順序と、alpha.10 で Rust だけが見つかれば問題にしない接続・流れの端は比べない）。web/src/core/rust.test.ts：状態遷移の図とシーケンス図を宣言・関係の参照に戻す。ADR-0016 */
+            doc /* crates/modelith-core/src/model：Rust のモデル構築（キーと ID の付け方・ポートの向き・見つからない型・見つからない特殊化・別名・import の相手（標準ライブラリの名前とほかのファイルの名前は除く）・フェーズとトレースの抜け（文の頭の要求の名前は短い名前の有無によらず 1 回）・view の expose と filter・番号での参照・特殊化・部分集合・再定義・参照・依存・割り当ての線と、部品として持つ線の端の多重度・名前付きのフローのラベル・n 項の接続と結び付けの相手の検査・図に描く要素を注釈するメモのキーと相手・見つからないメモの相手・アクション定義ごとのアクションの流れの要素のキーと線の ID・見つからない継起の相手・ActionFlowView の描き方・状態定義ごとの状態遷移の図の要素のキー（入れ子と開始・終了の記号）と線の ID とラベル・並行の状態・見つからない遷移の相手・シナリオごとのシーケンス図のライフライン・イベント（入れ子の部品と型の中のもの）・メッセージの段と順序に合わせた段の決め方・イベントの間の順序の線・見つからない順序の相手と循環する順序・filter の論理式の読み方と優先順位・render がたどる rendering・3 段以上の特徴量の連鎖と見つからない段・定義の中の型の無い部品を端にした接続と流れ・宣言する形の satisfy・verify と視点の satisfy・frame の参照の形・交差を書く部品の線の端・メタクラスのライブラリの型・from を省いたフロー・順序付きの流れ・メッセージと connect を省いた interface の線）と、乱数で作った入力を解析とモデル構築に通しても止まらないこと（ファジング）。web/src/core/model-diff.test.ts：同じ解析結果から、Rust と暫定の TS のモデル構築が同じモデルを作る（途中まで書いた入力と、乱数で組み合わせた入力で。alpha.7 で Rust だけが直した修飾名・verify・frame・alias の読み方と、…Value・…Kind の型の判定と、alpha.9 で Rust だけが確かめる遷移の相手・特徴量の連鎖の段・シナリオの順序と、alpha.10 で Rust だけが見つかれば問題にしない接続・流れの端は比べない）。web/src/core/rust.test.ts：状態遷移の図とシーケンス図を宣言・関係の参照に戻す。ADR-0016・package の直下の action・item・state の使用を図の要素にする・アクションの流れの図のパラメータ（本体のものと型の定義のもの）・アクション定義そのもののパラメータ・パラメータの間の流れの線と見つからない流れの相手・入れ子の本体の要素のキーと開始・終了と線、入れ子の本体の要素のパラメータへ段をたどる流れ・perform からの区画（先に受け持った部品・知らない要素と別のアクションの perform は区画にしない）。複数のファイルにまたがるモデル（ADR-0021）：import（P::A・P::*・P::**）と修飾名と一番上の要素でのほかのファイルの名前の解決、取り込んでいない名前・private の要素・private import の取り込み直しを見せないこと、同じファイルの割り切りと同じ名前の優先、表示中のファイルの要素と参照したほかのファイルの要素だけを残すこと（ファイルの番号・キーを変えないこと・ほかのファイルの図と問題を混ぜないこと・view が示すほかのファイルの要素）。crates/modelith-core/src/project：ファイルごとの解析結果をつなぐときの番号と位置のずらし方 */
             objective {
+                verify MultiFileModelReq;
+                verify ActivityDiagramReq;
+                verify BlockDiagramReq;
+                verify RequirementDiagramReq;
                 verify ParseParityReq;
                 verify ProblemsReq;
                 verify PhaseReq;
@@ -651,12 +952,17 @@ package ModelithRequirements {
             }
         }
         verification def RustEditTest {
-            doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加・メッセージ・フェーズ・ポート・図の保存と図への出し入れ。図のテキストの引用名・修飾名・package を足す位置を含む）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。内部ブロック図の線の ID（結び付け・n 項の接続・部品の中の部品・部品の型の中の線）と、部品の中の部品への流れの書き方も比べる。名前の変更で値の書き方（:=・default）が残り、コメントの about の相手も変わること、メモのキーでコメントを削除できることも比べる。アクションの流れ図の線（継起）の削除・要素の削除と名前の変更・図からの順序の線の追加（first … then）・アクションの流れ図の保存（ActionFlowView）、状態遷移の図の遷移の削除（transition の文・省略形の遷移・最初の遷移）・入れ子の状態の削除と名前の変更・図からの遷移の追加（同じ本体・本体をまたぐ名前の道のり・終了の記号へ）・状態遷移の図の保存（StateTransitionView）、シーケンス図のイベントの間の順序の線の削除、3 段以上の連鎖の端の部品（u:a.x.v）の線の削除と名前の変更も比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016 */
+            doc /* crates/modelith-core/src/edit：図の操作（要素の追加・部品の追加・名前の変更・削除・関係の削除・関係の追加・メッセージ・フェーズ・ポート・図の保存（空の一般の図を含む）と図への出し入れ・図の名前の変更と削除。図のテキストの引用名・修飾名・package を足す位置を含む）を、キーで要素を指す意図としてテキストに当て、編集後のテキストを比べる。内部ブロック図の線の ID（結び付け・n 項の接続・部品の中の部品・部品の型の中の線）と、部品の中の部品への流れの書き方も比べる。名前の変更で値の書き方（:=・default）が残り、コメントの about の相手も変わること、特性の名前の変更で持ち主の外の参照（W::n・f.n・引き継いだ先の :>> n）も変わり、別の定義の同じ名前は変わらないこと、メモのキーでコメントを削除できることも比べる。アクションの流れ図の線（継起）の削除・要素の削除と名前の変更・図からの順序の線の追加（first … then）・アクションの流れ図の保存（ActionFlowView）、状態遷移の図の遷移の削除（transition の文・省略形の遷移・最初の遷移）・入れ子の状態の削除と名前の変更・図からの遷移の追加（同じ本体・本体をまたぐ名前の道のり・終了の記号へ）・状態遷移の図の保存（StateTransitionView）、シーケンス図のイベントの間の順序の線の削除、3 段以上の連鎖の端の部品（u:a.x.v）の線の削除と名前の変更も比べる。断る場合（見つからない要素・使えない名前）と、乱数で選んだ意図でも止まらないこと。web/src/core/rust.test.ts：UTF-16 の位置の編集を返し、コアが失敗しても例外を投げない。ADR-0016。内部ブロック図の対象そのもののポート（b:名前）への線の ID と削除、入れ子の部品の接続点をポートにしたときの流れの端の書き換えも比べる。アクションの流れ図の入れ子の本体の要素の名前の変更と線の削除、入れ子の本体の中に引く順序の線と、本体をまたぐ順序の線を断ること 。複数のファイル（ADR-0021）：ほかのファイルとつないだモデルで操作し、ほかのファイルの要素に触れる操作（名前の変更・削除）はそのファイルを添えて断ること、ほかのファイルの要求を満たす関係は表示中のファイルに書くこと、表示中のファイルの要素への操作（定義と使用の名前の変更・定義の追加・削除・満たす関係と導出の追加）は、ほかのファイルに別の定義・同じ名前・同じ種類の定義や関係・依存の文があっても（package だけ・空のファイルでも）断らず、置く package と関係を書く場所は表示中のファイルから選ぶこと。crates/modelith-core/src/project：覚えたファイルのパスの順・置き換え・忘れ方 */
             objective {
+                verify MultiFileModelReq;
+                verify ActivityDiagramReq;
+                verify InterconnectionDiagramReq;
+                verify EditDetailsReq;
                 verify DiagramToTextReq;
                 verify RenameReq;
                 verify NewPackageGuideReq;
                 verify CreateViewReq;
+                verify ViewListReq;
                 verify PhaseReq;
                 verify RobustReq;
             }
@@ -694,7 +1000,7 @@ package ModelithRequirements {
             }
         }
         verification def ViewNamesTest {
-            doc /* web/src/app/labels.test.ts：図の種類の画面の名前（広く知られた図の名前）と、ツールチップに添える SysML v2 の標準ビューの名前（自動の図・作成した図・タブ）、標準ビュー定義の短い名前（afv など）の読み替え、図の名前の候補の「〜の図」 */
+            doc /* web/src/render/labels.test.ts：図の種類の画面の名前（広く知られた図の名前）と、ツールチップに添える SysML v2 の標準ビューの名前（自動の図・作成した図・タブ）、標準ビュー定義の短い名前（afv など）の読み替え、図の名前の候補の「〜の図」 */
             objective {
                 verify PlainWordsReq;
                 verify BuiltInViewsReq;
@@ -712,6 +1018,13 @@ package ModelithRequirements {
             doc /* web/tools/csp.test.ts：Content-Security-Policy の中身（既定は配信元だけ・eval を許さない・wasm と Worker と同梱フォントは許す）と、ビルドした HTML への差し込み */
             objective {
                 verify ContentPolicyReq;
+            }
+        }
+        verification def ReleaseChannelTest {
+            doc /* web/tools/channels.test.ts：公開済みのリリースから、安定版（最新の正式版、無ければ最新の rc）・リリース候補版（正式版がまだ出ていない最新の rc。次の版の alpha が出ても変えない・別の番号のパッチでは取り下げない）・プレビュー版（最も新しい版）を選ぶ（番号は数として比べる・下書きと版でないタグは選ばない・正式版も rc も無い・リリースが無い）。
+                   web/src/channel.test.ts：保存の名前を系列ごとに分ける（安定版はそのまま・リリース候補版は @rc・プレビュー版は @preview・系列の無いビルドと知らない系列は安定版と同じ） */
+            objective {
+                verify ReleaseChannelReq;
             }
         }
         verification def StageTest {
@@ -740,6 +1053,13 @@ package ModelithRequirements {
             doc /* web/src/app/tap.test.ts：タップ（動きと時間の上限）とダブルタップ（間の時間と離れ方の上限）の判定 */
             objective {
                 verify PhoneTextReq;
+            }
+        }
+        verification def MinimapPlaceTest {
+            doc /* web/src/app/minimap-place.test.ts：インスペクタを開いたときの全体図の位置（インスペクタの上に持ち上げ、拡大縮小のボタンの列にかかるなら列の左に寄せる。その境目） */
+            objective {
+                verify CanvasReq;
+                verify NarrowScreenReq;
             }
         }
         verification def LocalFolderProviderTest {
@@ -824,9 +1144,26 @@ package ModelithRequirements {
                 verify PlainWordsReq;
             }
         }
-        verification def ViewsE2E {
-            doc /* web/e2e/views.spec.ts：8 つのビュー・テキストの view（一般ビューの特殊化・依存・割り当ての線と多重度、内部ブロック図の結び付け・n 項の接続・部品の中の部品、一般ビューのメモとその削除・インスペクタのメモと別の言語での表し方、アクティビティ図の記号・ガード・順序付きの流れ・順序の線の削除と追加・ツリーから開く・アクション定義ごとの配置、状態遷移図の記号・入れ子と並行の領域・遷移のラベル・遷移の削除と追加・ツリーから開く（＋メニューの組み込みのビューは 8 つのまま）・状態定義ごとの配置・「振る舞い」の図の一般ビューとしての保存、シーケンス図のイベント（入れ子の部品のものも）とイベントの間の順序の線・その選択と削除、filter の論理式と render の合成形の view、内部ブロック図の 3 段の連鎖の端と見つからない段を含む）・図の保存と図に入れる・外す・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け（図を見ているときは図の要素を選んで中央に出し、足りない関係の案内と「関係を追加」を示す・案内から検証をつなぐと抜けが減る・何件目かの表示と前後への移動・短い名前の無い要求の名前を 1 回だけ書いた抜けの文・テキストを見ているときと「テキストで見る」ではテキストの行へ・問題一覧の抜けの行から図の要素へ・幅 390px・抜けのある要素の △ の印・キーボードでの操作）・図の種類のツールチップ（＋メニュー・タブ・作成した図のサブバー）と狭い画面の＋メニューに添える SysML v2 の標準ビューの名前（Chromium で操作） */
+        verification def DiagramsE2E {
+            doc /* web/e2e/diagrams.spec.ts：「新しい図を作成…」で種類を選ぶ（空の一般の図・内部ブロック図のブロックを選ぶ・対象が無ければ新しく作る・やめると何も変えない）と、
+                   サイドバーの「図」（並べて開く・図が無いときの案内・名前の変更と配置の保持・既にある名前の拒否・削除の確認と要素の保持・ツリーの右クリックからの名前の変更）（Chromium で操作） */
             objective {
+                verify CreateViewReq;
+                verify ViewListReq;
+            }
+        }
+        verification def DiagramKindsTest {
+            doc /* web/src/app/diagram-kinds.test.ts：作成できる図の種類と描く対象の定義の種類、対象の候補（種類の合う定義を名前の順に）、図の名前を変えたときの配置とタブの付け替え */
+            objective {
+                verify CreateViewReq;
+                verify ViewListReq;
+            }
+        }
+        verification def ViewsE2E {
+            doc /* web/e2e/views.spec.ts：8 つのビュー・テキストの view（一般ビューの特殊化・依存・割り当ての線と多重度、内部ブロック図の結び付け・n 項の接続・部品の中の部品、一般ビューのメモとその削除・インスペクタのメモと別の言語での表し方、アクティビティ図の記号・ガード・順序付きの流れ・順序の線の削除と追加・ツリーから開く・アクション定義ごとの配置、状態遷移図の記号・入れ子と並行の領域・遷移のラベル・遷移の削除と追加・ツリーから開く（＋メニューの組み込みのビューは 8 つのまま）・状態定義ごとの配置・「振る舞い」の図の一般ビューとしての保存、シーケンス図のイベント（入れ子の部品のものも）とイベントの間の順序の線・その選択と削除、filter の論理式と render の合成形の view、内部ブロック図の 3 段の連鎖の端と見つからない段・対象の枠の上のポートとその線の削除、アクティビティ図のパラメータと流れとその削除、入れ子の本体、区画とその draw.io へのエクスポートを含む）・図の保存と図に入れる・外す・タブ・拡大と範囲選択・テキストからの反映・問題一覧・ツリー・フェーズ・トレースの抜け（図を見ているときは図の要素を選んで中央に出し、足りない関係の案内と「関係を追加」を示す・案内から検証をつなぐと抜けが減る・何件目かの表示と前後への移動・短い名前の無い要求の名前を 1 回だけ書いた抜けの文・テキストを見ているときと「テキストで見る」ではテキストの行へ・問題一覧の抜けの行から図の要素へ・幅 390px・抜けのある要素の △ の印・キーボードでの操作）・図の種類のツールチップ（＋メニュー・タブ・作成した図のサブバー）と狭い画面の＋メニューに添える SysML v2 の標準ビューの名前（Chromium で操作） */
+            objective {
+                verify ActivityDiagramReq;
+                verify InterconnectionDiagramReq;
                 verify PlainWordsReq;
                 verify CreateViewReq;
                 verify StandardViewReq;
@@ -843,8 +1180,9 @@ package ModelithRequirements {
             }
         }
         verification def EditingE2E {
-            doc /* web/e2e/editing.spec.ts：図からの追加と削除・要求をつなぐ関係の追加（要求 → 検証・検証 → 要求の «verify»、要求 → 部品の «satisfy»、要求どうしの導出の逆向き）・名前変更・配置ファイルへの保存（テキストには書かない）・古い @layout の読み込みと移行・「配置は未保存」と保存先の選択・配置も含めたファイルごとの元に戻す・package の無いファイルでの案内 */
+            doc /* web/e2e/editing.spec.ts：図からの追加と削除・要求をつなぐ関係の追加（要求 → 検証・検証 → 要求の «verify»、要求 → 部品の «satisfy»、要求どうしの導出の逆向き）・名前変更（日本語の名前は引用名で書く・「'」は断る）・説明（要求の文章）の書き換え・足す・消す・やめる・属性の追加・値の書き換え・削除・「;」を含む値を断る・配置ファイルへの保存（テキストには書かない）・古い @layout の読み込みと移行・「配置は未保存」と保存先の選択・配置も含めたファイルごとの元に戻す・package の無いファイルでの案内 */
             objective {
+                verify EditDetailsReq;
                 verify DiagramToTextReq;
                 verify NewPackageGuideReq;
                 verify RenameReq;
@@ -892,20 +1230,33 @@ package ModelithRequirements {
             }
         }
         verification def ExportFileTest {
-            doc /* web/src/app/export-file.test.ts：エクスポートの形式の一覧（SVG 画像・draw.io の順、知らない ID は既定）と、ファイル名の決め方（拡張子なし・同じ拡張子・違う形式の拡張子の付け替え・大文字・形式の拡張子でない点・空・空白だけ・拡張子だけ・前後の空白・パス区切り・使えない文字・末尾の点・既定の名前も空）。
+            doc /* web/src/app/export-file.test.ts：エクスポートの形式の一覧（SVG・PNG・JPEG の画像・draw.io の順、知らない ID は既定、形式ごとに選べる範囲・倍率・背景）と、ファイル名の決め方（拡張子なし・同じ拡張子・違う形式の拡張子の付け替え・大文字・形式の拡張子でない点・空・空白だけ・拡張子だけ・前後の空白・パス区切り・使えない文字・末尾の点・既定の名前も空・画像の形式の拡張子の付け替え）、
+                   画像の倍率（上限に収まるときはそのまま・面積と 1 辺の上限で下げる・ちょうど上限・幅と高さが 0）。
                    web/src/app/export.test.ts：.drawio のファイルの包み方（根の 2 つのセル・図形が 0 個・図の名前の記号の文字参照） */
             objective {
                 verify SvgExportReq;
                 verify DrawioExportReq;
+                verify RasterExportReq;
+            }
+        }
+        verification def ExportImagesTest {
+            doc /* web/src/app/export-range.test.ts：選んだ要素の範囲（入れ子の要素を含める・図に無いキー・何も選んでいない・両端が範囲にある線だけ・元の中身を書き換えない・外枠とその上のポートを描かない・package の枠の絞り込みと番号の付け直し・区画の絞り込み）。
+                   web/e2e/export-images.spec.ts：PNG 画像を倍率を選んでダウンロードし 2 倍の幅が 1 倍の 2 倍になること、JPEG 画像では背景を選べず .jpg になること、draw.io では範囲・倍率・背景と「画像をコピー」を出さないこと、
+                   範囲を「選んだ要素」にすると選んだ要素だけを描き、背景を「透明」にすると白い背景を描かないこと、要素を選んでいなければ「選んだ要素」を選べないこと、「画像をコピー」で PNG 画像をクリップボードに入れること */
+            objective {
+                verify RasterExportReq;
+                verify ExportRangeReq;
+                verify ImageCopyReq;
             }
         }
         verification def ShellE2E {
-            doc /* web/e2e/shell.spec.ts：外部に通信しない・Content-Security-Policy が外部への通信とインラインのスクリプトを止める・ソースへのリンク・開発段階の表示・著作権とライセンスと商標の表示・狭い画面・ファイルのメニューの「エクスポート…」（既定の名前・入力した名前の SVG のダウンロード・draw.io を選ぶと拡張子が替わり mxfile のファイルになる・「やめる」では何もダウンロードしない）。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
+            doc /* web/e2e/shell.spec.ts：外部に通信しない・Content-Security-Policy が外部への通信とインラインのスクリプトを止める・ソースへのリンク・開発段階の表示・著作権とライセンスと商標の表示・狭い画面（インスペクタを開いたときの全体図と拡大縮小のボタンの重なりを、明るい／暗い配色で）・ファイルのメニューの「エクスポート…」（既定の名前・入力した名前の SVG のダウンロード・draw.io を選ぶと拡張子が替わり mxfile のファイルになる・「やめる」では何もダウンロードしない）。e2e はすべてビルドした静的ファイルをそのまま配信して動かす */
             objective {
                 verify PrivacyReq;
                 verify ContentPolicyReq;
                 verify SourceOfferReq;
                 verify NarrowScreenReq;
+                verify CanvasReq;
                 verify SvgExportReq;
                 verify DrawioExportReq;
                 verify StaticHostingReq;
@@ -980,9 +1331,10 @@ package ModelithRequirements {
             }
         }
         verification def CrossVersionFileTest {
-            doc /* web/src/app/layout-file.test.ts：新しい版が書く配置ファイルの見本（web/src/app/compat/）を使い、知らない項目を取り出して書き戻す・往復しても変わらない・
+            doc /* web/src/app/layout-file.test.ts：新しい版が書く配置ファイルの見本（web/src/app/compat/）を使い、知らない項目を取り出して書き戻す・往復しても変わらない・知っている項目（0.2 の線の調整）はファイルの古い形で上書きしない・線の調整を使うと requires に edge-shapes を書き、使わなくなったら外す・知らない機能の名前は残す・
                    保存しない理由（読めない・形式の番号が大きい・知らない requires）と、保存してよい場合（空・{}・空の requires）。
-                   web/e2e/files.spec.ts：0.2 の線の調整を含む配置ファイルで要素を動かして保存しても線の調整が残る、知らない機能を含む配置ファイルは開いたときに知らせ、保存しても書き換えない（OPFS で）。
+                   web/e2e/files.spec.ts：新しい版の知らない項目を含む配置ファイルで要素を動かして保存しても知らない項目が残る、知らない機能を含む配置ファイルは開いたときに知らせ、保存しても書き換えない（OPFS で）。
+                   開いた後に他のアプリが書き換えた配置ファイルに「上書きする」を選んでも、知らない機能を含めば書き換えず、知らない項目は残す。
                    web/src/workspace/workspace.test.ts：下書きの一覧の知らない形の記録（知らない項目を足した下書き・数・文字列を含む）を、使わずに置き直しても残し、その数を返す。
                    一覧そのものが知らない形なら書き換えない。web/src/workspace/session.test.ts：そのことを起動したときに知らせる文 */
             objective {
@@ -990,7 +1342,7 @@ package ModelithRequirements {
             }
         }
         verification def LayoutTest {
-            doc /* web/src/app/layout.test.ts・layout-file.test.ts：配置情報の読み書きと、配置ファイルの書式（キー順の固定・要素ごとに 1 行・壊れたファイル） */
+            doc /* web/src/render/layout.test.ts・web/src/app/layout-file.test.ts：配置情報の読み書きと、配置ファイルの書式（キー順の固定・要素ごとに 1 行・壊れたファイル） */
             objective {
                 verify LayoutReq;
             }
@@ -1074,10 +1426,111 @@ package ModelithRequirements {
                 verify PluginListReq;
             }
         }
+        verification def MultiFileWebTest {
+            doc /* web/src/workspace/project-files.test.ts・workspace.test.ts：フォルダのモデルのファイルを読み、開いている文書は編集中のテキストを使い、他のアプリでの変更と保存した中身を入れること、送る変更の計算。
+                   web/src/core/client.test.ts：コアに覚えさせたほかのファイルの定義を参照した要素だけを描き、ファイルのパスを持つこと、表示中のファイルと同じパスのファイルはつながないこと、
+                   ほかのファイルの要素を書き換えようとするとファイルのパスを添えて断ること、忘れさせたファイルの定義は見つからなくなること。web/src/render/svg.test.ts：ファイル名の札。
+                   web/e2e/multi-file.spec.ts：フォルダを開き、import したほかのファイルの定義を札付きで描くこと、選ぶとそのファイルを開けること、消そうとすると書き換えずにそのファイルを案内すること、
+                   ほかのファイルの編集が表示に戻ったときの図に入ること、ほかのファイルがあっても表示中のファイルの定義の名前を図から変えられ、パレットから定義を置けること（ADR-0021） */
+            objective {
+                verify MultiFileModelReq;
+            }
+        }
+        verification def ProblemCopyTest {
+            doc /* web/src/app/problem-copy.test.ts：「ファイル名:行: メッセージ」の形（行の無い問題・ファイルに属さない行・メッセージの中の改行）、1 行に 1 件のつなぎ方と空の一覧、件数の知らせ。
+                   web/e2e/problem-copy.spec.ts：行の右クリックでその行を、行を選んで Ctrl＋C でその行（ほかのファイルの行はそのファイル名）を、「すべてコピー」で表示中のファイルとほかのファイルの問題をコピーすること */
+            objective {
+                verify ProblemCopyReq;
+            }
+        }
+        verification def ProblemLevelTest {
+            doc /* crates/modelith-core/src/levels：選べる種類と既定の重さ、設定に書ける種類の名前、出さないにした問題とルールの結果を除き、選んだ重さを付ける・置き換えること、トレースの抜けの種類。
+                   crates/modelith-core/src/project_file：levels の読み取り（4 つの重さ・それ以外は誤り・{ } でないと誤り・不明な種類は注意して残す）と書き換え（既定に戻すと項目を消す）。
+                   crates/modelith-wasm：覚えた重さを解析とほかのファイルの問題に当てること、読めない重さは既定に戻すこと、重さの書き換えと種類の一覧。crates/modelith-cli/tests/check.rs：modelith check がプロジェクトの重さに従うこと。
+                   web/src/core/client.test.ts：重さを覚えさせて解析し直すこと・書き換え・種類の一覧・壊れた返事。web/src/app/notice-levels.test.ts：問題の重さ・画面の言葉・選ぶ画面の行。web/src/app/project-problems.test.ts：重さで並べ、印と件数を決めること。
+                   web/e2e/notice-levels.spec.ts：プロジェクトで選んだ重さで問題一覧の印と色を変え、出さないにした種類を出さないこと、「知らせの重さ…」で選んだ重さを modelith.json に書くこと、プロジェクトでなければ選べないことを示すこと */
+            objective {
+                verify ProblemLevelReq;
+            }
+        }
+        verification def TabsPerFileTest {
+            doc /* web/src/app/doc-tabs.test.ts：記憶の名前（保存先のパス・無題の文書のキー）、初めて開くファイルのタブ、記憶の読み込み（戻せない記憶だけを捨てる・壊れていれば空）、記憶に入れる順と上限、このファイルの要素が無い図の案内を出すとき。
+                   web/e2e/tabs-per-file.spec.ts：初めて開くファイルは「すべて」から始め、ファイルを切り替えると最後に開いていたタブに戻ること、要素の無い図でも切り替えずに案内し「すべて」の図も開けること、読み込み直してもファイルごとのタブが戻ること */
+            objective {
+                verify TabsPerFileReq;
+            }
+        }
+        verification def FileListMenuTest {
+            doc /* web/src/files/entry-names.test.ts：使える名前（空・使えない文字・終わりの「.」・同じ場所の同じ名前・モデルのファイルの拡張子）、親と子のパス、動かした後のパス、パスのコピー、書き換え始めに選ぶ範囲。
+                   web/src/files/local-folder.test.ts：空のフォルダも一覧すること、フォルダを作ること、ファイルとフォルダを中身ごと動かすこと、動かせないとき。
+                   web/src/workspace/workspace.test.ts：名前の変更で配置ファイルも動かし、開いている文書を未保存の変更を残して付け替えること、削除で配置ファイルも消して文書を閉じること、フォルダを作ること。
+                   web/src/app/doc-tabs.test.ts：名前を変えた・消したファイルの図のタブの記憶を移す・消すこと。web/src/app/file-menu.test.ts：メニューの項目と削除を確かめる文。
+                   web/e2e/file-list-menu.spec.ts：右クリックの「名前の変更」・F2・もう一度クリックで名前を書き換えること、使えない名前は理由を示して決めさせず Esc でやめること、
+                   フォルダの名前の変更で開いているファイルが未保存の変更を残して移ること、削除を確かめてから配置ファイルも消して閉じること、新しいフォルダと新しいファイル、パスのコピー */
+            objective {
+                verify FileListMenuReq;
+            }
+        }
+        verification def DeleteFolderTest {
+            doc /* web/src/files/local-folder.test.ts：開いたフォルダを中身ごと消してプロジェクトの一覧から外すこと、ブラウザが対応していなければ何も消さないこと。
+                   web/src/workspace/workspace.test.ts：中のファイルの文書を閉じてフォルダの外の文書は残すこと、消せなければ何も変えないこと。web/src/app/file-menu.test.ts：1 回目の確かめの文。
+                   web/e2e/delete-folder.spec.ts：2 回確かめて名前が合えば削除し中のファイルを閉じること、名前が合わない・やめるでは何も消さないこと */
+            objective {
+                verify DeleteFolderReq;
+            }
+        }
+        verification def ProjectListTest {
+            doc /* web/src/files/recent-folders.test.ts：保存しておいた一覧の読み込み（形の合わない項目を捨てる）、開いたフォルダを先頭に置くこと、上限 10 件の境界値、一覧から外す・プロジェクト名の書き換え。
+                   web/src/files/local-folder.test.ts：同じフォルダを 2 度入れないこと、一覧のフォルダを許可を得て開き先頭に移すこと、許可されない・一覧に無いときは開かないこと、外しても中身を消さないこと、以前の版が覚えた前回のフォルダを読むこと。
+                   web/src/workspace/workspace.test.ts：切り替えても閉じても、開いている文書を未保存の変更ごと残すこと。
+                   web/e2e/project-list.spec.ts：見出しのメニューからほかのフォルダに切り替えること、フォルダを閉じると最後に開いた順の一覧を出して開き直せること、一覧から外しても中身を消さないこと、削除されたフォルダは一覧から外すかを尋ねること、
+                   ファイルメニューの「最近開いたフォルダ」から切り替え「フォルダを閉じる」で閉じること、見出しの名前 ▾ をキーボード（Enter）でも開けること */
+            objective {
+                verify ProjectListReq;
+            }
+        }
+        verification def PreviewOpenTest {
+            doc /* web/src/workspace/workspace.test.ts：仮に開いたファイルが次に仮に開くファイルと同じ場所で置き換わること、編集・開き直し・pin で開いたままになること、開いたままのものは仮に開き直しても仮にならないこと、読み込み中に同じファイルをもう一度開いても 1 つだけ開くこと。
+                   web/e2e/preview-open.spec.ts：フォルダの一覧で 1 回クリックしたファイルは仮に開き（名前は斜体）、次のファイルと置き換わること、ダブルクリック・編集したファイルは置き換わらないこと、開いているファイルの一覧でダブルクリックすると開いたままになること */
+            objective {
+                verify PreviewOpenReq;
+            }
+        }
+        verification def ExternalChangeNoticeTest {
+            doc /* web/src/workspace/workspace.test.ts：画面に戻ったときに読み直した文書と今回初めて印を付けた文書を返すこと（前から印のある文書は入れない）、
+                   編集し始めたときに 1 つの文書のファイルが他で変わったかを確かめ、変わっていれば中身は読み直さずに印を付けること（変わっていない・前から印がある・無題・無い文書は false）。
+                   web/src/app/external-change.test.ts：ファイル名の並べ方（上限と「ほか N 件」）、画面に戻ったときの知らせの文（読み直した・印を付けた・両方・無し）、編集し始めたときに尋ねる文。
+                   web/e2e/external-change.spec.ts：他で変わったファイルを編集し始めるとファイル名を示して尋ね、読み込むとファイルの内容になること、このまま編集すると入力を残して保存のときに選べること、
+                   変わっていなければ尋ねないこと、画面に戻ったときに表示中でないファイルも名前を示してまとめて知らせること */
+            objective {
+                verify ExternalChangeReq;
+                verify EditStartCheckReq;
+            }
+        }
+        verification def ProjectProblemsTest {
+            doc /* crates/modelith-core/src/rules：覚えたファイルを 1 つずつ中心にしてほかのファイルとつないだモデルで問題とルールの結果を数え、表示中のファイルは今の中身をつなぐだけで数えないこと。
+                   crates/modelith-wasm：projectProblems。web/src/app/project-problems.test.ts：エラーと警告の数え方・行の並びと行番号・フォルダの合計・ファイルの一覧の印・数えた結果に表示中のファイルが入っていても、ほかのファイルとしては出さないこと。
+                   web/src/core/client.test.ts：表示中のファイルの今のテキストをつないで数えること、数える間にテキストが変わったら捨てること。
+                   web/e2e/project-problems.spec.ts：ほかのファイルの問題をファイルごとに出し、ファイルの一覧でそのファイルとフォルダを赤くして件数を添えること、行を押すとそのファイルのその行へ移ること、
+                   表示中のファイルで直すとほかのファイルの問題も消えること（ADR-0021 §6） */
+            objective {
+                verify ProjectProblemsReq;
+            }
+        }
+        verification def EdgeShapeTest {
+            doc /* web/src/app/edge-shape.test.ts：曲がり角を通る直角の経路（始点・終点の縁の向き、続けて同じ点の省き方）、区間の中ほどの位置、ラベルの位置、
+                   付け替えた端の縁の位置、配置ファイルの @bends・@anchors の読み書きと形の合わない値を捨てること、曲がり角の足し方・動かし方・消し方、端の付け替えと接続点の指定の外し方、
+                   元に戻すこと、要素の名前の変更での鍵の付け替えと無くなった線の形の片付け。web/e2e/edge-shape.spec.ts：線を選んでつまみを出し、区間の中ほどを動かして曲がり角を足し、元に戻すこと、
+                   要素を動かしても曲がり角は動かず、続けて 2 回押すと消えること、端を別の縁へ付け替え、draw.io に曲がり角の点と付け替えた端を書くこと */
+            objective {
+                verify EdgeShapeReq;
+            }
+        }
         verification def CliCheckTest {
-            doc /* crates/modelith-cli/tests/check.rs：ビルドした modelith check <フォルダ> を一時的なフォルダのプロジェクトに対して動かし、modelith.json の有効なプラグインのルールで .sysml・.kerml を検査する（隠しフォルダ・target・node_modules は見ない）。結果をパス・行・列の順に 1 行ずつ出し、誤りがあれば 1、注意だけなら 0、使い方の誤りは 2 で終わる。壊れたルール・入っていないプラグイン・フォルダの外を指すパス・壊れた modelith.json・シンボリックリンクのルールのファイルと modelith.json は誤りとして知らせる（シンボリックリンクを作れない環境では飛ばす）。crates/modelith-cli/src：出力の行とまとめの形、検査するファイルの選び方、シンボリックリンクを読まないこと */
+            doc /* crates/modelith-cli/tests/check.rs：ビルドした modelith check <フォルダ> を一時的なフォルダのプロジェクトに対して動かし、modelith.json の有効なプラグインのルールで .sysml・.kerml を検査する（隠しフォルダ・target・node_modules は見ない）。結果をパス・行・列の順に 1 行ずつ出し、誤りがあれば 1、注意だけなら 0、使い方の誤りは 2 で終わる。壊れたルール・入っていないプラグイン・フォルダの外を指すパス・壊れた modelith.json・シンボリックリンクのルールのファイルと modelith.json は誤りとして知らせる（シンボリックリンクを作れない環境では飛ばす）。フォルダのファイルを 1 つのモデルとして検査し、ほかのファイルに書いた関係も数えること（ADR-0021）。crates/modelith-cli/src：出力の行とまとめの形、検査するファイルの選び方、シンボリックリンクを読まないこと */
             objective {
                 verify RuleParityReq;
+                verify MultiFileModelReq;
             }
         }
     }

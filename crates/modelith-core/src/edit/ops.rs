@@ -8,7 +8,30 @@ use super::{Change, Doc, Intent, Refusal, more};
 use crate::project::{RelKind, Span, text::is_basic_name};
 use crate::syntax::{SyntaxKind, is_keyword, tokenize};
 
-pub(super) const BAD_NAME: &str = "名前は英字か _ で始め、英字・数字・_ だけで付けてください";
+/// 名前を変えるときに使えない文字を含む名前を断る文。
+pub(super) const BAD_RENAME: &str = "名前に「'」「\\」や改行は使えません";
+
+/// 名前に、名前を変えるときに使えない文字（`'`・`\`・改行などの制御文字）があるか（`BAD_RENAME` で断る）。
+///
+/// # 引数
+///
+/// - `name`：付けようとする名前
+///
+/// # 戻り値
+///
+/// 使えない文字があれば true。
+///
+/// # 例
+///
+/// ```text
+/// has_bad_name_char("it's")   → true
+/// has_bad_name_char("a\nb")   → true
+/// has_bad_name_char("電気 ケトル") → false
+/// ```
+pub(super) fn has_bad_name_char(name: &str) -> bool {
+    name.chars()
+        .any(|c| c == '\'' || c == '\\' || c.is_control())
+}
 
 /// 名前が、テキストの書き方で使う言葉（SysML v2 の予約語）なら、断る理由の文を返す（予約語の名前はテキストを壊すため。#266）。
 ///
@@ -165,6 +188,27 @@ pub(super) fn run(d: &Doc<'_>, intent: &Intent) -> Result<Change, Refusal> {
         Intent::RemoveFromView { view, key } => {
             more::remove_from_view(d, view, &d.find(key, None)?)
         }
+        Intent::RenameView { view, name } => more::rename_view(d, view, name),
+        Intent::DeleteView { view } => more::delete_view(d, view),
+        Intent::SetAttribute {
+            key,
+            attr,
+            name,
+            ty,
+            value,
+            ctx,
+        } => more::set_attribute(
+            d,
+            &d.find(key, ctx.as_deref())?,
+            attr.as_deref(),
+            name,
+            ty,
+            value,
+        ),
+        Intent::RemoveAttribute { key, attr, ctx } => {
+            more::remove_attribute(d, &d.find(key, ctx.as_deref())?, attr)
+        }
+        Intent::SetDoc { key, text, ctx } => more::set_doc(d, &d.find(key, ctx.as_deref())?, text),
         // 遷移は、状態遷移の図の要素のキー（終了の記号を含む）でつなぐ
         Intent::Connect {
             rel, from, to, ctx, ..
@@ -353,11 +397,11 @@ impl Doc<'_> {
             .collect()
     }
 
-    /// 書いた順で最初の package。暫定コアの `firstPackage`（`web/src/app/ops.ts`）と同じ。
+    /// 表示中のファイルの、書いた順で最初の package（ほかのファイルの package は選ばない。ADR-0021 §5）。暫定コアの `firstPackage`（`web/src/app/ops.ts`）と同じ。
     ///
     /// # 戻り値
     ///
-    /// package の宣言の番号。package が無ければ None。
+    /// package の宣言の番号。表示中のファイルに package が無ければ None。
     ///
     /// # 例
     ///
@@ -366,9 +410,12 @@ impl Doc<'_> {
     /// first_package() → Some(P の番号)
     /// // d.text = "part def A;" のとき
     /// first_package() → None
+    /// // d.text = "part def A;" で、ほかのファイルが "package B;" のとき
+    /// first_package() → None
     /// ```
     pub(super) fn first_package(&self) -> Option<usize> {
-        self.p.entries.iter().position(|e| e.kind == "package")
+        // ほかのファイルの package には書けない（ADR-0021 §5）
+        (0..self.p.entries.len()).find(|&i| self.e(i).kind == "package" && self.in_open_file(i))
     }
 
     /// e から上へたどった、最初の @Phase の値（自分か、外側の宣言から受け継ぐ）。値が空の指定は飛ばす。
@@ -462,7 +509,7 @@ pub(super) fn unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
     n
 }
 
-/// 定義を追加する。置く package は、同じ種類の要素が最後に置かれた package（無ければ最初の package）。
+/// 定義を追加する。置く package は、表示中のファイルで同じ種類の要素が最後に置かれた package（無ければ最初の package）。
 /// package が無く `new_package` があれば、テキストの末尾（`@layout` コメントの前）に作ってそこに置く。
 /// 名前は種類ごとの `NewPart` などで、使われていれば番号を付ける。フェーズの指定は、置く package から受け継ぐ値と違うときだけ書く。
 /// 暫定コアの `OPS.addNode`（`web/src/app/ops.ts`）と同じ書き方。
@@ -494,13 +541,14 @@ fn add_node(
     phase: Option<&str>,
     new_package: Option<&str>,
 ) -> Result<Change, Refusal> {
-    let pkg =
-        d.p.entries
-            .iter()
-            .rev()
-            .find(|e| e.kind == kind && e.pe.is_some_and(|p| d.e(p).kind == "package"))
-            .and_then(|e| e.pe)
-            .or_else(|| d.first_package());
+    // 置くのは表示中のファイルなので、ほかのファイルの同じ種類の要素は見ない（ADR-0021 §5）
+    let pkg = (0..d.p.entries.len())
+        .rev()
+        .filter(|&i| d.in_open_file(i))
+        .map(|i| d.e(i))
+        .find(|e| e.kind == kind && e.pe.is_some_and(|p| d.e(p).kind == "package"))
+        .and_then(|e| e.pe)
+        .or_else(|| d.first_package());
     let (text, target, inherited) = match (pkg, new_package) {
         (Some(p), _) => (d.text.to_owned(), d.target(p), d.phase_of(p)),
         (None, Some(name)) => {
@@ -685,33 +733,37 @@ pub(super) fn tokens(text: &str) -> Vec<(SyntaxKind, usize, &str)> {
 
 /// 名前を変え、参照もまとめて書き換える。定義なら見える範囲の名前すべて、使用なら持ち主の中の宣言と参照
 /// （`then a`・`first a`・`= a * 2`・`:> a`・`a.b` の `a` など。#221）。同じ名前の別の宣言に隠されたところ（`def_reach`）は変えない。
-/// コメントの中・長い名前の一部・使用の `x.e` の `.` の後ろの名前は変えない。引用名（`'名前'`）の中も変える。
+/// コメントの中・長い名前の一部・使用の `x.e` の `.` の後ろの名前・短い名前（`<'R1'>`）は変えない。引用名（`'名前'`）で書いた参照も変える。
+/// 基本名（英字か `_` で始まり、英数字と `_` だけ）でない名前（日本語・空白を含む名前など）は、引用名で書く（8.2.2.3）。
 ///
 /// # 引数
 ///
 /// - `d`：操作の対象のテキスト
 /// - `f`：名前を変える宣言
-/// - `nn`：新しい名前（基本名）
+/// - `nn`：新しい名前（前後の空白は除く）
 ///
 /// # 戻り値
 ///
 /// 書き換えた後のテキストと、選ぶ名前・光らせる範囲（名前を変えた宣言の頭）。同じ名前なら、テキストを変えずに返す。
-/// 名前が使えないとき・既に使われているときは理由の文（`Err`）。
+/// 名前が空・使えない文字（`'`・`\`・改行などの制御文字）を含む・既に使われているときは理由の文（`Err`）。
 ///
 /// # 例
 ///
 /// ```text
 /// rename(Doc("package P { part def E { port e; } part def C { part e : E; part f : E; flow from e.e to f.e; } }"), C の中の e, "g")
 ///   → Ok(text = "package P { part def E { port e; } part def C { part g : E; part f : E; flow from g.e to f.e; } }")
+/// rename(Doc("package P { part def Kettle; part def C { part k : Kettle; } }"), Kettle, "電気 ケトル")
+///   → Ok(text = "package P { part def '電気 ケトル'; part def C { part k : '電気 ケトル'; } }")
 /// rename(Doc("package P { part def A; part def B; }"), A, "B")  → Err("「B」は既に使われています")
-/// rename(Doc("package P { part def A; }"), A, "1A")             → Err(BAD_NAME)
+/// rename(Doc("package P { part def A; }"), A, "it's")           → Err(BAD_RENAME)
 /// ```
 fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
-    if !is_basic_name(nn) {
-        return Err(BAD_NAME.to_owned());
+    let nn = nn.trim();
+    if nn.is_empty() {
+        return Err("名前を入力してください".to_owned());
     }
-    if let Some(why) = keyword_problem(nn) {
-        return Err(why);
+    if has_bad_name_char(nn) {
+        return Err(BAD_RENAME.to_owned());
     }
     let e = d.e(f.entry);
     let old = e.name.as_str();
@@ -722,10 +774,65 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
             flash: None,
         });
     }
-    if d.names().contains(nn) {
+    // 同じ名前空間（同じ持ち主の直下）に同じ名前があるときだけ断る。別の定義の中の同じ名前は重ならない（#244）
+    let pe = d.e(f.entry).pe;
+    let taken =
+        d.p.entries
+            .iter()
+            .enumerate()
+            .any(|(i, x)| i != f.entry && x.pe == pe && x.name == nn);
+    if taken {
         return Err(format!("「{nn}」は既に使われています"));
     }
+    Ok(rename_refs(d, f, nn))
+}
+
+/// 名前を変え、参照もまとめて書き換える（`rename` の、名前を確かめた後の部分）。名前が使えるかは呼ぶ側が確かめる。
+/// インスペクタでの属性の名前の変更（持ち主の中で重ならないかだけを確かめる）でも使う（#231）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `f`：名前を変える宣言
+/// - `nn`：新しい名前（前後の空白は除いたもの。今の名前と違う）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキストと、選ぶ名前・光らせる範囲（名前を変えた宣言の頭）。
+///
+/// # 例
+///
+/// ```text
+/// rename_refs(Doc("package P { part def D { attribute a; attribute u = a * 2; } }"), a, "z")
+///   → text = "package P { part def D { attribute z; attribute u = z * 2; } }"
+/// ```
+pub(super) fn rename_refs(d: &Doc<'_>, f: &Found, nn: &str) -> Change {
+    let e = d.e(f.entry);
+    let old = e.name.as_str();
     let ts = tokens(d.text);
+    let significant = |i: usize, step: isize| -> Option<&(SyntaxKind, usize, &str)> {
+        let mut j = i as isize + step;
+        while let Some(t) = usize::try_from(j).ok().and_then(|j| ts.get(j)) {
+            if !t.0.is_trivia() && t.0 != SyntaxKind::REGULAR_COMMENT {
+                return Some(t);
+            }
+            j += step;
+        }
+        None
+    };
+    // 名前の字句：基本名の IDENT か、短い名前（`<'…'>`）でない引用名
+    let is_name = |i: usize| -> bool {
+        let (kind, _, s) = ts[i];
+        match kind {
+            SyntaxKind::IDENT => s == old,
+            SyntaxKind::QUOTED_NAME => {
+                s.len() >= 2
+                    && &s[1..s.len() - 1] == old
+                    && !significant(i, -1).is_some_and(|t| t.2 == "<")
+            }
+            _ => false,
+        }
+    };
     // 使用の名前は、持ち主（部品定義など）の中でだけ参照される。`a.e` の `.` の後ろは、別の要素の特性なので変えない
     let owner =
         e.pe.map_or(0..d.text.len(), |p| d.b(d.e(p).start)..d.b(d.e(p).end));
@@ -739,48 +846,57 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
         }
         seen(&ts, i) && (e.is_def || (owner.contains(&at) && !after_dot))
     };
-    let mut hits: Vec<(usize, usize)> = Vec::new(); // (位置, 消す長さ)
-    for (i, &(kind, at, s)) in ts.iter().enumerate() {
-        if kind == SyntaxKind::QUOTED_NAME
-            && s.len() > 2
-            && &s[1..s.len() - 1] == old
-            && refers(i, at)
-        {
-            hits.push((at + 1, old.len()));
-        }
-        if kind != SyntaxKind::IDENT || s != old {
+    let mut hits: Vec<usize> = Vec::new(); // 字句の番号
+    for (i, &(_, at, _)) in ts.iter().enumerate() {
+        if !is_name(i) {
             continue;
         }
         let hit = refers(i, at);
         if hit {
-            hits.push((at, old.len()));
+            hits.push(i);
         }
     }
     if !e.is_def {
-        let (hs, he) = (d.b(e.start), d.b(e.head_end));
-        let head = ts
-            .iter()
-            .find(|t| t.0 == SyntaxKind::IDENT && t.2 == old && (hs..he).contains(&t.1));
-        if let Some(&(_, at, _)) = head
-            && !hits.iter().any(|h| h.0 == at)
-        {
-            hits.push((at, old.len()));
-        }
+        // 特性は、持ち主の外からも `W::n`・`f.n`・引き継いだ先の `:>> n` で指される。書いた場所から解決して、この特性を指すものを足す（F-EDIT-3）
+        let rest: Vec<usize> = (0..ts.len())
+            .filter(|&i| is_name(i) && !hits.contains(&i))
+            .collect();
+        hits.extend(feature_refs(d, &ts, &rest, f.entry));
+    }
+    let (hs, he) = (d.b(e.start), d.b(e.head_end));
+    let head = (0..ts.len()).find(|&i| is_name(i) && (hs..he).contains(&ts[i].1));
+    if let Some(i) = head
+        && !hits.contains(&i)
+    {
+        hits.push(i);
     }
     hits.sort_unstable();
+    // 宣言も参照も、新しい名前を必要なときだけ引用名で書く（基本名に戻すときは引用符も外す。#244）
+    let edits: Vec<(usize, usize, String)> = hits
+        .iter()
+        .map(|&i| {
+            let (_, at, s) = ts[i];
+            (at, s.len(), sysml_name(nn))
+        })
+        .collect();
     let mut out = d.text.to_owned();
-    for &(at, len) in hits.iter().rev() {
-        out.replace_range(at..at + len, nn);
+    for (at, len, by) in edits.iter().rev() {
+        out.replace_range(*at..*at + *len, by);
     }
-    let grow = nn.len() as isize - old.len() as isize;
-    let shift =
-        |p: usize| (p as isize + grow * hits.iter().filter(|h| h.0 < p).count() as isize) as usize;
+    let shift = |p: usize| {
+        let grow: isize = edits
+            .iter()
+            .filter(|x| x.0 < p)
+            .map(|x| x.2.len() as isize - x.1 as isize)
+            .sum();
+        (p as isize + grow) as usize
+    };
     let flash = (shift(d.b(e.start)), shift(d.b(e.head_end)));
-    Ok(Change {
+    Change {
         text: out,
         select: Some(nn.to_owned()),
         flash: Some(flash),
-    })
+    }
 }
 
 /// 名前のトークンが指す宣言を、書いた場所から解決する（SysML 8.2.2.5 の名前の解決。`model::resolve_refs`）。
@@ -823,13 +939,81 @@ fn names_entry(d: &Doc<'_>, ts: &[(SyntaxKind, usize, &str)], k: usize) -> Optio
     }
     segs.reverse();
     let at = ts[k].1;
+    // ほかのファイルの宣言は、表示中のファイルのトークンを囲まない（位置に触れると操作を断る印が付く）
     let ctx = (0..d.p.entries.len())
+        .filter(|&x| d.in_open_file(x))
         .filter(|&x| (d.b(d.e(x).start)..d.b(d.e(x).end)).contains(&at))
         .max_by_key(|&x| d.b(d.e(x).start));
     crate::model::resolve_refs(&d.p, &[(segs.join("::"), ctx)])
         .into_iter()
         .next()
         .flatten()
+}
+
+/// 名前のトークンのうち、特性 `target` を指すもの（再定義をたどって行き着くものも含む）を選ぶ（F-EDIT-3）。
+/// 前に `f.`・`W::` が続くトークンは、その連鎖・修飾名ごと、トークンを囲む一番内側の宣言から解決する。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `ts`：テキストのトークンの列（`tokens`）
+/// - `cands`：調べる名前のトークンの番号
+/// - `target`：名前を変える特性の宣言の番号
+///
+/// # 戻り値
+///
+/// `target` を指すトークンの番号。
+///
+/// # 例
+///
+/// ```text
+/// // "part def W { attribute n; } part def B { part f : W { attribute :>> n; } attribute t = f.n; attribute s = W::n; }" のとき
+/// feature_refs(d, ts, [":>> n" の n, "f.n" の n, "W::n" の n], W の n) → 3 つとも
+/// // "part def Z { attribute n; attribute q = n; }" の q の値の n は、Z の n を指すので選ばない
+/// ```
+fn feature_refs(
+    d: &Doc<'_>,
+    ts: &[(SyntaxKind, usize, &str)],
+    cands: &[usize],
+    target: usize,
+) -> Vec<usize> {
+    let significant = |j: usize| !ts[j].0.is_trivia() && ts[j].0 != SyntaxKind::REGULAR_COMMENT;
+    let reference = |k: usize| -> Option<String> {
+        let mut parts = vec![ts[k].2];
+        let mut j = k;
+        while let Some(sep) = (0..j).rev().find(|&x| significant(x)) {
+            if !matches!(ts[sep].0, SyntaxKind::DOT | SyntaxKind::COLON2) {
+                break;
+            }
+            let q = (0..sep).rev().find(|&x| significant(x))?;
+            // `(a).n` のように、名前でないものの特性は解決しない
+            if !matches!(ts[q].0, SyntaxKind::IDENT | SyntaxKind::QUOTED_NAME) {
+                return None;
+            }
+            parts.push(ts[sep].2);
+            parts.push(ts[q].2);
+            j = q;
+        }
+        parts.reverse();
+        Some(parts.concat())
+    };
+    // ほかのファイルの宣言は、表示中のファイルのトークンを囲まない（位置に触れると操作を断る印が付く）
+    let innermost = |at: usize| {
+        (0..d.p.entries.len())
+            .filter(|&x| crate::project::merge::file_of(d.e(x).start) == 0)
+            .filter(|&x| (d.b(d.e(x).start)..d.b(d.e(x).end)).contains(&at))
+            .max_by_key(|&x| d.b(d.e(x).start))
+    };
+    let picked: Vec<(usize, (String, Option<usize>))> = cands
+        .iter()
+        .filter_map(|&k| Some((k, (reference(k)?, innermost(ts[k].1)))))
+        .collect();
+    let refs: Vec<(String, Option<usize>)> = picked.iter().map(|(_, r)| r.clone()).collect();
+    crate::model::refers_to_feature(&d.p, &refs, target)
+        .into_iter()
+        .zip(&picked)
+        .filter_map(|(yes, (k, _))| yes.then_some(*k))
+        .collect()
 }
 
 /// 名前の変更で、名前のトークンがその宣言を指すかを確かめる関数を作る（#220）。
@@ -866,7 +1050,8 @@ fn def_reach<'a>(
     };
     let mine = reach(i);
     let hidden: Vec<std::ops::Range<usize>> = (0..d.p.entries.len())
-        .filter(|&j| j != i && d.e(j).name == old)
+        // ほかのファイルの同じ名前の宣言は、表示中のファイルの名前を隠さない
+        .filter(|&j| j != i && d.in_open_file(j) && d.e(j).name == old)
         .map(reach)
         .filter(|r| r != &mine && mine.start <= r.start && r.end <= mine.end)
         .collect();
@@ -1041,6 +1226,8 @@ fn dependency_parts(d: &Doc<'_>, gone: &[usize]) -> (Vec<Range>, HashSet<usize>)
             .iter()
             .filter(|r| matches!(r.kind, RelKind::Dependency { .. } | RelKind::Derive { .. }))
             .map(|r| r.start)
+            // ほかのファイルの依存の文は書き換えないので、調べない（ADR-0021 §5）
+            .filter(|&start| crate::project::merge::file_of(start) == 0)
             .collect();
     starts.sort_unstable();
     starts.dedup();
@@ -1159,7 +1346,7 @@ pub(super) struct EdgeAt {
     pub rel: Option<usize>,
 }
 
-/// 内部ブロック図・シーケンス図・アクションの流れの図の関係の ID（UI の `web/src/app/views.ts` と同じ ID）。
+/// 内部ブロック図・シーケンス図・アクションの流れの図の関係の ID（UI の `web/src/render/view-content.ts` と同じ ID）。
 /// アクション定義（`action def`）なら、アクションの流れの線（`flow::edges`。`succession|a:a|a:b|#1` など）。
 /// 状態定義（`state def`）なら、遷移の線（`states::edges`。`transition|s:a|s:b|Go#1` など）。
 /// シナリオ（`occurrence def`）なら、メッセージを書いた順に `msg|順番|名前`。
@@ -1326,6 +1513,7 @@ fn delete_edge(d: &Doc<'_>, id: &str, ctx: Option<&str>) -> Result<Change, Refus
 /// `verify` は a の `objective` の中（無ければ `objective { … }` を作る）、`frame` は a の中に関心事、
 /// `flow` は 2 つの部品を持つ定義（内部ブロック図なら対象）の中に流れを書く。
 /// 名前は `sysml_name` で書き、空白や日本語を含む名前は引用名（`'R one'`）にする（8.2.2.3）。
+/// 書く場所と別の package（ほかのファイルを含む）の要素は、修飾名（`Parts::Bus`）で書く（`ref_text`。#232）。
 ///
 /// # 引数
 ///
@@ -1361,14 +1549,25 @@ fn connect(
     ctx: Option<&str>,
 ) -> Result<Change, Refusal> {
     let (ea, eb) = (d.e(a.entry), d.e(b.entry));
-    let last_rel = |want: fn(&RelKind) -> bool| d.p.rels.iter().rev().find(|r| want(&r.kind));
+    // 関係は表示中のファイルに書くので、ほかのファイルの関係の隣には置かない（ADR-0021 §5）
+    let last_rel = |want: fn(&RelKind) -> bool| {
+        d.p.rels
+            .iter()
+            .rev()
+            .filter(|r| crate::project::merge::file_of(r.start) == 0)
+            .find(|r| want(&r.kind))
+    };
     let (host, snippet): (Target, String) = match rel {
         "comp" => {
             let kw = lookup(KW_FOR, &eb.kind).unwrap_or("part");
             let nm = d.unique_child(a.entry, &lower_first(&eb.name));
             (
                 d.target(a.entry),
-                format!("{kw} {} : {};", sysml_name(&nm), sysml_name(&eb.name)),
+                format!(
+                    "{kw} {} : {};",
+                    sysml_name(&nm),
+                    d.ref_text(b.entry, a.entry)
+                ),
             )
         }
         "satisfy" => {
@@ -1380,12 +1579,15 @@ fn connect(
                 d.target(host),
                 format!(
                     "satisfy {} by {};",
-                    sysml_name(&eb.name),
-                    sysml_name(&ea.name)
+                    d.ref_text(b.entry, host),
+                    d.ref_text(a.entry, host)
                 ),
             )
         }
         "verify" => {
+            if verifies(d, a.entry, b.entry) {
+                return Err(SAME_RELATION.to_owned());
+            }
             let has_objective =
                 d.p.rels
                     .iter()
@@ -1395,10 +1597,10 @@ fn connect(
                 .filter(|_| has_objective)
                 .and_then(|o| objective_block(d.text, d.b(o)));
             match objective {
-                Some(t) => (t, format!("verify {};", sysml_name(&eb.name))),
+                Some(t) => (t, format!("verify {};", d.ref_text(b.entry, a.entry))),
                 None => (
                     d.target(a.entry),
-                    format!("objective {{ verify {}; }}", sysml_name(&eb.name)),
+                    format!("objective {{ verify {}; }}", d.ref_text(b.entry, a.entry)),
                 ),
             }
         }
@@ -1409,7 +1611,7 @@ fn connect(
                 format!(
                     "frame concern {} : {};",
                     sysml_name(&nm),
-                    sysml_name(&eb.name)
+                    d.ref_text(b.entry, a.entry)
                 ),
             )
         }
@@ -1423,8 +1625,8 @@ fn connect(
                 d.target(host),
                 format!(
                     "#derivation dependency from {} to {};",
-                    sysml_name(&ea.name),
-                    sysml_name(&eb.name)
+                    d.ref_text(a.entry, host),
+                    d.ref_text(b.entry, host)
                 ),
             )
         }
@@ -1447,12 +1649,75 @@ fn connect(
         }
         _ => return Err(format!("関係の種類「{rel}」は扱えません")),
     };
+    // package の直下に書く関係（満たす・導出）は、同じ文が既にあれば足さない（同じ関係が 2 行になるため。#244）
+    if matches!(rel, "satisfy" | "derive") && has_statement(d.text, &snippet) {
+        return Err(SAME_RELATION.to_owned());
+    }
     let (text, a, b) = insert_into(d.text, host, &snippet);
     Ok(Change {
         text,
         select: None,
         flash: Some((a, b)),
     })
+}
+
+/// 同じ関係が既にあるときに、関係の追加を断る理由の文（画面にそのまま出す。ADR-0014）。
+const SAME_RELATION: &str = "同じ関係が既にあります";
+
+/// 検証 `v` の中に、要求 `r` を検証する文（`verify R;`）が既にあるか。参照は書いた場所から解決して比べる（`verify P::R;` も同じ関係）。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `v`：検証（verification def など）の宣言の番号
+/// - `r`：要求の宣言の番号
+///
+/// # 戻り値
+///
+/// 既にあれば true。
+///
+/// # 例
+///
+/// ```text
+/// // "package P { requirement def R; requirement def S; verification def V { objective { verify R; } } }" のとき
+/// verifies(d, V, R) → true
+/// verifies(d, V, S) → false
+/// ```
+fn verifies(d: &Doc<'_>, v: usize, r: usize) -> bool {
+    let refs: Vec<(String, Option<usize>)> =
+        d.p.rels
+            .iter()
+            .filter(|x| x.pe == Some(v))
+            .filter_map(|x| match &x.kind {
+                RelKind::Verify { req } if !req.is_empty() => Some((req.clone(), x.pe)),
+                _ => None,
+            })
+            .collect();
+    crate::model::resolve_refs(&d.p, &refs)
+        .into_iter()
+        .any(|x| x == Some(r))
+}
+
+/// テキストに、空白の違いを除いて同じ文があるか。コメントの中も数えるが、関係の重複を断るのに使うだけなので問題にならない。
+///
+/// # 引数
+///
+/// - `text`：テキスト
+/// - `stmt`：探す文（`satisfy R by A;` など）
+///
+/// # 戻り値
+///
+/// 空白をまとめた形で `stmt` が現れれば true。
+///
+/// # 例
+///
+/// ```text
+/// has_statement("package P {\n    satisfy  R by A;\n}", "satisfy R by A;") → true
+/// has_statement("package P { satisfy R by B; }", "satisfy R by A;")         → false
+/// ```
+fn has_statement(text: &str, stmt: &str) -> bool {
+    let squash = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
+    squash(text).contains(&squash(stmt))
 }
 
 /// 関係を書く package が無いときの理由の文を作る（画面にそのまま出す。ADR-0014）。

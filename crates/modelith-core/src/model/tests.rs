@@ -704,30 +704,35 @@ fn alias_cycle_or_missing_target_is_not_found() {
         errors(&m),
         [
             "型「L」が見つかりません（l）",
-            "型「M」が見つかりません（m）"
+            "型「M」が見つかりません（m）",
+            "別名「L」の指す先「L」が見つかりません（alias）",
+            "別名「M」の指す先「Nope」が見つかりません（alias）"
         ]
     );
 }
 
 #[test]
-fn verify_inside_a_package_level_usage_draws_from_its_type() {
-    // Arrange（RequirementVerificationUsage、8.2.2.24）
+fn verify_inside_a_package_level_usage_draws_from_the_usage() {
+    // Arrange（RequirementVerificationUsage、8.2.2.24。package の直下の検証の使用は図の要素になり、型への線も引く）
     let text = "package P { requirement def RD; verification def VD; verification v : VD { objective { verify RD; } } }";
     // Act
     let (_, m) = run(text);
     // Assert
-    assert_eq!(edge_ids(&m), ["verify|VD|RD|«verify»#1"]);
+    assert_eq!(edge_ids(&m), ["defined|v|VD|#1", "verify|v|RD|«verify»#1"]);
     assert!(m.problems.is_empty());
 }
 
 #[test]
-fn verify_inside_an_untyped_usage_is_not_reported_as_missing() {
-    // Arrange（境界値：線を引く元が図に無い）
-    let text = "package P { requirement def RD; verification v { objective { verify RD; } } }";
+fn verify_inside_an_untyped_usage_draws_from_the_usage() {
+    // Arrange（境界値：型の無い検証の使用。0.2.0 から、使用そのものから線を引く）
+    let text = "package P { requirement def RD; verification v { objective { verify RD; } } analysis a { objective { verify RD; } } }";
     // Act
     let (_, m) = run(text);
     // Assert
-    assert!(m.edges.is_empty());
+    assert_eq!(
+        edge_ids(&m),
+        ["verify|v|RD|«verify»#1", "verify|a|RD|«verify»#1"]
+    );
     assert!(m.problems.is_empty());
 }
 
@@ -953,14 +958,14 @@ fn specialization_line_removes_only_its_target() {
 }
 
 #[test]
-fn specialization_of_an_undrawn_or_missing_definition_is_not_a_problem() {
+fn specialization_of_an_undrawn_or_missing_definition_draws_no_line() {
     // Arrange（異常系：標準ライブラリ・見つからない相手・図に描かない定義・自分自身）
     let text = "package P { part def A :> Part; part def B :> Nope; view def V :> GeneralView; part def S :> S; }";
     // Act
     let (_, m) = run(text);
-    // Assert（線も問題も出さない）
+    // Assert（線は出さない。見つからない相手だけを問題にする。#267）
     assert!(m.edges.is_empty(), "{:?}", m.edges);
-    assert!(m.problems.is_empty(), "{:?}", m.problems);
+    assert_eq!(errors(&m), ["引き継ぐ定義「Nope」が見つかりません（B）"]);
 }
 
 #[test]
@@ -1614,6 +1619,171 @@ fn action_flow_draws_actions_control_nodes_and_successions() {
 }
 
 #[test]
+fn action_flow_draws_parameters_and_flows_between_them() {
+    // Arrange（8.2.3.17：アクションのパラメータ（本体のもの・型の定義のもの）と、パラメータの間の流れ、アクション定義そのもののパラメータ）
+    let text = "package P { item def Water; action def Brew { in water : Water; out t : Water; } \
+                action def MakeTea { in item cold : Water; out item tea : Water; attribute n; \
+                action boil { in item w : Water; out item hot : Water; } action brew : Brew; \
+                flow cold to boil.w; flow of Water from boil.hot to brew.water; flow brew.t to tea; first boil then brew; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let f = flow(&m, "MakeTea");
+    let own: Vec<(&str, &str)> = f.params.iter().map(|p| (p.name.as_str(), p.dir)).collect();
+    assert_eq!(own, [("cold", "in"), ("tea", "out")]);
+    let ports = |k: &str| -> Vec<(String, &str)> {
+        let n = f.nodes.iter().find(|n| n.key == k).expect(k);
+        n.ports.iter().map(|p| (p.name.clone(), p.dir)).collect()
+    };
+    assert_eq!(
+        ports("a:boil"),
+        [("w".to_owned(), "in"), ("hot".to_owned(), "out")]
+    );
+    assert_eq!(
+        ports("a:brew"),
+        [("water".to_owned(), "in"), ("t".to_owned(), "out")]
+    );
+    let edges: Vec<(&str, Option<&str>, Option<&str>)> = f
+        .edges
+        .iter()
+        .map(|e| (e.id.as_str(), e.from_port.as_deref(), e.to_port.as_deref()))
+        .collect();
+    assert_eq!(
+        edges,
+        [
+            ("flow|b:cold|a:boil|#1", None, Some("port:w")),
+            (
+                "flow|a:boil|a:brew|Water#1",
+                Some("port:hot"),
+                Some("port:water")
+            ),
+            ("flow|a:brew|b:tea|#1", Some("port:t"), None),
+            ("succession|a:boil|a:brew|#1", None, None),
+        ]
+    );
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn action_flow_reports_a_flow_end_that_is_not_found() {
+    // Arrange（異常系：流れの相手がアクション定義の中に無い。知らせは 1 回だけ）
+    let text = "package P { action def A { action a { out o; } flow a.o to nope; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(flow(&m, "A").edges.is_empty());
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(msgs, ["線の接続先「nope」が見つかりません（flow）"]);
+}
+
+#[test]
+fn action_flow_draws_nested_bodies_inside_their_actions() {
+    // Arrange（8.2.3.17：中にアクションの流れを書いたアクションの使用は、その中に要素・開始と終了・線を描く）
+    let text = "package P { action def A { first start then boil; action boil { in item w; \
+                first start then heat; action heat { out item hot; } then wait; action wait; then done; \
+                flow w to heat.hot; } first boil then done; if x { action t; } } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let f = flow(&m, "A");
+    let nodes: Vec<(&str, Option<&str>)> = f
+        .nodes
+        .iter()
+        .map(|n| (n.key.as_str(), n.container.as_deref()))
+        .collect();
+    assert_eq!(
+        nodes,
+        [
+            ("a:start", None),
+            ("a:boil", None),
+            ("a:boil.start", Some("a:boil")),
+            ("a:boil.heat", Some("a:boil")),
+            ("a:boil.wait", Some("a:boil")),
+            ("a:boil.done", Some("a:boil")),
+            ("a:#1", None),
+            ("a:done", None),
+        ]
+    );
+    let edges: Vec<(&str, Option<&str>, Option<&str>)> = f
+        .edges
+        .iter()
+        .map(|e| (e.id.as_str(), e.from_port.as_deref(), e.to_port.as_deref()))
+        .collect();
+    assert_eq!(
+        edges,
+        [
+            ("succession|a:start|a:boil|#1", None, None),
+            ("succession|a:boil.start|a:boil.heat|#1", None, None),
+            ("succession|a:boil.heat|a:boil.wait|#1", None, None),
+            ("succession|a:boil.wait|a:boil.done|#1", None, None),
+            (
+                "flow|a:boil|a:boil.heat|#1",
+                Some("port:w"),
+                Some("port:hot")
+            ),
+            ("succession|a:boil|a:done|#1", None, None),
+        ]
+    );
+    assert!(m.problems.is_empty(), "{:?}", m.problems);
+}
+
+#[test]
+fn action_flow_follows_a_chain_into_a_nested_body() {
+    // Arrange（アクション定義の本体から、入れ子の本体の要素のパラメータ boil.heat.x を指す流れ）
+    let text = "package P { action def A { action boil { action heat { in x; } } action src { out o; } \
+                flow src.o to boil.heat.x; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let e = &flow(&m, "A").edges[0];
+    assert_eq!(
+        (e.id.as_str(), e.to_port.as_deref()),
+        ("flow|a:src|a:boil.heat|#1", Some("port:x"))
+    );
+}
+
+#[test]
+fn action_flow_groups_performed_elements_into_swimlanes() {
+    // Arrange（8.2.3.17 の swimlane：部品が perform 使用.要素 で受け持つ要素を、部品ごとの区画にする）
+    let text = "package P { action def MakeTea { action boil; then pour; action pour; then serve; action serve; } \
+                action makeTea : MakeTea; \
+                part kettle { perform makeTea; part heater { perform makeTea.boil; } \
+                part ctrl { perform makeTea.pour; perform makeTea.boil; perform makeTea.nope; } } \
+                part other { perform elsewhere.serve; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert（boil は先に受け持った heater の区画、知らない要素と別のアクションの perform は区画にしない）
+    let lanes: Vec<(&str, &str, Vec<&str>)> = flow(&m, "MakeTea")
+        .lanes
+        .iter()
+        .map(|l| {
+            (
+                l.key.as_str(),
+                l.name.as_str(),
+                l.nodes.iter().map(String::as_str).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        lanes,
+        [
+            ("lane:kettle.heater", "kettle.heater", vec!["a:boil"]),
+            ("lane:kettle.ctrl", "kettle.ctrl", vec!["a:pour"]),
+        ]
+    );
+}
+
+#[test]
+fn action_flow_without_performers_has_no_swimlanes() {
+    // Arrange（境界値：perform が無い）
+    let text = "package P { action def A { action a; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert!(flow(&m, "A").lanes.is_empty());
+}
+
+#[test]
 fn unnamed_action_nodes_get_numbered_keys() {
     // Arrange（境界値：名前の無いアクションの節は、書いた順に番号を付ける）
     let text = "package P { action def A { send S() to b; then accept e : E; then terminate; } part def E; }";
@@ -1965,6 +2135,222 @@ fn transitions_outside_state_definitions_are_not_drawn() {
     assert!(m.state_machines.is_empty());
     assert!(m.problems.is_empty());
 }
+
+#[test]
+fn package_level_action_item_and_state_usages_are_drawn() {
+    // Arrange（同値分割：package の直下・定義の中。GeneralView に描く使用、0.2.0）
+    let text =
+        "package P { action def AD; action a : AD; item i; state s; part def H { action inner; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let keys: Vec<&str> = m.nodes.iter().map(|n| n.key.as_str()).collect();
+    assert!(
+        keys.contains(&"a") && keys.contains(&"i") && keys.contains(&"s"),
+        "{keys:?}"
+    );
+    assert!(!keys.contains(&"inner"), "{keys:?}");
+    assert!(
+        edge_ids(&m).contains(&"defined|a|AD|#1"),
+        "{:?}",
+        edge_ids(&m)
+    );
+}
+
+// ---- 複数のファイルにまたがるモデル（ADR-0021） ----
+
+/// 表示中のファイル `focus` に、ほかのファイル `others` をつないでモデルを作る。
+fn run_files(focus: &str, others: &[&str]) -> Model {
+    let parsed = |t: &str| project(t, &parse(t));
+    let p = crate::project::merge::merge(parsed(focus), others.iter().map(|t| parsed(t)).collect());
+    build(&p)
+}
+
+const VEHICLES: &str = "package Vehicles { part def Car; private part def Secret; }";
+
+#[test]
+fn import_brings_a_package_of_another_file_into_scope() {
+    // Arrange
+    let focus = "package App { import Vehicles::*; part c : Car; }";
+    // Act
+    let m = run_files(focus, &[VEHICLES]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn name_in_another_file_is_not_found_without_import() {
+    // Arrange（異常系：取り込んでいない）
+    let focus = "package App { part c : Car; }";
+    // Act
+    let m = run_files(focus, &[VEHICLES]);
+    // Assert
+    assert_eq!(errors(&m), ["型「Car」が見つかりません（c）"]);
+}
+
+#[test]
+fn qualified_name_reaches_into_another_file() {
+    // Arrange
+    let focus = "package App { part c : Vehicles::Car; }";
+    // Act
+    let m = run_files(focus, &[VEHICLES]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn top_level_definition_of_another_file_is_visible_by_name() {
+    // Arrange（どのファイルの一番上の要素も、その名前で見える）
+    let focus = "package App { part c : Engine; }";
+    // Act
+    let m = run_files(focus, &["part def Engine;"]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn import_by_name_brings_only_that_element() {
+    // Arrange（境界値：1 つだけ取り込む）
+    let focus = "package App { import Parts::Wheel; part w : Wheel; part t : Tire; }";
+    // Act
+    let m = run_files(focus, &["package Parts { part def Wheel; part def Tire; }"]);
+    // Assert
+    assert_eq!(errors(&m), ["型「Tire」が見つかりません（t）"]);
+}
+
+#[test]
+fn recursive_import_reaches_nested_packages() {
+    // Arrange
+    let focus = "package App { import Lib::**; part b : Bolt; }";
+    let other = "package Lib { package Fasteners { part def Bolt; } }";
+    // Act
+    let m = run_files(focus, &[other]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn private_element_is_not_imported() {
+    // Arrange（異常系：private の要素は取り込まれない）
+    let focus = "package App { import Vehicles::*; part s : Secret; }";
+    // Act
+    let m = run_files(focus, &[VEHICLES]);
+    // Assert
+    assert_eq!(errors(&m), ["型「Secret」が見つかりません（s）"]);
+}
+
+#[test]
+fn public_import_is_passed_on_but_private_import_is_not() {
+    // Arrange（取り込みの取り込み：Fleet が Vehicles を取り込み直す）
+    let fleet = "package Fleet { public import Vehicles::*; private import Tools::*; }";
+    let tools = "package Tools { part def Jack; }";
+    let focus = "package App { import Fleet::*; part c : Car; part j : Jack; }";
+    // Act
+    let m = run_files(focus, &[fleet, VEHICLES, tools]);
+    // Assert
+    assert_eq!(errors(&m), ["型「Jack」が見つかりません（j）"]);
+}
+
+#[test]
+fn single_file_still_finds_names_anywhere_in_the_file() {
+    // Arrange（同じファイルの中の割り切りは残す）
+    let focus = "package A { part def X; } package B { part y : X; }";
+    // Act
+    let m = run_files(focus, &[]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn same_file_definition_wins_over_another_file() {
+    // Arrange（同じ名前がほかのファイルの一番上にもある）
+    let focus = "package A { part def X; part y : X; }";
+    // Act
+    let m = run_files(focus, &["part def X;"]);
+    // Assert
+    assert!(
+        edge_ids(&m).iter().any(|id| id.starts_with("defined|y|X")),
+        "{:?}",
+        edge_ids(&m)
+    );
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn diagram_keeps_only_referenced_elements_of_other_files() {
+    // Arrange（Bus は取り込んだだけで参照していない）
+    let focus = "package App { import Fleet::*; part c : Car; }";
+    let other = "package Fleet { part def Car; part def Bus; part def Van :> Bus; }";
+    // Act
+    let m = run_files(focus, &[other]);
+    // Assert
+    let keys: Vec<(&str, Option<usize>)> =
+        m.nodes.iter().map(|n| (n.key.as_str(), n.file)).collect();
+    assert_eq!(keys, [("c", None), ("Car", Some(1))]);
+    assert!(
+        edge_ids(&m).iter().all(|id| !id.contains("Van")),
+        "{:?}",
+        edge_ids(&m)
+    );
+}
+
+#[test]
+fn problems_of_other_files_are_left_out() {
+    // Arrange（異常系：ほかのファイルにだけ見つからない型がある）
+    let focus = "package App { part def A; }";
+    // Act
+    let m = run_files(focus, &["package B { part x : Nope; }"]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn same_name_in_another_file_keeps_the_key_of_the_focus_element() {
+    // Arrange（境界値：同じ名前がほかのファイルにもある。図の配置はキーで覚えるので変えない）
+    let focus = "package App { part def Car; part c : Fleet::Car; }";
+    // Act
+    let m = run_files(focus, &["package Fleet { part def Car; }"]);
+    // Assert
+    let keys: Vec<&str> = m.nodes.iter().map(|n| n.key.as_str()).collect();
+    assert_eq!(keys, ["Car", "c", "Car@Fleet"]);
+}
+
+#[test]
+fn view_of_the_focus_file_can_show_elements_of_other_files() {
+    // Arrange
+    let focus = "package App { view v { expose Fleet::*; } }";
+    // Act
+    let m = run_files(focus, &["package Fleet { part def Car; }"]);
+    // Assert
+    assert_eq!(m.views.len(), 1);
+    assert_eq!(m.views[0].node_keys, ["Car"]);
+    assert!(m.nodes.iter().any(|n| n.key == "Car"));
+}
+
+#[test]
+fn diagrams_written_in_other_files_are_left_out() {
+    // Arrange
+    let focus = "package App { part def A; }";
+    let other = "package B { action def Run { action a; action b; first a then b; } state def S { state s; } view w { expose B::*; } }";
+    // Act
+    let m = run_files(focus, &[other]);
+    // Assert
+    assert!(m.action_flows.is_empty() && m.state_machines.is_empty() && m.views.is_empty());
+    let keys: Vec<&str> = m.nodes.iter().map(|n| n.key.as_str()).collect();
+    assert_eq!(keys, ["A"]);
+}
+
+#[test]
+fn imported_package_can_start_a_qualified_name() {
+    // Arrange
+    let focus = "package App { import Lib::*; part b : Fasteners::Bolt; }";
+    let other = "package Lib { package Fasteners { part def Bolt; } }";
+    // Act
+    let m = run_files(focus, &[other]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
 #[test]
 fn quoted_names_resolve_as_line_ends() {
     // Arrange（同値分割：状態遷移・アクションの順序・接続の端を引用名で書く。引用符の中身を名前として解決する（8.2.2.3）。#230）
@@ -1988,4 +2374,87 @@ fn quoted_names_resolve_as_line_ends() {
         .map(|e| (e.from.as_str(), e.to.as_str()))
         .collect();
     assert!(f.contains(&("a:a 1", "a:b")), "{f:?}");
+}
+
+// ---- 特殊化・別名・import の見つからない相手（#267） ----
+
+#[test]
+fn missing_specialization_alias_and_import_targets_are_problems() {
+    // Arrange（異常系：どこにも無い相手）
+    let text = "package P { part def A :> Nope; alias T for Nope; import Nowhere::*; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(
+        errors(&m),
+        [
+            "引き継ぐ定義「Nope」が見つかりません（A）",
+            "別名「T」の指す先「Nope」が見つかりません（alias）",
+            "インポートする相手「Nowhere」が見つかりません（import）"
+        ]
+    );
+}
+
+#[test]
+fn found_specialization_alias_and_import_targets_are_not_problems() {
+    // Arrange（正常系：同じファイルの定義・package・修飾名・別名を指す別名・package の中身の import）
+    let text = "package P { part def B; package Q { part def C; } part def A :> B, Q::C; alias T for Q::C; alias U for T; import Q::*; import Q::C; import P::*; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn standard_library_names_are_never_missing() {
+    // Arrange（同値分割：標準ライブラリの型・標準ビュー定義・ライブラリのパッケージで修飾した名前・ライブラリから import した名前・
+    // 量と単位のパッケージの …Value・ライブラリのパッケージの import）
+    let text = "package P {
+        import ISQ::*;
+        private import ScalarValues::*;
+        import Metaobjects::SemanticMetadata;
+        import RiskMetadata::*;
+        import SI::kg;
+        part def A :> Part;
+        view def V :> GeneralView;
+        metadata def M :> SemanticMetadata;
+        metadata def N :> Metaobjects::SemanticMetadata;
+        attribute def L :> LengthValue;
+        attribute def R :> ScalarValues::Real;
+        alias Mass for ISQ::MassValue;
+        alias Lvl for RiskMetadata::LevelEnum;
+    }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn names_of_other_files_resolve_for_specialization_alias_and_import() {
+    // Arrange（F-FILE-15：フォルダの中のほかのファイルの package と、import で見える定義）
+    let focus = "package App { import Vehicles::*; part def Sports :> Car; part def Truck :> Vehicles::Car; alias C for Vehicles::Car; }";
+    // Act
+    let m = run_files(focus, &[VEHICLES]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn missing_names_in_other_files_are_left_out_and_unimported_names_are_missing() {
+    // Arrange（異常系：ほかのファイルにだけある見つからない相手は出さない。取り込んでいない名前の特殊化は見つからない）
+    let focus = "package App { part def Sports :> Car; }";
+    // Act
+    let m = run_files(
+        focus,
+        &[
+            VEHICLES,
+            "package B { part def X :> Nope; alias T for Nope; import Nowhere::*; }",
+        ],
+    );
+    // Assert
+    assert_eq!(
+        errors(&m),
+        ["引き継ぐ定義「Car」が見つかりません（Sports）"]
+    );
 }

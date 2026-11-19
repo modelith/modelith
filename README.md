@@ -5,16 +5,18 @@
 <h1 align="center">Modelith</h1>
 
 <p align="center">
-  <b>テキストと図を同期して編集できる、オープンソースの SysML v2 モデリングエディタ</b><br>
-  <sub>SysML v2 / KerML modeling editor with synchronized text and diagram editing</sub>
+  <b>An open-source SysML v2 modeling editor with synchronized text and diagram editing</b><br>
+  <sub>テキストと図を同期して編集できる、オープンソースの SysML v2 モデリングエディタ</sub>
 </p>
 
 <p align="center">
-  <a href="https://modelith.github.io/modelith/"><b>ブラウザで試す</b></a> &nbsp;|&nbsp;
-  <a href="https://modelith.github.io/">ユーザーマニュアル</a> &nbsp;|&nbsp;
-  <a href="https://github.com/modelith/modelith/releases">リリース</a> &nbsp;|&nbsp;
-  <a href="https://modelith.github.io/modelith/reports/requirements.html">テスト結果</a> &nbsp;|&nbsp;
-  <a href="https://github.com/modelith/modelith/issues/new/choose">フィードバック</a>
+  <a href="README.ja.md">日本語</a> &nbsp;|&nbsp;
+  <a href="https://modelith.github.io/modelith/"><b>Try it in your browser</b></a> &nbsp;|&nbsp;
+  <a href="https://modelith.github.io/">User manual</a> &nbsp;|&nbsp;
+  <a href="https://github.com/modelith/modelith/releases">Releases</a> &nbsp;|&nbsp;
+  <a href="https://modelith.github.io/modelith/reports/requirements.html">Test results</a> &nbsp;|&nbsp;
+  <a href="https://github.com/modelith/modelith/issues/new/choose">Feedback</a> &nbsp;|&nbsp;
+  <a href="https://github.com/sponsors/modelith">Sponsor</a>
 </p>
 
 <p align="center">
@@ -27,105 +29,111 @@
   <a href="https://modelith.github.io/modelith/">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/modelith/.github/main/profile/screenshot-dark.png">
-      <img src="https://raw.githubusercontent.com/modelith/.github/main/profile/screenshot.png" width="800" alt="Modelith の画面。左にファイル、中央にトレーサビリティの図、右に SysML v2 のテキスト">
+      <img src="https://raw.githubusercontent.com/modelith/.github/main/profile/screenshot.png" width="800" alt="The Modelith window: files on the left, a traceability diagram in the middle, and SysML v2 text on the right">
     </picture>
   </a>
 </p>
 
-## Modelith とは
+## What is Modelith?
 
-システムエンジニア・学生・研究者のための、SysML v2 のモデリングエディタです。
-テキストで書いたモデルがすぐ図になり、図で動かした内容はテキストに書き戻されます。
+A SysML v2 modeling editor for systems engineers, students and researchers.
+A model you write as text becomes a diagram right away, and what you change in the diagram is written back to the text.
 
-- **書いても、描いても、同じモデル** — テキストを打てば図に反映し、図で要素や関係を足せばテキストが書き換わります。
-- **目的に合わせた図** — ブロック定義図・内部ブロック図・アクティビティ図・状態遷移図・シーケンス図・トレーサビリティなど、同じモデルを見たい切り口で表示できます。SVG や draw.io 形式でエクスポートすることもできます。
-- **要求の抜けに気づける** — 利用者要求から方式設計・検証までのつながりをたどり、導出・充足・検証の抜けを示します。
-- **SysML v2 を知らなくても読める** — テキストのキーワードや図の名前にマウスを乗せると、その意味を表示します。
-- **ブラウザを開くだけ** — インストールもアカウントも不要です。手元のフォルダを VS Code のように開いて、編集・保存できます。
-- **モデルは手元から出ない** — モデルを外部に送信せず、アクセス解析も使いません。モデルはただのテキストファイルなので、Git で差分を追えます。
+- **Write it or draw it — it's the same model.** Type text and the diagram follows; add elements and relationships in the diagram and the text is rewritten.
+- **Diagrams for each purpose.** Show the same model from the angle you need: block definition, internal block, activity, state machine, sequence, traceability and more. Export them as SVG or draw.io.
+- **Spot gaps in your requirements.** Follow the chain from stakeholder needs through architecture to verification, and see where derivation, satisfaction or verification is missing.
+- **Readable without knowing SysML v2.** Hover over a keyword in the text or the name of a diagram to see what it means.
+- **Just open a browser.** No installation and no account. Open a local folder like in VS Code, then edit and save.
+- **Your model stays with you.** Modelith does not send your model anywhere and uses no analytics. A model is plain text, so you can track changes with Git.
 
-## はじめる
+## Getting started
 
-**<https://modelith.github.io/modelith/>** をブラウザで開くと、サンプルのモデル（電気ケトル）が表示されます。使い方は [ユーザーマニュアル](https://modelith.github.io/) をご覧ください。
+Open **<https://modelith.github.io/modelith/>** in your browser to see a sample model (an electric kettle). See the [user manual](https://modelith.github.io/) (in Japanese) for how to use it.
 
-| 環境 | できること |
-| --- | --- |
-| Chrome・Edge | フォルダを開いて、ファイルを直接編集・上書き保存 |
-| Safari・Firefox | ファイルの読み込みと、ダウンロードでの保存 |
-| スマホなど幅の狭い画面 | モデルを見て確かめる（テキストは読み取り専用で開き、「編集」で書き換える） |
+Modelith is published in three channels. Each keeps its own last session, drafts and settings.
 
-## SysML v2 の対応状況
-
-SysML v2 のテキストの書き方のうち、よく使う部分から対応しています（**0.1.0-rc.1 時点**、2026-10-20 に [SysML v2 の規格](https://github.com/Systems-Modeling/SysML-v2-Release) と照合）。
-
-状況の欄は、「対応」（使える）・「一部対応」（足りないところがある）・「未対応」（まだ使えない）で表します。
-
-| 分類 | 書き方 | 状況 | 足りないところ | 対応の予定 |
-| --- | --- | --- | --- | --- |
-| パッケージ | `package`（入れ子を含む）、`library package` | 対応 | ライブラリの印は記録しない | — |
-| | `import`、package 直下の `filter`、可視性 `private`・`public` | 未対応 | ほかの package・ファイルの名前を `import` で取り込めない | 0.2.0 |
-| 名前 | 引用名 `'Fuel Tank'`・短い名前 `<R1>`・修飾名 `A::B`・`alias` | 一部対応 | 同じファイルの中だけ解決する | 0.2.0 |
-| 構造 | `part`・`item`・`attribute`・`port`・`enum`・`occurrence` の定義と使用、`event occurrence`・`timeslice`・`snapshot`・`individual` | 対応 | | |
-| | 型付け `:`・特殊化 `:>`・再定義 `:>>`・参照 `::>`・多重度 `[0..4]`・値 `=`・`:=`・`default`・向き `in`・`out` | 対応 | `: A, B` は先頭の型だけ | — |
-| | キーワードの無い特性 `x : Real;`・`ref r;`・交差 `=>`・`crosses`・共役ポート `~Pt` | 対応 | | |
-| つながり | `connection`・`connect`（3 つ以上をつなぐ形を含む）・`interface`（`connect` を省いた形を含む）・`bind`・`allocate`・`dependency` | 対応 | | |
-| | `flow`・`flow def`・`message`・`succession flow`（`from` を省いた短い形を含む） | 対応 | | |
-| 振る舞い | `action`・順序 `first … then`・`fork`・`join`・`merge`・`decide`・`send`・`accept`・`assign`・`terminate`・`if`・`while`・`for` | 対応 | アクションのパラメータとその間のフローを図に描かない | 0.3.0 以降 |
-| | `state`・遷移 `transition`（トリガ・ガード・効果と省略形）・`entry`・`do`・`exit`・`parallel` | 対応 | 状態の使用の中の遷移を図に描かない | 0.3.0 以降 |
-| | `perform`・`exhibit`（既存の要素を指す `perform x.y;`・`exhibit s;` を含む）、`calc`・`constraint` | 対応 | | |
-| 要求と検証 | `requirement`・`subject`・`stakeholder`・`actor`・`concern`・`case`・`analysis`・`verification`・`use case`・`#derivation dependency` | 対応 | | |
-| | `satisfy`（`by` の無い形・宣言する形を含む）・`frame` | 対応 | | |
-| | `verify` | 一部対応 | 型の無い検証の使用の中では線を引かない | — |
-| | `objective`・`assert constraint`・`assert not` | 一部対応 | 中身を親の要素に入れる | 0.3.0 以降 |
-| 図（ビュー） | `view`・`view def`・`expose`・`filter`（`and`・`or`・`not` などの式）・`render` | 一部対応 | メタデータの値を比べる `filter`、表や文字の形の `render` は使えない | 0.3.0 以降 |
-| 注釈 | `doc`・`comment … about`（メモ）・`rep`・`metadata def`・`#M`・`metadata … about`・自分で決めたキーワード | 対応 | 関係（`dependency`・`alias`）の本体の `doc` は記録しない | — |
-| 式 | 式・単位 `1500 [kg]`・`->collect{ … }` | 一部対応 | 文字列として持つだけで、計算しない | 0.3.0 以降 |
-| その他 | KerML、標準ライブラリ、モデル交換の形式（`.kpar`） | 未対応 | KerML の宣言は「まだ扱えない」と知らせる | 0.3.0 以降 |
-
-| 図の種類（SysML v2 の標準ビュー） | 状況 | 足りないところ | 対応の予定 |
-| --- | --- | --- | --- |
-| ブロック定義図・一般の図（GeneralView） | 一部対応 | package 直下の使用のうち、図に出るのは `part`・`requirement` だけ。ユースケースの楕円・アクターの記号が無い | — |
-| 内部ブロック図（InterconnectionView） | 一部対応 | 対象そのもののポートへの線と、入れ子の部品のポートを図から作る操作が無い | — |
-| アクティビティ図（ActionFlowView） | 一部対応 | パラメータとその間のフロー、区画（swim lane）が無い | 0.3.0 以降 |
-| 状態遷移図（StateTransitionView） | 一部対応 | 状態の使用の中の遷移と、2 つ目以降の状態定義を描かない | 0.3.0 以降 |
-| シーケンス図（SequenceView） | 一部対応 | 分岐や繰り返しの枠（`alt`・`loop`）が無く、図からイベントや順序を足せない | 0.3.0 以降 |
-| ジオメトリ・グリッド・ブラウザ（GeometryView・GridView・BrowserView） | 未対応 | 一般の図で代わりに描き、そのことを知らせる | 0.3.0 以降 |
-
-書き方ごとの詳しい状況は [対応表](docs/reference/sysml-conformance.md) にあります。予定は利用者の声に合わせて入れ替えることがあります。必要な書き方があれば、[Issues](https://github.com/modelith/modelith/issues/new/choose) でお知らせください。
-
-## ロードマップ
-
-いまは **0.1.0 に向けた beta 版**です。機能は固定し、0.1.0 までは不具合の修正だけを行います。テストユーザーの声をもとに育てているので、気になる振る舞いがあればお知らせください。
-
-| 版 | 内容 |
-| --- | --- |
-| 0.1.0 | 正式版 |
-| 0.2.0 | `import` と、複数のファイルにまたがるモデル |
-| 0.3.0 以降 | 式の計算と単位、KerML、標準ライブラリ、残りの図、モデル交換の形式 |
-
-詳しくは [リリース計画](docs/development/release-plan.md)、各版の変更点は [リリース](https://github.com/modelith/modelith/releases) をご覧ください。
-0.1.0 の先は、CLI・MCP・LSP・プラグイン・サーバへと広げていく予定です（[アーキテクチャ](docs/explanation/architecture.md)）。
-
-## ドキュメント
-
-| 文書 | 内容 |
-| --- | --- |
-| [ユーザーマニュアル](https://modelith.github.io/) | 使い方（画面・ファイル・図・SysML v2 の書き方入門・プラグイン） |
-| [SysML v2 の対応表](docs/reference/sysml-conformance.md) | 規格の書き方ごとの対応状況 |
-| [検査ルール](docs/reference/check-rules.md)・[スクリプトのプラグイン](docs/reference/script-plugins.md) | プラグインの作り方 |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | 開発に参加する方法（手元で動かす・構成・開発者向けの文書） |
-| [SECURITY.md](SECURITY.md) | セキュリティの問題を見つけたときの、非公開の報告の仕方 |
-
-## 開発に参加する
-
-使ってみた感想や「こんな図がほしい」は、[Issues](https://github.com/modelith/modelith/issues/new/choose) にお寄せください。
-コードで貢献するときは、[CONTRIBUTING.md](CONTRIBUTING.md)（CLA を含む）を先にお読みください。
-
-| リポジトリ | 内容 | ライセンス |
+| Channel | URL | What it has |
 | --- | --- | --- |
-| [modelith](https://github.com/modelith/modelith) | エディタ本体（Rust コア・Web アプリ・CLI） | AGPL-3.0 + [Plugin Exception](PLUGIN-EXCEPTION.md) |
-| [plugin-sdk](https://github.com/modelith/plugin-sdk) | プラグイン向けのインタフェース・型定義 | MIT |
-| [modelith.github.io](https://github.com/modelith/modelith.github.io) | ユーザーマニュアル | MIT |
+| Stable | <https://modelith.github.io/modelith/> | The latest release |
+| Release candidate | <https://modelith.github.io/modelith/rc/> | The latest release candidate, while one is out |
+| Preview | <https://modelith.github.io/modelith/preview/> | The latest alpha or beta of the next version, with features still in development |
+
+| Environment | What you can do |
+| --- | --- |
+| Chrome, Edge | Open a folder, edit its files directly and save over them |
+| Safari, Firefox | Load files, and save by downloading |
+| Phones and other narrow screens | View and check models (text opens read-only; tap "編集" (Edit) to change it) |
+
+The app's screens are in Japanese for now. An English version is planned for 0.4.0.
+
+## SysML v2 support
+
+Modelith supports the commonly used parts of the SysML v2 textual notation, and draws them in the diagrams people use most.
+
+- **Notation:** packages and `import`, definitions and usages (`part`, `item`, `attribute`, `port`, `enum`, `occurrence` and more), connections, interfaces and flows, actions, states and transitions, requirements, `satisfy`, `verify` and derivation, use cases, views with `expose` and `filter`, comments and metadata. From 0.2.0, a model can span several files in a folder.
+- **Diagrams:** block definition / general diagram, internal block diagram, activity diagram, state machine diagram, sequence diagram, and traceability. Export as SVG or draw.io.
+- **Not yet:** expressions are kept as text and not evaluated; KerML, the standard library, and the model interchange format (`.kpar`) are not supported yet. Anything Modelith cannot read yet is reported in the problem list, not dropped silently.
+
+The remaining notation is planned in this order (the [conformance table](docs/reference/sysml-conformance.md), in Japanese, has the status of each notation).
+
+| Version | Notation |
+| --- | --- |
+| 0.3.0 | Filtered `import Q::*[@F]`, `filter @X;` directly in a package, `doc` and `comment` in relationship bodies, multiple types `: A, B`, enum values with values, and the syntax of expressions (values with units `1500 [kg]`, expressions with bodies `->collect{ … }`) without evaluating them |
+| 0.4.0 | KerML (declarations such as `classifier`, `struct` and `function`; reading `.kerml` files) |
+| 0.5.0 and later | Evaluating expressions and units, bundling the standard library, the geometry, grid and browser views, the remaining parts of the sequence and state machine diagrams, and the model interchange format (`.kpar`) |
+
+The plan may change based on user feedback. If you need a notation, please let us know in [Issues](https://github.com/modelith/modelith/issues/new/choose).
+
+## Roadmap
+
+**0.1.0** is the first stable version. **0.2.0** is in beta in the preview channel.
+
+| Version | What you can do |
+| --- | --- |
+| 0.1.0 | Write text and draw diagrams of the same model; requirement traceability; export; plugins for check rules |
+| 0.2.0 | Create diagrams and edit more on screen without writing text; adjust lines; better export; fill the gaps in requirement, block definition, internal block and activity diagrams; models spanning several files |
+| 0.3.0 | AI (Claude, Codex and others) reads, checks and edits your local models and exports diagrams through MCP; more SysML v2 notation |
+| 0.4.0 | AI edits show up in the open app and can be undone; KerML; English screens and manual |
+| 0.5.0 | Keep projects on a server you run yourself and open them from any computer |
+| 0.6.0 – 0.8.0 | Share projects with others, edit together at the same time, and keep editing offline |
+
+See the [release plan](docs/development/release-plan.md) and the [plan from 0.3.0](docs/development/release-plan-0.3.0.md) (in Japanese) for details, and [Releases](https://github.com/modelith/modelith/releases) for the changes in each version.
+
+## Documentation
+
+| Document | Contents |
+| --- | --- |
+| [User manual](https://modelith.github.io/) (Japanese) | How to use it: the screen, files, diagrams, an introduction to SysML v2 notation, plugins |
+| [SysML v2 conformance table](docs/reference/sysml-conformance.md) (Japanese) | Support status for each notation in the specification |
+| [Check rules](docs/reference/check-rules.md) and [script plugins](docs/reference/script-plugins.md) (Japanese) | How to build plugins |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to take part in development: running it locally, the layout, documents for developers |
+| [SECURITY.md](SECURITY.md) | How to report a security issue privately |
+
+## Contributing
+
+Please send your impressions and requests such as "I'd like this kind of diagram" to [Issues](https://github.com/modelith/modelith/issues/new/choose). Issues in English or Japanese are welcome.
+Before contributing code, please read [CONTRIBUTING.md](CONTRIBUTING.md) (including the CLA).
+
+| Repository | Contents | License |
+| --- | --- | --- |
+| [modelith](https://github.com/modelith/modelith) | The editor (Rust core, web app, CLI) | AGPL-3.0 + [Plugin Exception](PLUGIN-EXCEPTION.md) |
+| [plugin-sdk](https://github.com/modelith/plugin-sdk) | Interfaces and type definitions for plugins | MIT |
+| [modelith.github.io](https://github.com/modelith/modelith.github.io) | User manual | MIT |
+
+## Sponsor
+
+We accept support for continuing Modelith's development through [GitHub Sponsors](https://github.com/sponsors/modelith).
+With a GitHub account, you can choose a monthly or one-time sponsorship.
+
+<a href="https://github.com/sponsors/modelith"><img src="https://img.shields.io/badge/sponsor-modelith-ea4aaa?logo=githubsponsors&logoColor=white" alt="Sponsor on GitHub Sponsors"></a>
+
+### Sponsors
+
+These are the people and organizations supporting Modelith. Sponsors on a plan of $10 or more a month are listed here. Please let us know if you would rather not be listed.
+
+<!-- Corporate sponsors ($100 a month): logo and link -->
+
+<!-- Supporters ($10 a month): GitHub account -->
 
 ## License
 

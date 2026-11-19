@@ -5,6 +5,7 @@
 //! 構文木から取り、文の頭の文字列（`head`・式）は、コメントを空白にして空白をまとめたテキストから取る。
 //! alpha.4 でモデル構築を Rust に移すときに、この層は置き換える。
 
+pub mod merge;
 pub(crate) mod text;
 mod types;
 
@@ -442,7 +443,14 @@ impl Ctx {
                     let t = body.text();
                     let inner = t.strip_prefix("/*").unwrap_or(t);
                     let inner = inner.strip_suffix("*/").unwrap_or(inner);
-                    self.out.entries[pe].doc = Some(normalize(inner));
+                    // 目的（`objective { doc /* … */ }`）の説明は、持ち主の説明を上書きせず目的として持つ（8.2.2.21）
+                    let in_objective = matches!(owner, Some(Scope::Block(b)) if self.out.blocks[b].kw == "objective");
+                    if in_objective {
+                        self.out.entries[pe].objective = Some(normalize(inner));
+                    } else {
+                        self.out.entries[pe].doc = Some(normalize(inner));
+                        self.out.entries[pe].doc_text = Some(doc_body(inner));
+                    }
                 }
                 return;
             }
@@ -751,14 +759,25 @@ impl Ctx {
             return None;
         }
         if n.kind() == ALIAS {
-            if let Some(a) = alias(n, pe) {
+            if let Some(mut a) = alias(n, pe) {
+                a.start = self.utf16(n.text_range().start().into());
                 self.out.aliases.push(a);
             }
             return None;
         }
         if n.kind() == IMPORT {
             if let Some(q) = child(n, QUALIFIED_NAME) {
-                self.out.imports.push(path_of(&q));
+                let path = path_of(&q);
+                let written = compact(n);
+                self.out.import_list.push(Import {
+                    path: path.clone(),
+                    members: written.contains("::*"),
+                    recursive: written.contains("::**"),
+                    private: has_keyword(n, "private"),
+                    pe,
+                    start: self.utf16(n.text_range().start().into()),
+                });
+                self.out.imports.push(path);
             }
             return None;
         }
@@ -770,10 +789,17 @@ impl Ctx {
         {
             if let Some(pe) = pe {
                 let text = constraint_reference_text(h);
+                let neg = text == "not" || text.starts_with("not ");
+                let text = if neg {
+                    text.trim_start_matches("not").trim_start().to_owned()
+                } else {
+                    text
+                };
                 if !text.is_empty() {
                     self.out.entries[pe].exprs.push(Expr {
                         text,
                         via: first_word(h).to_owned(),
+                        neg,
                     });
                 }
             }
@@ -856,6 +882,8 @@ impl Ctx {
                     .and(child(n, FEATURE_VALUE))
                     .and_then(|v| value_op(&v)),
                 doc: None,
+                doc_text: None,
+                objective: None,
                 meta: None,
                 phase_val: None,
                 phase_block: None,
@@ -954,6 +982,8 @@ impl Ctx {
                 value: None,
                 value_op: None,
                 doc: None,
+                doc_text: None,
+                objective: None,
                 meta: None,
                 phase_val: None,
                 phase_block: None,
@@ -978,13 +1008,20 @@ impl Ctx {
         if let Some(pe) = pe
             && (term == Term::Close || h.contains(['=', '<', '>']))
         {
-            let via = match owner {
-                Some(Scope::Block(b)) => self.out.blocks[b].kw.clone(),
-                _ => String::new(),
+            let (via, neg) = match owner {
+                // `assert not constraint d { … }` の本体の式は、否定した制約の式として持つ（8.2.2.20）
+                Some(Scope::Block(b)) => {
+                    let blk = &self.out.blocks[b];
+                    let neg =
+                        blk.kw == "assert" && blk.head.split_whitespace().nth(1) == Some("not");
+                    (blk.kw.clone(), neg)
+                }
+                _ => (String::new(), false),
             };
             self.out.entries[pe].exprs.push(Expr {
                 text: h.to_owned(),
                 via,
+                neg,
             });
         } else if crate::syntax::is_keyword(first_word(h)) {
             self.out.unsupported.push(Unsupported {
@@ -1614,6 +1651,8 @@ impl Ctx {
             value: None,
             value_op: None,
             doc: None,
+            doc_text: None,
+            objective: None,
             meta: None,
             phase_val: None,
             phase_block: None,
@@ -2448,12 +2487,12 @@ fn path_of(qn: &SyntaxNode) -> String {
 ///
 /// # 戻り値
 ///
-/// 別名と指す先。名前か、`for` の後の修飾名が無ければ `None`。
+/// 別名と指す先（位置 `start` は 0。呼ぶ側が UTF-16 の位置を入れる）。名前か、`for` の後の修飾名が無ければ `None`。
 ///
 /// # 例
 ///
 /// ```text
-/// alias("alias B for Q::A;", Some(0)) → Some({ name: "B", target: "Q::A", pe: Some(0) })
+/// alias("alias B for Q::A;", Some(0)) → Some({ name: "B", target: "Q::A", pe: Some(0), start: 0 })
 /// alias("alias B;", None)             → None   // 指す先が無い
 /// ```
 fn alias(n: &SyntaxNode, pe: Option<usize>) -> Option<Alias> {
@@ -2469,6 +2508,7 @@ fn alias(n: &SyntaxNode, pe: Option<usize>) -> Option<Alias> {
                     name,
                     target: path_of(&c),
                     pe,
+                    start: 0,
                 });
             }
             _ => {}

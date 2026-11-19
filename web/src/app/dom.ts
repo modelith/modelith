@@ -1,5 +1,10 @@
 // DOM の小さな補助。
 
+import { channelName } from "../channel";
+
+// エスケープは DOM に触れないので render/escape.ts に置く（画面の外の図の書き出しと共用する）。今までどおり dom から読み込めるようにする
+export { esc } from "../render/escape";
+
 /**
  * セレクタに合う最初の要素を返す。無ければ index.html との食い違いなので例外にする。
  *
@@ -14,19 +19,6 @@ export function $<T extends Element = HTMLElement>(sel: string): T {
   if (!el) throw new Error(`element not found: ${sel}`);
   return el;
 }
-
-/**
- * HTML・SVG の属性と本文に埋め込む文字列をエスケープする（& < > " の 4 文字）。文字列でない値は文字列にする。
- *
- * @param s 埋め込む値
- * @returns エスケープした文字列
- * @example
- * esc('<a href="x">&</a>') // → "&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;"
- * esc(42)                  // → "42"
- * esc("'")                 // → "'"（単引用符はそのまま）
- */
-export const esc = (s: unknown): string =>
-  String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
 
 /**
  * イベントの発生元から、セレクタに合う最も近い祖先（自身を含む）を探す。
@@ -61,6 +53,7 @@ export function isFormField(t: EventTarget | null): boolean {
 /**
  * localStorage は使えない環境（プライベートモードなど）や、保存領域がいっぱいのとき（QuotaExceededError）があるため、失敗しても止めない。
  * 書けたかは戻り値で返すので、下書きのように失われては困るものを書く側は、それを見て知らせる（F-FILE-11）。
+ * キーは公開の系列ごとに分ける（プレリリース版は `キー@preview`。ADR-0020）。
  */
 export const store = {
   /**
@@ -74,7 +67,7 @@ export const store = {
    */
   get(key: string): string | null {
     try {
-      return localStorage.getItem(key);
+      return localStorage.getItem(channelName(key));
     } catch {
       return null;
     }
@@ -91,7 +84,7 @@ export const store = {
    */
   set(key: string, value: string): boolean {
     try {
-      localStorage.setItem(key, value);
+      localStorage.setItem(channelName(key), value);
       return true;
     } catch {
       return false; // 保存できなくても編集は続けられる。知らせるかは呼ぶ側が決める
@@ -108,7 +101,7 @@ export const store = {
    */
   remove(key: string): boolean {
     try {
-      localStorage.removeItem(key);
+      localStorage.removeItem(channelName(key));
       return true;
     } catch {
       return false;

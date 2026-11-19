@@ -1,11 +1,11 @@
 // 画面の側から見たコア（ADR-0016 §4）。テキストを変えるたびに版を 1 つ上げてコアに送り、
 // 返ってきた結果の版が今の版と同じときだけ使う。違えば捨てる（解析なら次の結果を待ち、編集なら適用しない）。
 
-import { failedReply, projectReadProblem, type CoreReply, type CoreRequest, type CoreResponse } from "./protocol";
+import { failedReply, projectReadProblem, type CoreReply, type CoreRequest, type CoreResponse, type ProjectFileText } from "./protocol";
 import type { Permission } from "../plugins/generated/protocol";
 import {
-  fromAnalysis, type CheckedPluginMessage, type CreatedProjectFile, type DescribedPlugin, type EditResult, type Intent, type PluginChange, type PluginFiles, type PluginsResult, type ProjectFileResult,
-  type Refused, type RuleFinding, type VersionedSnapshot,
+  fromAnalysis, type CheckedPluginMessage, type CreatedProjectFile, type DescribedPlugin, type EditResult, type FileReport, type Intent, type PluginChange, type PluginFiles, type PluginsResult, type ProjectFileResult,
+  type ProblemKind, type ProblemLevel, type Refused, type RuleFinding, type VersionedSnapshot,
 } from "./rust";
 import type { Model, ParseResult } from "./types";
 
@@ -61,6 +61,14 @@ export class CoreClient {
   private readonly pending = new Map<string, Pending>();
   /** 最後にコアに読み込ませたプラグイン（つなぎ直したときに送り直す）。 */
   private plugins: PluginFiles[] = [];
+  /** コアに覚えさせた知らせの重さ（modelith.json の levels。つなぎ直したときに送り直す。F-EDIT-11）。 */
+  private levels: Record<string, ProblemLevel> = {};
+  /** コアに覚えさせたプロジェクトのファイル（パス → テキスト。つなぎ直したときに送り直す。ADR-0021）。 */
+  private readonly files = new Map<string, string>();
+  /** 表示中のファイルのパス（フォルダの外のファイルなら null）。次に送るテキストに添える。 */
+  private focusPath: string | null = null;
+  /** 最後に送ったテキストに添えたパス。 */
+  private sentPath: string | null = null;
   /** 今の通り道。コアが止まってから、つなぎ直すまでは null（その間の依頼はすぐ失敗にする）。 */
   private port: CorePort | null = null;
   private readonly timeoutMs: number;
@@ -128,6 +136,8 @@ export class CoreClient {
   reconnect(port: CorePort): void {
     this.connect(port);
     if (this.plugins.length) void this.request((id) => ({ type: "setPlugins", id, plugins: this.plugins }));
+    if (Object.keys(this.levels).length) void this.request((id) => ({ type: "setLevels", id, levels: this.levels }));
+    if (this.files.size) void this.request((id) => ({ type: "projectFiles", id, clear: true, set: this.fileTexts(), remove: [] }));
     if (this.sent !== null) this.send(this.sent);
   }
 
@@ -157,8 +167,78 @@ export class CoreClient {
    * c.sync("y") // → 2
    */
   sync(text: string): number {
-    if (text === this.sent) return this.version;
+    if (text === this.sent && this.focusPath === this.sentPath) return this.version;
     return this.send(text);
+  }
+
+  /**
+   * 表示中のファイルのパスを決める（ADR-0021）。次に送るテキストに添え、コアはそのパスのファイルをほかのファイルとしてつながない。
+   *
+   * @param path プロジェクトのフォルダからのパス。フォルダの外のファイル・無題のファイルなら null
+   * @example
+   * c.focus("app.sysml"); c.sync(text) // → 同じテキストでも、パスが変われば送り直す
+   */
+  focus(path: string | null): void {
+    this.focusPath = path;
+  }
+
+  /**
+   * コアが覚えるプロジェクトのファイルを書き換え、今のテキストを解析し直してもらう（ADR-0021 §3）。
+   *
+   * @param change 覚える（置き換える）ファイル・忘れるパス・先にすべて忘れるか
+   * @returns コアが覚え終えたら解決する Promise（例外は投げない）
+   * @example
+   * await c.updateFiles({ set: [{ path: "parts.sysml", text: "package Parts;" }], remove: [] })
+   * await c.updateFiles({ clear: true, set: [], remove: [] }) // → フォルダを閉じたとき
+   */
+  async updateFiles(change: { clear?: boolean; set: ProjectFileText[]; remove: string[] }): Promise<void> {
+    if (change.clear) this.files.clear();
+    for (const path of change.remove) this.files.delete(path);
+    for (const f of change.set) this.files.set(f.path, f.text);
+    const pending = this.request((id) => ({ type: "projectFiles", id, clear: change.clear ?? false, set: change.set, remove: change.remove }));
+    if (this.sent !== null) this.send(this.sent);
+    await pending;
+  }
+
+  /**
+   * コアにプロジェクトのファイルを覚えさせているか（フォルダを開いているか）。
+   *
+   * @returns 1 つでも覚えさせていれば true
+   * @example
+   * c.hasFiles // → false（フォルダを開いていない）
+   */
+  get hasFiles(): boolean {
+    return this.files.size > 0;
+  }
+
+  /**
+   * 覚えさせたほかのファイルごとの問題とチェックルールの結果を、今の版のテキストをつないでコアに数えてもらう（ADR-0021 §6）。
+   *
+   * @returns ファイルごとの問題と、数えたテキストの版。返事が来るまでにテキストが変わった・コアの返事が読めなければ null。例外は投げない
+   * @example
+   * await c.projectProblems() // → { version: 3, reports: [{ path: "parts.sysml", problems: [{ pos: 33, msg: "型「Wheel」が見つかりません（w）" }], findings: [] }] }
+   */
+  async projectProblems(): Promise<{ version: number; reports: FileReport[] } | null> {
+    const version = this.version;
+    const res = await this.requestForText((id) => ({ type: "projectProblems", version, id }));
+    if (res.stale) return null;
+    try {
+      const reports = JSON.parse(res.json) as unknown;
+      return Array.isArray(reports) ? { version, reports: reports as FileReport[] } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 覚えさせたプロジェクトのファイルの並び。
+   *
+   * @returns パスとテキストの並び（覚えさせた順）
+   * @example
+   * this.fileTexts() // → [{ path: "parts.sysml", text: "package Parts;" }]
+   */
+  private fileTexts(): ProjectFileText[] {
+    return [...this.files].map(([path, text]) => ({ path, text }));
   }
 
   /**
@@ -174,8 +254,9 @@ export class CoreClient {
   private send(text: string): number {
     this.version += 1;
     this.sent = text;
+    this.sentPath = this.focusPath;
     this.texts.set(this.version, text);
-    if (this.port) this.post({ type: "didChange", version: this.version, text }, `v${this.version}`, () => {});
+    if (this.port) this.post({ type: "didChange", version: this.version, text, path: this.focusPath }, `v${this.version}`, () => {});
     return this.version;
   }
 
@@ -245,6 +326,53 @@ export class CoreClient {
    */
   async updateProjectPlugin(text: string, plugin: string, change: PluginChange): Promise<CreatedProjectFile | Refused> {
     return parseText(await this.request((id) => ({ type: "updateProject", id, text, plugin, change })), "プロジェクトの設定を変更できませんでした");
+  }
+
+  /**
+   * 設定ファイルの知らせの重さを 1 つ、コアに書き換えてもらう（F-EDIT-11）。不明な項目は残る。
+   *
+   * @param text 今の modelith.json のテキスト全体
+   * @param kind 知らせの種類（`trace.verify`・`プラグインの ID/ルールの ID` など）
+   * @param level 選んだ重さ。null なら既定の重さに戻す（項目を消す）
+   * @returns 書き換えた後のテキスト。書き換えられなければ理由の断り。例外は投げない
+   * @example
+   * await c.updateProjectLevel("{}", "unsupported", "off") // → { text: '{\n  "plugins": {},\n  "levels": {\n    "unsupported": "off"\n  }\n}\n' }
+   * await c.updateProjectLevel("{", "unsupported", null)   // → { refused: "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。…" }
+   */
+  async updateProjectLevel(text: string, kind: string, level: ProblemLevel | null): Promise<CreatedProjectFile | Refused> {
+    return parseText(await this.request((id) => ({ type: "updateLevel", id, text, kind, level: level ?? "" })), "プロジェクトの設定を変更できませんでした");
+  }
+
+  /**
+   * 知らせの重さをコアに覚えさせ（F-EDIT-11）、今のテキストを解析し直してもらう。覚えさせた重さは控えておき、コアを作り直したときに送り直す。
+   *
+   * @param levels 知らせの種類 → 重さ（modelith.json の levels。プロジェクトが無ければ空）
+   * @returns コアが覚え終えたら解決する Promise（例外は投げない）
+   * @example
+   * await c.setLevels({ "trace.verify": "error" }) // → 続けて onAnalyzed に、検証の抜けをエラーにした結果が届く
+   * await c.setLevels({})                          // → 既定の重さに戻す
+   */
+  async setLevels(levels: Record<string, ProblemLevel>): Promise<void> {
+    this.levels = { ...levels };
+    const pending = this.request((id) => ({ type: "setLevels", id, levels: this.levels }));
+    if (this.sent !== null) this.send(this.sent);
+    await pending;
+  }
+
+  /**
+   * 重さを選べる、モデルの知らせの種類をコアに尋ねる（F-EDIT-11。チェックルールの種類は含まない）。
+   *
+   * @returns 種類の並び（画面の並び順）。コアの返事が読めなければ空。例外は投げない
+   * @example
+   * await c.problemKinds() // → [{ code: "trace.derive", label: "トレースの抜け：…", default: "warning" }, …]
+   */
+  async problemKinds(): Promise<ProblemKind[]> {
+    try {
+      const kinds = JSON.parse(await this.request((id) => ({ type: "problemKinds", id }))) as unknown;
+      return Array.isArray(kinds) ? (kinds as ProblemKind[]) : [];
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -436,7 +564,7 @@ export class CoreClient {
       const resolve = this.waiting.get(res.id);
       this.waiting.delete(res.id);
       resolve?.(res.version === this.version ? parseEdited(res.json) : { refused: STALE_EDIT });
-    } else if (res.type === "snapshotMade" || res.type === "pluginMessageChecked") {
+    } else if (res.type === "snapshotMade" || res.type === "pluginMessageChecked" || res.type === "problemsCounted") {
       const resolve = this.textWaiting.get(res.id);
       this.textWaiting.delete(res.id);
       resolve?.({ json: res.json, stale: res.version !== this.version });

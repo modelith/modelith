@@ -23,9 +23,29 @@ pub struct ProjectFile {
     /// プロジェクトが使うプラグイン（プラグインの ID ごと。ADR-0018）。
     #[serde(default)]
     pub plugins: BTreeMap<String, PluginUse>,
+    /// 知らせの種類ごとの重さ（F-EDIT-11、ADR-0019 §2）。書いていない種類は既定の重さ。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub levels: BTreeMap<String, Level>,
+    /// 知らせの重さのうち、この版の知らない重さ（新しい版が足した値など）。使わずに、書き戻すときにそのまま残す（#238）。
+    #[serde(skip)]
+    pub unknown_levels: Map<String, Value>,
     /// 不明な項目。書き戻すときもそのまま残す。
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// 知らせの重さ（F-EDIT-11）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Level {
+    /// エラー。
+    Error,
+    /// 警告。
+    Warning,
+    /// 情報。
+    Info,
+    /// 出さない。
+    Off,
 }
 
 /// プロジェクトが使うプラグイン 1 つの設定。
@@ -121,10 +141,11 @@ pub fn parse(text: &str) -> Parsed {
             "中身が空です。少なくとも { } と書いてください",
         ));
     }
-    let value: Value = match serde_json::from_str(text) {
+    let mut value: Value = match serde_json::from_str(text) {
         Ok(v) => v,
         Err(e) => return failed(syntax_problem(&locator, text, &e)),
     };
+    let unknown_levels = take_unknown_levels(&mut value);
     let mut problems = type_problems(&value, &locator);
     if !problems.is_empty() {
         return Parsed {
@@ -134,7 +155,10 @@ pub fn parse(text: &str) -> Parsed {
     }
     // 型は上で確かめたので、ここで失敗するのは想定外（そのときも誤りとして返す）
     let project = match serde_json::from_value::<ProjectFile>(value) {
-        Ok(p) => p,
+        Ok(p) => ProjectFile {
+            unknown_levels,
+            ..p
+        },
         Err(e) => {
             return failed(error(
                 locator.of_offset(0),
@@ -146,6 +170,15 @@ pub fn parse(text: &str) -> Parsed {
         }
     };
     problems.extend(unknown_key_problems(&project, &locator));
+    problems.extend(project.unknown_levels.keys().map(|kind| {
+        problem(
+            Severity::Warning,
+            locator.of_key(&["levels", kind]),
+            &format!(
+                "知らせ「{kind}」の重さは、この版の知らない値です。この版では既定の重さにし、削除せずに残します"
+            ),
+        )
+    }));
     problems.sort_by_key(|p| (p.line, p.column));
     Parsed {
         project: Some(project),
@@ -218,18 +251,7 @@ pub enum PluginChange {
 /// update_plugin("{", "jp.x", Remove)  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 2 文字目：…")
 /// ```
 pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<String, String> {
-    let parsed = parse(text);
-    let Some(mut project) = parsed.project else {
-        let reason = parsed
-            .problems
-            .iter()
-            .find(|p| p.severity == Severity::Error)
-            .map(|p| format!("{} 行目 {} 文字目：{}", p.line, p.column, p.message))
-            .unwrap_or_default();
-        return Err(format!(
-            "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。{reason}"
-        ));
-    };
+    let mut project = parsed_for_change(text)?;
     let missing =
         || format!("プロジェクトの設定（modelith.json）に、プラグイン「{id}」がありません");
     match change {
@@ -256,6 +278,67 @@ pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<Stri
     Ok(to_text(&project))
 }
 
+/// 設定ファイルのテキストの、知らせの重さを 1 つ書き換える（F-EDIT-11。不明な項目は残す）。
+///
+/// # 引数
+///
+/// - `text`：今の `modelith.json` のテキスト全体
+/// - `kind`：知らせの種類（`trace.verify`・`プラグインの ID/ルールの ID` など）
+/// - `level`：選んだ重さ。`None` なら既定の重さに戻す（項目を消す）
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキスト（[`to_text`] の形）。設定ファイルに誤りがあるときは、画面に出す理由の文を `Err` で返す。
+///
+/// # 例
+///
+/// ```text
+/// update_level("{}", "trace.verify", Some(Level::Error)) → Ok("{\n  \"plugins\": {},\n  \"levels\": {\n    \"trace.verify\": \"error\"\n  }\n}\n")
+/// update_level(r#"{"levels":{"unsupported":"off"}}"#, "unsupported", None) → Ok("{\n  \"plugins\": {}\n}\n")
+/// update_level("{", "unsupported", None) → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 2 文字目：…")
+/// ```
+pub fn update_level(text: &str, kind: &str, level: Option<Level>) -> Result<String, String> {
+    let mut project = parsed_for_change(text)?;
+    match level {
+        Some(level) => {
+            project.levels.insert(kind.to_owned(), level);
+        }
+        None => {
+            project.levels.remove(kind);
+        }
+    }
+    Ok(to_text(&project))
+}
+
+/// 書き換えるために設定ファイルを読む。誤りがあれば、画面に出す理由の文を返す。
+///
+/// # 引数
+///
+/// - `text`：今の `modelith.json` のテキスト全体
+///
+/// # 戻り値
+///
+/// 読み取れた設定。誤りがあれば `Err`（最初の誤りの行と文を添える）。
+///
+/// # 例
+///
+/// ```text
+/// parsed_for_change("{}") → Ok(ProjectFile::default())
+/// parsed_for_change("{")  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 2 文字目：…")
+/// ```
+fn parsed_for_change(text: &str) -> Result<ProjectFile, String> {
+    let parsed = parse(text);
+    parsed.project.ok_or_else(|| {
+        let reason = parsed
+            .problems
+            .iter()
+            .find(|p| p.severity == Severity::Error)
+            .map(|p| format!("{} 行目 {} 文字目：{}", p.line, p.column, p.message))
+            .unwrap_or_default();
+        format!("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。{reason}")
+    })
+}
+
 /// 設定をファイルのテキストにする（不明な項目も書く）。
 ///
 /// # 引数
@@ -264,7 +347,7 @@ pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<Stri
 ///
 /// # 戻り値
 ///
-/// 字下げ 2 つの空白・末尾に改行のある JSON のテキスト。項目は `name`・`plugins`、その後に不明な項目を名前順に書く。
+/// 字下げ 2 つの空白・末尾に改行のある JSON のテキスト。項目は `name`・`plugins`・`levels`（あれば）、その後に不明な項目を名前順に書く。
 ///
 /// # 例
 ///
@@ -273,10 +356,72 @@ pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<Stri
 /// to_text(parse(r#"{"x":1,"name":"A"}"#) の設定) → "{\n  \"name\": \"A\",\n  \"plugins\": {},\n  \"x\": 1\n}\n"
 /// ```
 pub fn to_text(project: &ProjectFile) -> String {
+    // 項目の順（name・plugins・levels・不明な項目）を保つため、同じ並びの構造にして書く。
+    // この版の知らない重さも、知っている重さと一緒に levels に書き戻す（#238）
+    #[derive(Serialize)]
+    struct Out<'a> {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: &'a Option<String>,
+        plugins: &'a BTreeMap<String, PluginUse>,
+        #[serde(skip_serializing_if = "Map::is_empty")]
+        levels: Map<String, Value>,
+        #[serde(flatten)]
+        extra: &'a Map<String, Value>,
+    }
+    let mut levels: Map<String, Value> = project
+        .levels
+        .iter()
+        .filter_map(|(k, v)| serde_json::to_value(v).ok().map(|v| (k.clone(), v)))
+        .collect();
+    for (k, v) in &project.unknown_levels {
+        levels.entry(k.clone()).or_insert_with(|| v.clone());
+    }
+    let out = Out {
+        name: &project.name,
+        plugins: &project.plugins,
+        levels,
+        extra: &project.extra,
+    };
     // 文字列のキーと JSON の値だけの構造なので、JSON への変換は失敗しない
-    let mut text = serde_json::to_string_pretty(project).unwrap_or_else(|_| "{}".to_owned());
+    let mut text = serde_json::to_string_pretty(&out).unwrap_or_else(|_| "{}".to_owned());
     text.push('\n');
     text
+}
+
+/// 知らせの重さ（levels）から、この版の知らない重さの文字列（`"fatal"` など）を取り出す（#238）。
+/// 新しい版が重さの値を足しても、古い版でプロジェクトの設定全体を読めなくならないよう、その種類だけを使わずに残す。
+/// 文字列でない値はここでは取り出さず、型の誤りとして知らせる。
+///
+/// # 引数
+///
+/// - `value`：JSON として読んだ設定ファイル全体（取り出した値は消す）
+///
+/// # 戻り値
+///
+/// 取り出した、種類と重さの組。
+///
+/// # 例
+///
+/// ```text
+/// take_unknown_levels({"levels":{"a":"fatal","b":"off"}}) → {"a":"fatal"}（value は {"levels":{"b":"off"}} になる）
+/// take_unknown_levels({"levels":{"a":1}})               → {}（型の誤りとして残す）
+/// ```
+fn take_unknown_levels(value: &mut Value) -> Map<String, Value> {
+    let Some(levels) = value.get_mut("levels").and_then(Value::as_object_mut) else {
+        return Map::new();
+    };
+    let unknown: Vec<String> = levels
+        .iter()
+        .filter(|(_, v)| {
+            v.as_str()
+                .is_some_and(|s| !matches!(s, "error" | "warning" | "info" | "off"))
+        })
+        .map(|(k, _)| k.clone())
+        .collect();
+    unknown
+        .into_iter()
+        .filter_map(|k| levels.remove(&k).map(|v| (k, v)))
+        .collect()
 }
 
 /// 誤り 1 件だけの、設定を使わない結果を作る。
@@ -403,6 +548,7 @@ fn syntax_problem(locator: &Locator, text: &str, e: &serde_json::Error) -> Probl
 /// type_problems(json!({"name": "A"}), …)  → []
 /// type_problems(json!([1]), …)            → [誤り 1:1「一番外側を { } で囲んでください…」]
 /// type_problems(json!({"plugins": 1}), …) → [誤り「プラグインの一覧（plugins）は…」]
+/// type_problems(json!({"levels": {"unsupported": "loud"}}), …) → [誤り「知らせ「unsupported」の重さは…」]
 /// ```
 fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
     let Some(root) = value.as_object() else {
@@ -431,6 +577,23 @@ fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
         Some(_) => problems.push(error(
             locator.of_key(&["plugins"]),
             "プラグインの一覧（plugins）は { } で囲んで書いてください",
+        )),
+    }
+    match root.get("levels") {
+        None => {}
+        Some(Value::Object(levels)) => {
+            for (kind, level) in levels {
+                if !matches!(level.as_str(), Some("error" | "warning" | "info" | "off")) {
+                    problems.push(error(
+                        locator.of_key(&["levels", kind]),
+                        &format!("知らせ「{kind}」の重さは、\"error\"・\"warning\"・\"info\"・\"off\" のどれかで書いてください"),
+                    ));
+                }
+            }
+        }
+        Some(_) => problems.push(error(
+            locator.of_key(&["levels"]),
+            "知らせの重さ（levels）は { } で囲んで書いてください",
         )),
     }
     problems
@@ -492,7 +655,7 @@ fn plugin_type_problems(id: &str, plugin: &Value, locator: &Locator) -> Vec<Prob
 ///
 /// # 戻り値
 ///
-/// 不明な項目ごとの注意（一番外側と、各プラグインの設定の中）。無ければ空。
+/// 不明な項目ごとの注意（一番外側と、各プラグインの設定の中と、知らせの重さの種類）。無ければ空。
 ///
 /// # 例
 ///
@@ -519,7 +682,20 @@ fn unknown_key_problems(project: &ProjectFile, locator: &Locator) -> Vec<Problem
             )
         })
     });
-    top.chain(in_plugins).collect()
+    let in_levels = project
+        .levels
+        .keys()
+        .filter(|kind| !crate::levels::is_known_kind(kind))
+        .map(|kind| {
+            problem(
+                Severity::Warning,
+                locator.of_key(&["levels", kind]),
+                &format!(
+                    "知らせの重さ（levels）に、不明な種類「{kind}」があります。削除せずに残します"
+                ),
+            )
+        });
+    top.chain(in_plugins).chain(in_levels).collect()
 }
 
 /// テキストの位置（バイト）と、JSON のキーの位置を、1 始まりの行・列にする。

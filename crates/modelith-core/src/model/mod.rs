@@ -8,12 +8,15 @@
 mod chains;
 mod filters;
 mod flows;
+mod focus;
+mod missing;
 mod names;
 mod sequences;
 mod states;
 mod types;
 mod views;
 
+pub(crate) use chains::refers_to_feature;
 pub(crate) use names::resolve_refs;
 pub use types::*;
 pub(crate) use views::metaclass_kind;
@@ -22,7 +25,7 @@ pub use views::{is_standard_view, std_view_label};
 use std::collections::{HashMap, HashSet};
 
 use crate::project::text::ref_segs;
-use crate::project::{Entry, ParseResult, RelKind, Span};
+use crate::project::{Entry, ParseResult, RelKind, Span, merge};
 
 /// 図に描かない定義の種類（ほかの定義はすべて図に描く要素になる）。ツリーにだけ出す。
 /// `def` は、基の種類の決まらない利用者定義のキーワードの定義（`#X def H;`）。
@@ -36,7 +39,15 @@ pub(crate) const UNDRAWN_DEF_KINDS: &[&str] = &[
 ];
 
 /// package の直下にあるときだけ図に描く要素になる、使用の種類。
-pub(crate) const TOP_USAGE_KINDS: &[&str] = &["part", "requirement"];
+pub(crate) const TOP_USAGE_KINDS: &[&str] = &[
+    "part",
+    "requirement",
+    "verification",
+    "analysis",
+    "action",
+    "item",
+    "state",
+];
 
 /// 部品として持つ（comp の線を引く）使用の種類。
 const COMP_KINDS: &[&str] = &[
@@ -107,6 +118,110 @@ const LIBRARY_TYPES: &[&str] = &[
 
 /// メタクラスのライブラリのパッケージ（Systems Library の `SysML`・Kernel Semantic Library の `KerML`）。
 const METACLASS_PACKAGES: &[&str] = &["SysML", "KerML"];
+
+/// 標準ライブラリのパッケージ（SysML-v2-Release の `sysml.library` の Kernel Libraries・Systems Library・Domain Libraries。
+/// 量と単位・メタクラスのパッケージは `QUANTITY_PACKAGES`・`METACLASS_PACKAGES`）。ライブラリは同梱していないので、
+/// これらで始まる修飾名・`import` は、中身を確かめずに見つかるものとする。
+const LIBRARY_PACKAGES: &[&str] = &[
+    // Kernel Semantic Library
+    "Base",
+    "Clocks",
+    "ControlPerformances",
+    "FeatureReferencingPerformances",
+    "Links",
+    "Metaobjects",
+    "Objects",
+    "Observation",
+    "Occurrences",
+    "Performances",
+    "SpatialFrames",
+    "StatePerformances",
+    "Transfers",
+    "TransitionPerformances",
+    "Triggers",
+    // Kernel Data Type Library
+    "Collections",
+    "ScalarValues",
+    "VectorValues",
+    // Kernel Function Library
+    "BaseFunctions",
+    "BooleanFunctions",
+    "CollectionFunctions",
+    "ComplexFunctions",
+    "ControlFunctions",
+    "DataFunctions",
+    "IntegerFunctions",
+    "NaturalFunctions",
+    "NumericalFunctions",
+    "OccurrenceFunctions",
+    "RationalFunctions",
+    "RealFunctions",
+    "ScalarFunctions",
+    "SequenceFunctions",
+    "StringFunctions",
+    "TrigFunctions",
+    "VectorFunctions",
+    // Systems Library
+    "Actions",
+    "Allocations",
+    "AnalysisCases",
+    "Attributes",
+    "Calculations",
+    "Cases",
+    "Connections",
+    "Constraints",
+    "Flows",
+    "Interfaces",
+    "Items",
+    "Metadata",
+    "Parts",
+    "Ports",
+    "Requirements",
+    "StandardViewDefinitions",
+    "States",
+    "UseCases",
+    "VerificationCases",
+    "Views",
+    // Domain Libraries（量と単位のほか）
+    "AnalysisTooling",
+    "SampledFunctions",
+    "StateSpaceRepresentation",
+    "TradeStudies",
+    "CausationConnections",
+    "CauseAndEffect",
+    "ShapeItems",
+    "SpatialItems",
+    "ImageMetadata",
+    "ModelingMetadata",
+    "ParametersOfInterestMetadata",
+    "RiskMetadata",
+    "DerivationConnections",
+    "RequirementDerivation",
+];
+
+/// 名前が標準ライブラリのパッケージか（`LIBRARY_PACKAGES`・`QUANTITY_PACKAGES`・`METACLASS_PACKAGES` のどれか）。
+///
+/// # 引数
+///
+/// - `name`：パッケージの名前（修飾の無い名前。引用符を外したもの）
+///
+/// # 戻り値
+///
+/// 標準ライブラリのパッケージなら true。
+///
+/// # 例
+///
+/// ```text
+/// is_library_package("ScalarValues") → true
+/// is_library_package("ISQ")          → true
+/// is_library_package("SysML")        → true
+/// is_library_package("Nowhere")      → false
+/// ```
+fn is_library_package(name: &str) -> bool {
+    LIBRARY_PACKAGES.contains(&name)
+        || QUANTITY_PACKAGES.contains(&name)
+        || METACLASS_PACKAGES.contains(&name)
+}
 
 /// 量と単位のライブラリのパッケージ（Domain Libraries/Quantities and Units）。これを `import` したファイルと、
 /// これで修飾した名前（`ISQ::MassValue`）では、`…Value`・`…Kind` で終わる名前を標準ライブラリの型とみなす。
@@ -200,7 +315,7 @@ pub fn is_lib(path: &str, quantities_imported: bool) -> bool {
         && (quantities_imported || (qualified && is_quantity_path(path)))
 }
 
-/// 種類から色分けの系統を決める。web の種類のアイコンの色（`web/src/app/svg.ts` の `family`）と同じ。
+/// 種類から色分けの系統を決める。web の種類のアイコンの色（`web/src/render/svg.ts` の `family`）と同じ。
 /// 種類の頭（`requirement`・`concern`・`verification`・`analysis`・`constraint`・`calc`・`state`・`action`・`use case`・`part`）で決め、定義と使用を区別しない。
 ///
 /// # 引数
@@ -263,7 +378,8 @@ fn has_word(mods: &str, w: &str) -> bool {
 }
 
 /// 解析結果からモデルを作る。暫定コアの `build` から移した振る舞い。
-/// 図に描く要素 → ポート → 型付けと部品の線 → 関係の線 → 特殊化の線 → 線の ID → メモ → アクションの流れ → 解析の問題 → フェーズ → view の順に組み立てる。
+/// 図に描く要素 → ポート → 型付けと部品の線 → 関係の線 → 特殊化の線 → 線の ID → メモ → アクションの流れ → 解析の問題 →
+/// 特殊化・別名・import の見つからない相手 → フェーズ → view の順に組み立てる。
 ///
 /// # 引数
 ///
@@ -282,6 +398,48 @@ fn has_word(mods: &str, w: &str) -> bool {
 ///   → problems に「型「Nope」が見つかりません（y）」が 1 件（kind は None）
 /// ```
 pub fn build(p: &ParseResult) -> Model {
+    narrow(build_whole(p), p)
+}
+
+/// `build_whole` で作ったモデルを、表示中のファイルの要素と、それが参照するほかのファイルの要素だけに絞る（ADR-0021）。
+/// 検査（`build_whole` が要る）と図（絞ったモデル）を、モデルを 2 回作らずに得るために使う。
+///
+/// # 引数
+///
+/// - `whole`：`build_whole(p)` の結果
+/// - `p`：モデルを作った解析結果
+///
+/// # 戻り値
+///
+/// `build(p)` と同じモデル。
+///
+/// # 例
+///
+/// ```text
+/// narrow(build_whole(&p), &p) == build(&p)
+/// ```
+pub fn narrow(whole: Model, p: &ParseResult) -> Model {
+    focus::keep_focus(whole, p.entries.as_slice())
+}
+
+/// 解析結果から、ほかのファイルの要素も絞らずにモデルを作る（ADR-0021）。ファイルをまたぐ関係を数える検査（チェックルール）に使う。
+/// ほかのファイルが無ければ `build` と同じ。
+///
+/// # 引数
+///
+/// - `p`：`project` の解析結果か、`merge` でつないだ解析結果
+///
+/// # 戻り値
+///
+/// すべてのファイルの要素・線・問題を入れたモデル。ほかのファイルの要素は `Node.file` を持つ。
+///
+/// # 例
+///
+/// ```text
+/// // 表示中 "package A { requirement def R; }"、ほか "package B { part def X; satisfy A::R by X; }" をつないだとき
+/// build_whole(p).edges → [satisfy|X|R|…]   // build(p) では、ほかのファイルに書いた関係なので残らない
+/// ```
+pub fn build_whole(p: &ParseResult) -> Model {
     let mut b = Builder::new(p);
     b.nodes();
     b.ports();
@@ -294,6 +452,7 @@ pub fn build(p: &ParseResult) -> Model {
     b.state_machines();
     b.sequences();
     b.parse_problems();
+    b.missing_references();
     b.phases();
     views::build_views(&mut b);
     b.model
@@ -306,6 +465,8 @@ pub(crate) struct Builder<'a> {
     pub(crate) by_name: HashMap<&'a str, Vec<usize>>,
     /// ファイルが量と単位のライブラリ（ISQ・SI など）を `import` しているか（`is_lib` に渡す）。
     quantities_imported: bool,
+    /// ファイルごとの、`import` で取り込んだ宣言（ADR-0021。0 は表示中のファイル）。ほかのファイルが無ければ空。
+    imported: Vec<HashSet<usize>>,
     /// 宣言の番号 → 図の要素の番号。
     pub(crate) node_of: HashMap<usize, usize>,
     pub(crate) model: Model,
@@ -340,9 +501,159 @@ impl<'a> Builder<'a> {
             p,
             by_name,
             quantities_imported: p.imports.iter().any(|i| is_quantity_path(i)),
+            imported: Vec::new(),
             node_of: HashMap::new(),
             model: Model::default(),
         }
+        .with_imports()
+    }
+
+    /// ファイルごとに、`import` で取り込んだ宣言を集める（ADR-0021）。`P::*` は P の中身、`P::**` は入れ子の中身すべて、
+    /// `P::A` は A を取り込む。取り込んだ名前空間の中の `private` でない `import` も 1 段だけたどる（取り込みの取り込み）。
+    ///
+    /// # 戻り値
+    ///
+    /// 取り込みを入れた自分。ほかのファイルが無ければ、何も集めない（1 つのファイルでは、名前はファイル全体から探すため）。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // 表示中のファイル "import B::*;"、2 つ目のファイル "package B { part def Y; }" のとき
+    /// with_imports().imported[0] → { Y の番号 }
+    /// ```
+    fn with_imports(mut self) -> Self {
+        let files = self.entries.last().map_or(0, |e| merge::file_of(e.start)) + 1;
+        if files <= 1 {
+            return self;
+        }
+        let mut imported = vec![HashSet::new(); files];
+        for imp in &self.p.import_list {
+            let f = merge::file_of(imp.start);
+            let Some(ns) = self.lookup(&imp.path, imp.pe) else {
+                continue;
+            };
+            let set = &mut imported[f];
+            self.bring(ns, imp.members, imp.recursive, set, 0);
+            // 取り込んだ名前空間の中の、private でない import も取り込む
+            for inner in self
+                .p
+                .import_list
+                .iter()
+                .filter(|i| i.pe == Some(ns) && !i.private)
+            {
+                if let Some(n2) = self.lookup(&inner.path, inner.pe) {
+                    self.bring(n2, inner.members, inner.recursive, set, 0);
+                }
+            }
+        }
+        self.imported = imported;
+        self
+    }
+
+    /// 名前空間 `ns`（または要素）を取り込む宣言の集まりに足す。
+    ///
+    /// # 引数
+    ///
+    /// - `ns`：取り込む名前空間か要素の宣言の番号
+    /// - `members`：中身を取り込むか（false なら `ns` そのもの）
+    /// - `recursive`：入れ子の中身まで取り込むか
+    /// - `set`：足す先
+    /// - `depth`：たどった深さ
+    fn bring(
+        &self,
+        ns: usize,
+        members: bool,
+        recursive: bool,
+        set: &mut HashSet<usize>,
+        depth: usize,
+    ) {
+        if !members {
+            set.insert(ns);
+            return;
+        }
+        for &c in &self.e(ns).children {
+            if self.hidden(c) {
+                continue;
+            }
+            set.insert(c);
+            if recursive && depth < 16 {
+                self.bring(c, true, true, set, depth + 1);
+            }
+        }
+    }
+
+    /// 宣言 `i` が `private`・`protected` で、持ち主の名前空間の外へ見せないものか。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：宣言の番号
+    ///
+    /// # 戻り値
+    ///
+    /// 外へ見せなければ true。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "package P { private part def S; part def A; }" のとき
+    /// hidden(S の番号) → true
+    /// hidden(A の番号) → false
+    /// ```
+    fn hidden(&self, i: usize) -> bool {
+        self.e(i).mods.as_deref().is_some_and(|m| {
+            m.split_whitespace()
+                .any(|w| w == "private" || w == "protected")
+        })
+    }
+
+    /// 宣言 `i` が、`ctx` を書いたファイルから修飾の無い名前で見えるか（ADR-0021）。同じファイルの宣言・どのファイルの一番上の宣言・
+    /// `import` で取り込んだ宣言が見える。ほかのファイルが無ければ、いつも見える。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：宣言の番号
+    /// - `ctx`：名前を書いた場所の宣言の番号（無ければ表示中のファイル）
+    ///
+    /// # 戻り値
+    ///
+    /// 見えれば true。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // 表示中のファイル "package A { part def X; }"、2 つ目 "package B { part def Y; }" のとき
+    /// visible(Y, Some(A)) → false（取り込んでいない）
+    /// visible(B, Some(A)) → true（一番上の宣言）
+    /// ```
+    pub(crate) fn visible(&self, i: usize, ctx: Option<usize>) -> bool {
+        if self.imported.is_empty() {
+            return true;
+        }
+        let f = ctx.map_or(0, |c| merge::file_of(self.e(c).start));
+        merge::file_of(self.e(i).start) == f || self.e(i).pe.is_none() || self.imported_into(i, ctx)
+    }
+
+    /// 宣言 `i` を、`ctx` を書いたファイルが `import` で取り込んでいるか（ADR-0021）。ほかのファイルが無ければ false。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：宣言の番号
+    /// - `ctx`：名前を書いた場所の宣言の番号（無ければ表示中のファイル）
+    ///
+    /// # 戻り値
+    ///
+    /// 取り込んでいれば true。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // 表示中のファイル "package A { import B::*; }"、2 つ目 "package B { package Q; }" のとき
+    /// imported_into(Q, Some(A)) → true
+    /// imported_into(B, Some(A)) → false（一番上の宣言は取り込まなくても見える）
+    /// ```
+    pub(crate) fn imported_into(&self, i: usize, ctx: Option<usize>) -> bool {
+        let f = ctx.map_or(0, |c| merge::file_of(self.e(c).start));
+        self.imported.get(f).is_some_and(|s| s.contains(&i))
     }
 
     /// 宣言の番号から宣言を取り出す。
@@ -373,7 +684,15 @@ impl<'a> Builder<'a> {
     /// - `msg`：画面に出す文
     /// - `kind`：問題の種類。None はエラー、`Some("gap")` はトレースの抜け、`Some("unsupported")` はまだ扱えない構文
     pub(crate) fn problem(&mut self, pos: usize, msg: String, kind: Option<&'static str>) {
-        self.model.problems.push(Problem { pos, msg, kind });
+        // まだ扱えない構文は、それ自体が知らせの種類（F-EDIT-11）
+        let code = kind.filter(|k| *k == "unsupported");
+        self.model.problems.push(Problem {
+            pos,
+            msg,
+            kind,
+            code,
+            level: None,
+        });
     }
 
     /// 図に描く要素（定義と、package の直下の部品・要求）。
@@ -413,6 +732,7 @@ impl<'a> Builder<'a> {
                 ports: Vec::new(),
                 phase: None,
                 phase_own: false,
+                file: Some(merge::file_of(e.start)).filter(|&f| f > 0),
             });
         }
     }
@@ -423,6 +743,7 @@ impl<'a> Builder<'a> {
     /// # 引数
     ///
     /// - `nm`：探す名前（修飾の無い名前）
+    /// - `ctx`：名前を書いた場所の宣言の番号（ほかのファイルの定義は、見えるもの（`visible`）だけを探す）
     ///
     /// # 戻り値
     ///
@@ -432,15 +753,19 @@ impl<'a> Builder<'a> {
     ///
     /// ```text
     /// // "package P { part def A; part a : A; alias B for A; }" のとき
-    /// def_named("A") → Some(part def A の番号)
-    /// def_named("B") → Some(part def A の番号)   // 別名
-    /// def_named("a") → None   // 使用だけ
-    /// def_named("Z") → None   // 名前が無い
+    /// def_named("A", None) → Some(part def A の番号)
+    /// def_named("B", None) → Some(part def A の番号)   // 別名
+    /// def_named("a", None) → None   // 使用だけ
+    /// def_named("Z", None) → None   // 名前が無い
     /// ```
-    pub(crate) fn def_named(&self, nm: &str) -> Option<usize> {
+    pub(crate) fn def_named(&self, nm: &str, ctx: Option<usize>) -> Option<usize> {
         self.by_name
             .get(nm)
-            .and_then(|l| l.iter().copied().find(|&i| self.e(i).is_def))
+            .and_then(|l| {
+                l.iter()
+                    .copied()
+                    .find(|&i| self.e(i).is_def && self.visible(i, ctx))
+            })
             .or_else(|| self.alias_anywhere(nm, 0).filter(|&i| self.e(i).is_def))
     }
 
@@ -540,10 +865,15 @@ impl<'a> Builder<'a> {
         let Some(list) = self.by_name.get(nm) else {
             return self.alias_anywhere(nm, depth);
         };
-        list.iter()
+        let seen: Vec<usize> = list
+            .iter()
+            .copied()
+            .filter(|&i| self.visible(i, ctx))
+            .collect();
+        seen.iter()
             .copied()
             .find(|i| self.node_of.contains_key(i))
-            .or_else(|| list.first().copied())
+            .or_else(|| seen.first().copied())
     }
 
     /// `a.b.c` の参照をたどる。暫定コアの `resolve` と同じ。
@@ -1129,7 +1459,8 @@ impl<'a> Builder<'a> {
     /// 特殊化・部分集合・再定義・参照の線（8.2.3 の subclassification・subsetting・redefinition・reference-subsetting）。
     /// 両端が図の要素のときだけ、特殊な側から一般な側へ引く（モデルの `edges` を書き換える）。定義の相手は定義として、
     /// 使用の相手は持ち主から外へ（`a.b` は型の中へ）探す。図の要素でない使用（定義の中の特性）の関係は、線にしない。
-    /// 相手が見つからなくても問題にしない（標準ライブラリの定義や、継承した特性など、読んでいない相手が多いため）。
+    /// 相手が見つからなくても線の問題にはしない（標準ライブラリの定義や、継承した特性など、読んでいない相手が多いため。
+    /// 定義の特殊化の相手が見つからないことは、`missing_references` が標準ライブラリの名前を除いて問題にする）。
     /// 線の範囲は、その相手だけを消す範囲にする（線を削除すると、その相手だけがテキストから消える）。
     fn specializations(&mut self) {
         let entries = self.entries;
@@ -1395,7 +1726,7 @@ impl<'a> Builder<'a> {
     }
 
     /// フェーズに沿った要求のトレースの抜け（導出・充足・検証）を問題として加える。暫定コアの `addTraceGaps` にならう（短い名前の無い要求の名前を 2 回並べていた所は直した）。
-    /// 最初のフェーズの要求定義は下位への展開（derive の終わりの端）が無いことを、それ以外のフェーズの要求定義は導出元・満たす要素・検証が無いことを、種類 `gap` の問題にする（モデルの `problems` を書き換える）。
+    /// 最初のフェーズの要求定義は下位への展開（derive の終わりの端）が無いことを、それ以外のフェーズの要求定義は導出元・満たす要素・検証が無いことを、種類 `gap` の問題にする（知らせの種類 `trace.derive`・`trace.satisfy`・`trace.verify` を添える。F-EDIT-11。モデルの `problems` を書き換える）。
     /// 文の頭には要求を、短い名前があれば `<'K3'> 名前`、無ければ名前だけで書く。
     ///
     /// # 引数
@@ -1422,26 +1753,45 @@ impl<'a> Builder<'a> {
                 format!("<'{}'> {}", n.short, n.name)
             };
             let pos = self.e(n.entry).start;
-            let mut gap = |msg: &str| gaps.push((pos, format!("{label}：{msg}")));
+            let mut gap =
+                |code: &'static str, msg: &str| gaps.push((pos, code, format!("{label}：{msg}")));
             let edges = &self.model.edges;
             if i == 0 {
                 if !has(edges, "derive", false, &n.key) {
-                    gap("どの下位の要求にも展開されていません（derivation）");
+                    gap(
+                        "trace.derive",
+                        "どの下位の要求にも展開されていません（derivation）",
+                    );
                 }
             } else {
                 if !has(edges, "derive", true, &n.key) {
-                    gap("導出元の上位の要求がありません（derivation）");
+                    gap(
+                        "trace.derive",
+                        "導出元の上位の要求がありません（derivation）",
+                    );
                 }
                 if !has(edges, "satisfy", false, &n.key) {
-                    gap("この要求を満たす要素がありません（satisfy）");
+                    gap(
+                        "trace.satisfy",
+                        "この要求を満たす要素がありません（satisfy）",
+                    );
                 }
                 if !has(edges, "verify", false, &n.key) {
-                    gap("この要求を確かめる検証がありません（verify）");
+                    gap(
+                        "trace.verify",
+                        "この要求を確かめる検証がありません（verify）",
+                    );
                 }
             }
         }
-        for (pos, msg) in gaps {
-            self.problem(pos, msg, Some("gap"));
+        for (pos, code, msg) in gaps {
+            self.model.problems.push(Problem {
+                pos,
+                msg,
+                kind: Some("gap"),
+                code: Some(code),
+                level: None,
+            });
         }
     }
 }

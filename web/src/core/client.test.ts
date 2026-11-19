@@ -4,12 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CoreClient, CORE_STOPPED, STALE_EDIT, type CorePort } from "./client";
 import { failedReply, handle, type CoreFns, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
 import { applyTextEdits } from "./text";
-import { analyze, checkPluginMessage, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, RulePlugins, updateProjectPlugin } from "./wasm/modelith_core.js";
+import {
+  analyze, checkPluginMessage, clearProjectFiles, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, problemKinds, projectProblems, removeProjectFile, RulePlugins, setFocusFile,
+  setProblemLevels, setProjectFile, updateProjectLevel, updateProjectPlugin,
+} from "./wasm/modelith_core.js";
 import type { PluginFiles, RuleFinding } from "./rust";
 import type { Model, ParseResult } from "./types";
 
 /** 返事をためておき、deliver() で届ける偽の Worker。 */
-const wasm: CoreFns = { analyze, edit, parseProjectFile, createProjectFile, updateProjectPlugin, describePlugin, loadPlugins: (json) => new RulePlugins(json), modelSnapshot, checkPluginMessage };
+const wasm: CoreFns = {
+  analyze, edit, parseProjectFile, createProjectFile, updateProjectPlugin, describePlugin, loadPlugins: (json) => new RulePlugins(json), modelSnapshot, checkPluginMessage,
+  setProjectFile, removeProjectFile, clearProjectFiles, setFocusFile, projectProblems, updateProjectLevel, setProblemLevels, problemKinds,
+};
 /** コアがどの依頼にも壊れた JSON を返す（Q-5 の異常系）。 */
 const broken: CoreFns = {
   analyze: () => "{",
@@ -17,10 +23,18 @@ const broken: CoreFns = {
   parseProjectFile: () => "{",
   createProjectFile: () => "{",
   updateProjectPlugin: () => "{",
+  updateProjectLevel: () => "{",
+  setProblemLevels: () => {},
+  problemKinds: () => "{",
   describePlugin: () => "{",
-  loadPlugins: () => ({ summary: () => "{", analyze: () => "{", free: () => {} }),
+  loadPlugins: () => ({ summary: () => "{", analyze: () => "{", projectProblems: () => "{", free: () => {} }),
   modelSnapshot: () => "{",
   checkPluginMessage: () => "{",
+  setProjectFile: () => {},
+  removeProjectFile: () => {},
+  clearProjectFiles: () => {},
+  setFocusFile: () => {},
+  projectProblems: () => "{",
 };
 
 function fakeWorker(fns: CoreFns = wasm) {
@@ -362,7 +376,7 @@ describe("CoreClient（チェックルールのプラグイン、F-PLUG-1・F-PL
 
   it("コアが返事の形の違う JSON を返しても、誤りとして返す（異常系）", async () => {
     // Arrange
-    const { c, deliver } = client({ ...wasm, loadPlugins: () => ({ summary: () => '{"error":"x"}', analyze, free: () => {} }), describePlugin: () => "{}" });
+    const { c, deliver } = client({ ...wasm, loadPlugins: () => ({ summary: () => '{"error":"x"}', analyze, projectProblems, free: () => {} }), describePlugin: () => "{}" });
     // Act
     const set = c.setPlugins([plugin()]);
     const described = c.describePlugin("{}");
@@ -375,7 +389,7 @@ describe("CoreClient（チェックルールのプラグイン、F-PLUG-1・F-PL
   it("プラグインを置き換えると、前に読み込んだものを返す（free）", () => {
     // Arrange
     let freed = 0;
-    const fns: CoreFns = { ...wasm, loadPlugins: () => ({ summary: () => '{"plugins":[]}', analyze, free: () => void freed++ }) };
+    const fns: CoreFns = { ...wasm, loadPlugins: () => ({ summary: () => '{"plugins":[]}', analyze, projectProblems, free: () => void freed++ }) };
     const state: CoreState = { text: "", plugins: null };
     handle(state, { type: "setPlugins", id: 1, plugins: [plugin()] }, fns);
     // Act
@@ -612,7 +626,7 @@ describe("CoreClient（コアが止まった・返事をしないときの出口
     // Act
     c.reconnect(next.port);
     // Assert
-    expect(next.posted).toEqual([{ type: "didChange", version: c.current, text: "package Q;" }]);
+    expect(next.posted).toEqual([{ type: "didChange", version: c.current, text: "package Q;", path: null }]);
   });
 
   it("古い通り道から遅れて届いた返事は捨てる", () => {
@@ -626,5 +640,167 @@ describe("CoreClient（コアが止まった・返事をしないときの出口
     w.deliverAll();
     // Assert
     expect(got).toEqual([]);
+  });
+});
+
+describe("CoreClient: プロジェクトのファイル（ADR-0021、F-FILE-15）", () => {
+  // コア（wasm）が覚えるファイルはテストの間で共有されるので、毎回忘れさせる
+  afterEach(() => clearProjectFiles());
+
+  it("ほかのファイルを覚えさせると、その定義を参照する要素を描き、ファイルのパスを持つ", async () => {
+    // Arrange
+    const { c, got: analyzed, deliver } = client();
+    c.focus("app.sysml");
+    c.sync("package App { import Parts::*; part c : Car; }");
+    deliver();
+    // Act
+    const done = c.updateFiles({ set: [{ path: "parts.sysml", text: "package Parts { part def Car; part def Bus; }" }], remove: [] });
+    deliver();
+    await done;
+    // Assert（Bus は参照していないので描かない）
+    const M = analyzed.at(-1)?.M;
+    expect(M?.nodes.map((n) => [n.key, n.file])).toEqual([["c", undefined], ["Car", "parts.sysml"]]);
+  });
+
+  it("表示中のファイルと同じパスのファイルは、ほかのファイルとしてつながない（境界値）", async () => {
+    // Arrange
+    const { c, got: analyzed, deliver } = client();
+    const done = c.updateFiles({ set: [{ path: "app.sysml", text: "package Old { part def Car; }" }], remove: [] });
+    deliver();
+    await done;
+    // Act
+    c.focus("app.sysml");
+    c.sync("package App { part c : Old::Car; }");
+    deliver();
+    // Assert（保存前の古い中身の Car は見えない）
+    expect(analyzed.at(-1)?.M.problems.map((p) => p.msg)).toEqual(["型「Old::Car」が見つかりません（c）"]);
+  });
+
+  it("ほかのファイルの要素を書き換えようとすると、そのファイルのパスを添えて断る（異常系）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    const text = "package App { part c : Parts::Car; }";
+    const done = c.updateFiles({ set: [{ path: "parts.sysml", text: "package Parts { part def Car; }" }], remove: [] });
+    deliver();
+    await done;
+    c.focus("app.sysml");
+    c.sync(text);
+    deliver();
+    // Act
+    const edited = c.edit(text, { op: "rename", key: "Car", name: "Bus" });
+    deliver();
+    // Assert
+    expect(await edited).toMatchObject({ file: "parts.sysml" });
+  });
+
+  it("忘れさせたファイルの定義は見つからなくなる", async () => {
+    // Arrange
+    const { c, got: analyzed, deliver } = client();
+    c.sync("package App { part c : Parts::Car; }");
+    const set = c.updateFiles({ set: [{ path: "parts.sysml", text: "package Parts { part def Car; }" }], remove: [] });
+    deliver();
+    await set;
+    // Act
+    const removed = c.updateFiles({ set: [], remove: ["parts.sysml"] });
+    deliver();
+    await removed;
+    // Assert
+    expect(analyzed.at(-1)?.M.problems.map((p) => p.msg)).toEqual(["型「Parts::Car」が見つかりません（c）"]);
+  });
+});
+
+describe("CoreClient: ほかのファイルの問題（ADR-0021 §6、F-FILE-16）", () => {
+  afterEach(() => clearProjectFiles());
+
+  it("覚えさせたほかのファイルごとに、表示中のファイルの今のテキストをつないで問題を数える", async () => {
+    // Arrange（parts.sysml は表示中の app.sysml の Wheel を使う。保存前の今のテキストで数える）
+    const { c, deliver } = client();
+    const set = c.updateFiles({ set: [{ path: "parts.sysml", text: "package Parts { import App::*; part def Car { part w : Wheel; part x : Nope; } }" }], remove: [] });
+    deliver();
+    await set;
+    c.focus("app.sysml");
+    c.sync("package App { part def Wheel; }");
+    deliver();
+    // Act
+    const counted = c.projectProblems();
+    deliver();
+    // Assert
+    expect((await counted)?.reports.map((r) => [r.path, r.problems.map((p) => p.msg)])).toEqual([["parts.sysml", ["型「Nope」が見つかりません（x）"]]]);
+    expect(c.hasFiles).toBe(true);
+  });
+
+  it("数える間にテキストが変わったら、結果を捨てる（境界値）", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    const set = c.updateFiles({ set: [{ path: "parts.sysml", text: "package Parts;" }], remove: [] });
+    deliver();
+    await set;
+    c.sync("package App;");
+    deliver();
+    // Act
+    const counted = c.projectProblems();
+    c.sync("package App2;");
+    deliver();
+    // Assert
+    expect(await counted).toBeNull();
+  });
+});
+
+describe("CoreClient: 知らせの重さ（F-EDIT-11）", () => {
+  it("覚えさせた重さで解析し直し、選んだ種類の問題に重さを付ける", async () => {
+    // Arrange（2 つ目のフェーズの要求に、満たす要素と検証が無い）
+    const { c, got, deliver } = client();
+    c.sync(
+      "package P { enum def Stage { enum concept; enum detail; } metadata def Phase { attribute stage : Stage; } " +
+        "requirement def Need { @Phase { stage = concept; } } requirement def FlowReq { @Phase { stage = detail; } } " +
+        "#derivation dependency from Need to FlowReq; }",
+    );
+    deliver();
+    // Act
+    const pending = c.setLevels({ "trace.verify": "error", "trace.satisfy": "off" });
+    deliver();
+    await pending;
+    // Assert（テキストは同じでも解析し直し、検証の抜けはエラーに、満たす要素の抜けは出さない）
+    const gaps = got.at(-1)?.M.problems.filter((p) => p.kind === "gap") ?? [];
+    expect(got.length).toBe(2);
+    expect(gaps.filter((p) => p.msg.includes("verify")).map((p) => p.level)).toEqual(["error"]);
+    expect(gaps.filter((p) => p.msg.includes("satisfy"))).toEqual([]);
+  });
+
+  it("設定ファイルの重さを書き換え、既定に戻すと項目を消す", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    // Act
+    const set = c.updateProjectLevel("{}", "unsupported", "off");
+    const reset = c.updateProjectLevel('{"levels":{"unsupported":"off"}}', "unsupported", null);
+    deliver();
+    // Assert
+    expect(await set).toEqual({ text: '{\n  "plugins": {},\n  "levels": {\n    "unsupported": "off"\n  }\n}\n' });
+    expect(await reset).toEqual({ text: '{\n  "plugins": {}\n}\n' });
+  });
+
+  it("重さを選べるモデルの知らせの種類を、既定の重さと一緒に返す", async () => {
+    // Arrange
+    const { c, deliver } = client();
+    // Act
+    const kinds = c.problemKinds();
+    deliver();
+    // Assert
+    expect((await kinds).map((k) => [k.code, k.default])).toEqual([
+      ["trace.derive", "warning"],
+      ["trace.satisfy", "warning"],
+      ["trace.verify", "warning"],
+      ["unsupported", "info"],
+    ]);
+  });
+
+  it("コアの返事が壊れていれば、種類は空にする（異常系）", async () => {
+    // Arrange
+    const { c, deliver } = client(broken);
+    // Act
+    const kinds = c.problemKinds();
+    deliver();
+    // Assert
+    expect(await kinds).toEqual([]);
   });
 });

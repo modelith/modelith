@@ -121,6 +121,11 @@ rules:
 | `part` | 部品（package の直下にあるものだけ。部品の中の部品は要素にならない） |
 | `requirement def` | 要求 |
 | `requirement` | 要求（package の直下にあるものだけ） |
+| `verification` | 検証（package の直下にあるものだけ） |
+| `analysis` | 解析（package の直下にあるものだけ） |
+| `action` | アクション（package の直下にあるものだけ） |
+| `item` | アイテム（package の直下にあるものだけ） |
+| `state` | 状態（package の直下にあるものだけ） |
 | `concern def` | 関心事 |
 | `verification def` | 検証 |
 | `occurrence def` | シナリオ |
@@ -152,6 +157,7 @@ modelith check <プロジェクトのフォルダ>
 ```
 
 - `modelith.json` を読み、有効なプラグインのルールで、フォルダの中の `.sysml`・`.kerml` をチェックする。隠しフォルダ（`.modelith` を含む）・`target`・`node_modules` の中は見ない。
+  フォルダのファイルは 1 つのモデルとして読む（ADR-0021）。ほかのファイルに書いた関係（例：別のファイルの `satisfy`）も数え、結果は要素を書いたファイルに出す。
 - 読むのは、プロジェクトに追加したプラグイン（`.modelith/plugins/`）だけ。画面で「このブラウザ」に追加したプラグインは読まない（ブラウザの中にあるため）。CI と同じ結果にしたいルールは、プロジェクトに追加する。
 - 結果を 1 件 1 行で、パス・行・列の順に出し、最後にまとめを 1 行出す。行と列は 1 から数える（列は UTF-16 の単位）。
 

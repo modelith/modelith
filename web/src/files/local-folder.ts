@@ -9,25 +9,29 @@ import {
   type FileLocator,
   type FilePicker,
   type FileRef,
+  type FolderEdits,
   type FolderFiles,
   type FolderRef,
   type FolderSource,
   type FolderTrees,
   type Readable,
   type RecentAccess,
+  type RecentFolder,
   type RecentFolders,
   type SiblingFiles,
   type Writable,
 } from "./types";
+import { forgetRecent, parseRecent, pushRecent, withProject, type RecentEntry } from "./recent-folders";
 
 /* ---- 使う API の範囲だけを型にする（lib.dom に無い部分を含むため） ---- */
 export interface FileLike {
   text(): Promise<string>;
+  arrayBuffer(): Promise<ArrayBuffer>;
   readonly lastModified: number;
   readonly size: number;
 }
 export interface WritableStreamLike {
-  write(data: string): Promise<void>;
+  write(data: string | ArrayBuffer): Promise<void>;
   close(): Promise<void>;
 }
 export type PermissionState = "granted" | "denied" | "prompt";
@@ -35,6 +39,8 @@ interface HandleBase {
   readonly name: string;
   queryPermission?(opts: { mode: "readwrite" }): Promise<PermissionState>;
   requestPermission?(opts: { mode: "readwrite" }): Promise<PermissionState>;
+  /** other と同じファイルかフォルダか（同じフォルダを一覧に 2 度入れないため）。 */
+  isSameEntry?(other: HandleBase): Promise<boolean>;
 }
 export interface FileHandleLike extends HandleBase {
   readonly kind: "file";
@@ -50,6 +56,8 @@ export interface DirHandleLike extends HandleBase {
   removeEntry(name: string, opts?: { recursive?: boolean }): Promise<void>;
   /** h がこのフォルダの中にあれば、フォルダからのパスの各部分（無ければ null）。 */
   resolve(h: FileHandleLike): Promise<string[] | null>;
+  /** このフォルダそのものを消す（recursive なら中身ごと）。対応していないブラウザには無い。 */
+  remove?(opts?: { recursive?: boolean }): Promise<void>;
 }
 const PICKER_TYPES = [{ description: "SysML v2 / KerML", accept: { "text/plain": [".sysml", ".kerml"] } }];
 export interface FsApi {
@@ -57,10 +65,10 @@ export interface FsApi {
   showOpenFilePicker(opts: { types: typeof PICKER_TYPES; multiple: false }): Promise<FileHandleLike[]>;
 }
 
-/** ハンドルを保存する場所（前回のフォルダを覚えるため。ブラウザでは IndexedDB）。 */
+/** ハンドルを保存する場所（開いたフォルダの一覧を覚えるため。ブラウザでは IndexedDB）。値は構造化複製できるもの。 */
 export interface HandleStore {
-  get(key: string): Promise<DirHandleLike | undefined>;
-  set(key: string, value: DirHandleLike): Promise<void>;
+  get(key: string): Promise<unknown>;
+  set(key: string, value: unknown): Promise<void>;
 }
 
 /**
@@ -96,7 +104,22 @@ const isAbort = (e: unknown): boolean => e instanceof Error && e.name === "Abort
 const versionOf = (f: FileLike): string => `${f.lastModified}:${f.size}`;
 /** 一覧に出さないフォルダ。 */
 const SKIP_DIR = /^(\.|node_modules$)/;
+/** 以前の版が、前回のフォルダを 1 つだけ覚えていたキー（一覧が無いときに、一覧の最初の 1 件として読む）。 */
 const RECENT_KEY = "recent-folder";
+/** 開いたフォルダの一覧（プロジェクトの一覧。F-PROJ-3）を覚えるキー。 */
+const RECENT_LIST_KEY = "recent-folders";
+
+/**
+ * フォルダのハンドルらしい値か（保存しておいた一覧を読むときに確かめる）。
+ *
+ * @param v 調べる値
+ * @returns kind が "directory" で名前のあるオブジェクトなら true
+ * @example
+ * isDirHandle(new FakeDir("project")) // → true
+ * isDirHandle({ name: "x" })          // → false
+ */
+const isDirHandle = (v: unknown): v is DirHandleLike =>
+  typeof v === "object" && v !== null && (v as DirHandleLike).kind === "directory" && typeof (v as DirHandleLike).name === "string";
 /** readTree で読むファイルの数の上限（プラグインではない大きなフォルダを選んだときに、読み続けないため）。 */
 export const MAX_TREE_FILES = 200;
 
@@ -116,11 +139,15 @@ export function segmentsOf(path: string): string[] {
   return segs;
 }
 
-export class LocalFolderProvider implements Readable, Writable, FolderSource, FilePicker, RecentFolders, SiblingFiles, FileLocator, FolderFiles, FolderTrees {
+export class LocalFolderProvider
+  implements Readable, Writable, FolderSource, FilePicker, RecentFolders, SiblingFiles, FileLocator, FolderFiles, FolderTrees, FolderEdits
+{
   readonly id = "local";
   readonly label = "このコンピュータ";
   private readonly files = new Map<string, FileHandleLike>();
   private readonly folders = new Map<string, DirHandleLike>();
+  /** 開いたフォルダの参照の id → プロジェクトの一覧の項目の名前。 */
+  private readonly recentIds = new Map<string, string>();
   private seq = 0;
 
   /**
@@ -152,8 +179,7 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
       if (isAbort(e)) return null;
       throw e;
     }
-    await this.store.set(RECENT_KEY, dir);
-    return this.addFolder(dir);
+    return this.remember(dir);
   }
 
   /**
@@ -165,7 +191,7 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
    * await p.recentFolder() // → null（初回）
    */
   async recentFolder(): Promise<string | null> {
-    return (await this.store.get(RECENT_KEY))?.name ?? null;
+    return (await this.recentList())[0]?.handle.name ?? null;
   }
 
   /**
@@ -178,7 +204,7 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
    * await p.recentAccess() // → "none"（初回）
    */
   async recentAccess(): Promise<RecentAccess> {
-    const dir = await this.store.get(RECENT_KEY);
+    const dir = (await this.recentList())[0]?.handle;
     if (!dir) return "none";
     return (await dir.queryPermission?.({ mode: "readwrite" })) ?? "denied";
   }
@@ -194,11 +220,126 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
    * await p.reopenRecent({ ask: false })   // → null（許可を求めないと開けない）
    */
   async reopenRecent(opts: { ask?: boolean } = {}): Promise<FolderRef | null> {
-    const dir = await this.store.get(RECENT_KEY);
-    if (!dir) return null;
+    const first = (await this.recentList())[0];
+    return first ? this.openEntry(first.handle, opts) : null;
+  }
+
+  /**
+   * 開いたフォルダの一覧（プロジェクトの一覧。F-PROJ-3）を返す。
+   *
+   * @returns 最後に開いた順の一覧。覚えていなければ空
+   * @example
+   * await p.recentFolders() // → [{ id: "2", name: "project", project: "給水" }, { id: "1", name: "old", project: null }]
+   * await p.recentFolders() // → []（初回）
+   */
+  async recentFolders(): Promise<RecentFolder[]> {
+    return (await this.recentList()).map((e) => ({ id: e.id, name: e.handle.name, project: e.project }));
+  }
+
+  /**
+   * 一覧のフォルダを開き、一覧の先頭に移す（F-PROJ-3）。許可が無ければ求める（利用者の操作から呼ぶ）。
+   *
+   * @param id 一覧の項目の名前
+   * @returns 開いたフォルダの参照。一覧に無い・許可されなければ null
+   * @example
+   * await p.openRecent("1") // → { provider: "local", id: "dir:3", name: "old" }
+   * await p.openRecent("9") // → null（一覧に無い）
+   */
+  async openRecent(id: string): Promise<FolderRef | null> {
+    const entry = (await this.recentList()).find((e) => e.id === id);
+    return entry ? this.openEntry(entry.handle, {}) : null;
+  }
+
+  /**
+   * フォルダを一覧から外す（F-PROJ-3）。フォルダそのものには触れない。
+   *
+   * @param id 一覧の項目の名前
+   * @example
+   * await p.forgetRecent("1") // → 一覧から id "1" が無くなる
+   */
+  async forgetRecent(id: string): Promise<void> {
+    await this.store.set(RECENT_LIST_KEY, forgetRecent(await this.recentList(), id));
+    for (const [folder, rid] of this.recentIds) if (rid === id) this.recentIds.delete(folder);
+  }
+
+  /**
+   * 開いているフォルダが、一覧のどの項目かを返す。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @returns 一覧の項目の名前。一覧から開いていない・外したなら null
+   * @example
+   * p.recentIdOf(folder) // → "2"
+   * p.recentIdOf(plugin) // → null（プラグインのフォルダは一覧に入れない）
+   */
+  recentIdOf(folder: FolderRef): string | null {
+    return this.recentIds.get(folder.id) ?? null;
+  }
+
+  /**
+   * 開いているフォルダのプロジェクト名を、一覧に覚える（一覧に名前を出すため。F-PROJ-3）。変わらなければ書かない。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param project プロジェクトの名前。プロジェクトでなければ null
+   * @example
+   * await p.setRecentProject(folder, "給水") // → p.recentFolders() のその項目の project が "給水"
+   */
+  async setRecentProject(folder: FolderRef, project: string | null): Promise<void> {
+    const id = this.recentIds.get(folder.id);
+    if (id === undefined) return;
+    const r = withProject(await this.recentList(), id, project);
+    if (r.changed) await this.store.set(RECENT_LIST_KEY, r.list);
+  }
+
+  /**
+   * 覚えているフォルダの一覧を読む。一覧が無ければ、以前の版が覚えた前回のフォルダを 1 件目として読む。
+   *
+   * @returns 最後に開いた順の一覧
+   * @example
+   * await this.recentList() // → [{ id: "1", handle: project のハンドル, project: null }]
+   */
+  private async recentList(): Promise<RecentEntry<DirHandleLike>[]> {
+    const raw = await this.store.get(RECENT_LIST_KEY);
+    if (raw !== undefined) return parseRecent(raw, isDirHandle);
+    const old = await this.store.get(RECENT_KEY);
+    return isDirHandle(old) ? [{ id: "1", handle: old, project: null }] : [];
+  }
+
+  /**
+   * 開いたフォルダを一覧の先頭に置き（同じフォルダが既にあれば移す）、参照を作る。
+   *
+   * @param dir 開いたフォルダのハンドル
+   * @returns 新しい参照
+   * @example
+   * await this.remember(project) // → { provider: "local", id: "dir:1", name: "project" }（一覧の先頭が project）
+   */
+  private async remember(dir: DirHandleLike): Promise<FolderRef> {
+    const list = await this.recentList();
+    let at = -1;
+    for (let i = 0; i < list.length && at < 0; i++) {
+      const h = list[i]?.handle;
+      if (h && (h === dir || (await h.isSameEntry?.(dir)))) at = i;
+    }
+    const next = pushRecent(list, at, dir);
+    await this.store.set(RECENT_LIST_KEY, next);
+    const ref = await this.addFolder(dir);
+    if (next[0]) this.recentIds.set(ref.id, next[0].id);
+    return ref;
+  }
+
+  /**
+   * 覚えているフォルダを、許可を確かめて開く。
+   *
+   * @param dir フォルダのハンドル
+   * @param opts `ask: false` なら許可を求めず、既に許可されているときだけ開く
+   * @returns 開いたフォルダの参照。許可されなければ null
+   * @example
+   * await this.openEntry(project, {})              // → { provider: "local", id: "dir:2", name: "project" }
+   * await this.openEntry(project, { ask: false })  // → null（許可を求めないと開けない）
+   */
+  private async openEntry(dir: DirHandleLike, opts: { ask?: boolean }): Promise<FolderRef | null> {
     const granted = (await dir.queryPermission?.({ mode: "readwrite" })) === "granted";
     const ok = granted || (opts.ask !== false && (await dir.requestPermission?.({ mode: "readwrite" })) === "granted");
-    return ok ? this.addFolder(dir) : null;
+    return ok ? this.remember(dir) : null;
   }
 
   /**
@@ -412,7 +553,7 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
    */
   async pickOtherFolder(): Promise<FolderRef | null> {
     try {
-      return this.addFolder(await this.api.showDirectoryPicker({ mode: "read", id: "modelith-plugin" }));
+      return await this.addFolder(await this.api.showDirectoryPicker({ mode: "read", id: "modelith-plugin" }));
     } catch (e) {
       if (isAbort(e)) return null;
       throw e;
@@ -462,6 +603,94 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
   }
 
   /**
+   * 開いたフォルダそのものを、中身ごと消し、プロジェクトの一覧からも外す（F-PROJ-4）。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @returns 消し終えたら解決する Promise。ブラウザがフォルダそのものの削除に対応していなければ、何も消さずに例外（Error）で拒否する
+   * @example
+   * await p.removeFolder(folder) // → フォルダが無くなり、p.recentFolders() からも消える
+   * await p.removeFolder(folder) // → Error「このブラウザでは、フォルダそのものを削除できません」（対応していないとき）
+   */
+  async removeFolder(folder: FolderRef): Promise<void> {
+    const dir = this.folderHandle(folder);
+    if (!dir.remove) throw new Error("このブラウザでは、フォルダそのものを削除できません");
+    await dir.remove({ recursive: true });
+    this.folders.delete(folder.id);
+    const id = this.recentIds.get(folder.id);
+    if (id !== undefined) await this.forgetRecent(id);
+  }
+
+  /**
+   * フォルダの中の 1 つのフォルダの直下にある、すべてのファイルとフォルダの名前（一覧に出さないものも含む。F-FILE-19、#243）。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param path 名前を集めるフォルダの、フォルダからの相対パス（一番上なら ""）
+   * @returns 名前の一覧。そのフォルダが無ければ空
+   * @example
+   * await p.namesInFolder(folder, "")       // → ["a.sysml", "a.layout.json", "readme.md", "models"]
+   * await p.namesInFolder(folder, "absent") // → []
+   */
+  async namesInFolder(folder: FolderRef, path: string): Promise<string[]> {
+    const dir = await descend(this.folderHandle(folder), segmentsOf(path));
+    const names: string[] = [];
+    if (dir) for await (const h of dir.values()) names.push(h.name);
+    return names;
+  }
+
+  /**
+   * フォルダの中に空のフォルダを作る（途中のフォルダも作る。F-FILE-19）。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param path 作るフォルダの、フォルダからの相対パス（`/` 区切り）
+   * @returns 作り終えたら解決する Promise。名前が空・フォルダの外を指す・同じ名前のファイルかフォルダが既にあるときは例外（Error）で拒否する
+   * @example
+   * await p.createFolder(folder, "models/parts") // → models/parts ができる
+   * await p.createFolder(folder, "models")       // → Error「「models」は既にあります」（あるとき）
+   */
+  async createFolder(folder: FolderRef, path: string): Promise<void> {
+    const segs = segmentsOf(path);
+    const name = segs.pop();
+    if (!name) throw new Error("フォルダ名がありません");
+    let dir = this.folderHandle(folder);
+    for (const s of segs) dir = await dir.getDirectoryHandle(s, { create: true });
+    if ((await exists(dir, name)) || (await childDir(dir, name))) throw new Error(`「${path}」は既にあります`);
+    await dir.getDirectoryHandle(name, { create: true });
+  }
+
+  /**
+   * フォルダの中のファイルかフォルダを、別のパスへ動かす（名前の変更。F-FILE-19）。
+   * ブラウザには、ローカルのフォルダの中で動かす方法がそろっていないので、中身をバイトのまま写してから元を消す。
+   *
+   * @param folder このプロバイダで開いたフォルダ
+   * @param from 動かすもののパス
+   * @param to 動かした先のパス（途中のフォルダは作る）
+   * @returns 動かし終えたら解決する Promise。from が無い・to に既に何かある・to が from の中を指す・フォルダの外を指すときは例外（Error）で拒否する
+   * @example
+   * await p.moveInFolder(folder, "a.sysml", "b.sysml") // → a.sysml が b.sysml になる
+   * await p.moveInFolder(folder, "models", "parts")    // → models の中身ごと parts になる
+   * await p.moveInFolder(folder, "models", "models/x") // → Error「「models」を、その中へは動かせません」
+   */
+  async moveInFolder(folder: FolderRef, from: string, to: string): Promise<void> {
+    const src = segmentsOf(from);
+    const dst = segmentsOf(to);
+    const srcName = src.pop();
+    const dstName = dst.pop();
+    if (!srcName || !dstName) throw new Error("動かす場所がありません");
+    if (to.startsWith(`${from}/`)) throw new Error(`「${from}」を、その中へは動かせません`);
+    const root = this.folderHandle(folder);
+    const srcDir = await descend(root, src);
+    const file = srcDir && (await exists(srcDir, srcName)) ? await srcDir.getFileHandle(srcName) : null;
+    const dir = srcDir && !file ? await childDir(srcDir, srcName) : null;
+    if (!srcDir || (!file && !dir)) throw new Error(`「${from}」が見つかりません`);
+    let dstDir = root;
+    for (const s of dst) dstDir = await dstDir.getDirectoryHandle(s, { create: true });
+    if ((await exists(dstDir, dstName)) || (await childDir(dstDir, dstName))) throw new Error(`「${to}」は既にあります`);
+    if (file) await copyFile(file, await dstDir.getFileHandle(dstName, { create: true }));
+    else if (dir) await copyDir(dir, await dstDir.getDirectoryHandle(dstName, { create: true }));
+    await srcDir.removeEntry(srcName, { recursive: true });
+  }
+
+  /**
    * フォルダから開いたファイルなら、そのフォルダと、ファイルのある階層までのパスを返す。
    *
    * @param ref ファイルの参照
@@ -497,15 +726,25 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
   }
 
   /**
-   * フォルダのハンドルを覚え、参照を作る。
+   * フォルダのハンドルを覚え、参照を作る。前に開いたことのある同じフォルダなら、前と同じ id を使う。
+   * id が変わると、中のファイルの参照も変わり、開いたままの同じファイルを別の文書として開いてしまうため（#227）。
    *
    * @param dir フォルダのハンドル
-   * @returns 新しい参照（id は `dir:番号`）
+   * @returns 参照（id は `dir:番号`）
    * @example
-   * this.addFolder(project) // → { provider: "local", id: "dir:1", name: "project" }
+   * await this.addFolder(project) // → { provider: "local", id: "dir:1", name: "project" }
+   * await this.addFolder(other)   // → { provider: "local", id: "dir:2", name: "other" }
+   * await this.addFolder(project) // → { provider: "local", id: "dir:1", name: "project" }（同じフォルダは同じ id）
    */
-  private addFolder(dir: DirHandleLike): FolderRef {
-    const id = `dir:${++this.seq}`;
+  private async addFolder(dir: DirHandleLike): Promise<FolderRef> {
+    let id: string | undefined;
+    for (const [k, h] of this.folders) {
+      if (h === dir || (await h.isSameEntry?.(dir))) {
+        id = k;
+        break;
+      }
+    }
+    id ??= `dir:${++this.seq}`;
     this.folders.set(id, dir);
     return { provider: this.id, id, name: dir.name };
   }
@@ -556,13 +795,13 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
   }
 
   /**
-   * フォルダの中を再帰でたどり、モデルのファイルを含むフォルダだけを、フォルダ → ファイルの順・名前順で返す。
+   * フォルダの中を再帰でたどり、モデルのファイルを含むフォルダと中が空のフォルダ（作ったばかりのフォルダ。F-FILE-1）を、フォルダ → ファイルの順・名前順で返す。
    * 見つけたファイルは `rootId/パス` の id で覚える（一覧し直しても同じ id になる）。
    *
    * @param dir たどるフォルダ
    * @param rootId 開いたフォルダの id
    * @param prefix dir までのパス（開いたフォルダの直下なら空文字列）
-   * @returns ツリー。隠しフォルダ・node_modules・モデルのファイルを含まないフォルダは除く
+   * @returns ツリー。隠しフォルダ・node_modules・モデルのファイルを含まない（空ではない）フォルダは除く
    * @example
    * paths(await this.walk(root, "dir:1", "")) // → ["sub/", "sub/c.sysml", "a.kerml", "b.sysml"]
    * await this.walk(empty, "dir:1", "")       // → []
@@ -575,7 +814,7 @@ export class LocalFolderProvider implements Readable, Writable, FolderSource, Fi
       if (h.kind === "directory") {
         if (SKIP_DIR.test(h.name)) continue;
         const children = await this.walk(h, rootId, path);
-        if (children.length) dirs.push({ kind: "dir", name: h.name, path, children });
+        if (children.length || (await isEmptyDir(h))) dirs.push({ kind: "dir", name: h.name, path, children });
       } else if (isModelFile(h.name)) {
         files.push({ kind: "file", ref: this.addFile(h, `${rootId}/${path}`, path) });
       }
@@ -628,6 +867,20 @@ async function exists(dir: DirHandleLike, name: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * フォルダの中が空か（ファイルもフォルダも無いか）。
+ *
+ * @param dir フォルダ
+ * @returns 何も無ければ true
+ * @example
+ * await isEmptyDir(created) // → true（作ったばかりのフォルダ）
+ * await isEmptyDir(docs)    // → false（README.md だけがある）
+ */
+async function isEmptyDir(dir: DirHandleLike): Promise<boolean> {
+  for await (const _ of dir.values()) return false;
+  return true;
 }
 
 /**
@@ -689,6 +942,32 @@ async function readAll(dir: DirHandleLike, prefix: string, out: Record<string, s
     }
     if (Object.keys(out).length >= MAX_TREE_FILES) throw new Error(`ファイルが多すぎます（${MAX_TREE_FILES} 件まで）。プラグインのフォルダを選んでください`);
     out[path] = await (await h.getFile()).text();
+  }
+}
+
+/**
+ * ファイルの中身を、バイトのまま別のファイルへ写す。
+ *
+ * @param from 写すファイル
+ * @param to 写し先のファイル（中身を置き換える）
+ */
+async function copyFile(from: FileHandleLike, to: FileHandleLike): Promise<void> {
+  const data = await (await from.getFile()).arrayBuffer();
+  const w = await to.createWritable();
+  await w.write(data);
+  await w.close();
+}
+
+/**
+ * フォルダの中身を、下のフォルダまですべて別のフォルダへ写す（隠しファイルも含め、何も除かない）。
+ *
+ * @param from 写すフォルダ
+ * @param to 写し先のフォルダ（空のフォルダを渡す）
+ */
+async function copyDir(from: DirHandleLike, to: DirHandleLike): Promise<void> {
+  for await (const h of from.values()) {
+    if (h.kind === "directory") await copyDir(h, await to.getDirectoryHandle(h.name, { create: true }));
+    else await copyFile(h, await to.getFileHandle(h.name, { create: true }));
   }
 }
 

@@ -163,7 +163,7 @@ fn rename_definition_changes_every_reference_but_not_comments_or_longer_names() 
     // Assert
     assert_eq!(
         after,
-        "package P {\n    part def Motor; // Engine の説明\n    part def Car { part e : Motor; }\n    part def EngineX;\n    part def 'Q' { part q : 'Motor'; }\n}"
+        "package P {\n    part def Motor; // Engine の説明\n    part def Car { part e : Motor; }\n    part def EngineX;\n    part def 'Q' { part q : Motor; }\n}"
     );
     assert_eq!(out.select.as_deref(), Some("Motor"));
     assert_eq!(flashed(&after, &out), "part def Motor");
@@ -223,14 +223,14 @@ fn rename_state_changes_transition_sources_and_targets() {
 
 #[test]
 fn rename_usage_changes_references_in_values_and_specializations() {
-    // Arrange（属性の値の式・`:>` の参照も変える。`k.a` の `.` の後ろは別の要素の特性なので変えない）
+    // Arrange（属性の値の式・`:>` の参照も変える。`k.a` は k の型 D の a を指すので変える。#267）
     let text = "package P { part def D { attribute a : Real; attribute u : Real = a * 2; attribute f :> a; part k : D; attribute w = k.a; } }";
     // Act
     let (after, _) = run(text, r#"{"op":"rename","key":"u:a","ctx":"D","name":"z"}"#);
     // Assert
     assert_eq!(
         after,
-        "package P { part def D { attribute z : Real; attribute u : Real = z * 2; attribute f :> z; part k : D; attribute w = k.a; } }"
+        "package P { part def D { attribute z : Real; attribute u : Real = z * 2; attribute f :> z; part k : D; attribute w = k.z; } }"
     );
 }
 
@@ -242,6 +242,55 @@ fn rename_flash_follows_earlier_renamed_references() {
     let (after, out) = run(text, r#"{"op":"rename","key":"Long","name":"L"}"#);
     // Assert
     assert_eq!(flashed(&after, &out), "part def L");
+}
+
+#[test]
+fn rename_writes_non_basic_names_as_quoted_names() {
+    // Arrange（同値分割：日本語・空白を含む・数字で始まる・予約語。引用名の参照も、新しい名前の引用名で書く。短い名前は変えない）
+    let text = "package P {\n    requirement def <'Kettle'> Kettle;\n    part def C { part k : Kettle; part q : 'Kettle'; }\n}";
+    // Act
+    let (jp, out) = run(
+        text,
+        r#"{"op":"rename","key":"Kettle","name":" 電気 ケトル "}"#,
+    );
+    let (num, _) = run(text, r#"{"op":"rename","key":"Kettle","name":"1A"}"#);
+    let (kw, _) = run(text, r#"{"op":"rename","key":"Kettle","name":"part"}"#);
+    // Assert
+    assert_eq!(
+        jp,
+        "package P {\n    requirement def <'Kettle'> '電気 ケトル';\n    part def C { part k : '電気 ケトル'; part q : '電気 ケトル'; }\n}"
+    );
+    assert_eq!(out.select.as_deref(), Some("電気 ケトル"));
+    assert_eq!(
+        flashed(&jp, &out),
+        "requirement def <'Kettle'> '電気 ケトル'"
+    );
+    assert!(num.contains("part k : '1A'; part q : '1A';"), "{num}");
+    assert!(kw.contains("part k : 'part';"), "{kw}");
+}
+
+#[test]
+fn rename_from_a_quoted_name_back_to_a_basic_name() {
+    // Arrange（引用名の定義と使用を、基本名に戻す。宣言も参照も基本名で書き、引用符を外す（#244））
+    let text = "package P { part def '電気 ケトル'; part def C { part '中の 部品' : '電気 ケトル'; flow from '中の 部品'.p to x.q; } }";
+    // Act
+    let (def, _) = run(
+        text,
+        r#"{"op":"rename","key":"電気 ケトル","name":"Kettle"}"#,
+    );
+    let (usage, _) = run(
+        text,
+        r#"{"op":"rename","key":"u:中の 部品","ctx":"C","name":"inner"}"#,
+    );
+    // Assert
+    assert_eq!(
+        def,
+        "package P { part def Kettle; part def C { part '中の 部品' : Kettle; flow from '中の 部品'.p to x.q; } }"
+    );
+    assert_eq!(
+        usage,
+        "package P { part def '電気 ケトル'; part def C { part inner : '電気 ケトル'; flow from inner.p to x.q; } }"
+    );
 }
 
 #[test]
@@ -276,6 +325,22 @@ fn rename_definition_in_a_package_still_renames_other_packages() {
 }
 
 #[test]
+fn rename_allows_a_name_used_only_in_another_namespace() {
+    // Arrange（定義 A の名前を、中の特性の名前にできる。同じ名前空間の重なりだけを断る。#244）
+    let text = "package P { part def A { part inner; } part def B; }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"A","name":"inner"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def inner { part inner; } part def B; }"
+    );
+    assert!(
+        refused(text, r#"{"op":"rename","key":"A","name":"B"}"#).contains("既に使われています")
+    );
+}
+
+#[test]
 fn rename_definition_leaves_the_same_name_in_other_packages() {
     // Arrange（同じ名前の定義が、入れ子の package と、別の package にある。名前を書いた場所から解決して、選んだ定義を指すものだけを変える。#266）
     let text = "package P {\n    part def S;\n    part def Q { part s : S; }\n    package Inner { part def S; part x : S; }\n    part z : Inner::S;\n}\npackage O { part def S; part y : S; }\n";
@@ -297,12 +362,9 @@ fn rename_definition_leaves_the_same_name_in_other_packages() {
 fn rename_is_refused_for_bad_or_used_names_and_noop_for_same_name() {
     // 同値分割：使えない名前・既にある名前・同じ名前
     let text = "package P { part def A; part def B; }";
-    assert!(refused(text, r#"{"op":"rename","key":"A","name":"1A"}"#).contains("英字"));
-    // 予約語は、テキストを壊すので断る（#266）
-    for kw in ["def", "part", "end", "import", "true", "all"] {
-        let json = format!(r#"{{"op":"rename","key":"A","name":"{kw}"}}"#);
-        assert!(refused(text, &json).contains("名前に使えません"), "{kw}");
-    }
+    assert!(refused(text, r#"{"op":"rename","key":"A","name":"it's"}"#).contains("使えません"));
+    assert!(refused(text, r#"{"op":"rename","key":"A","name":"a\nb"}"#).contains("使えません"));
+    assert!(refused(text, r#"{"op":"rename","key":"A","name":"  "}"#).contains("名前を入力"));
     assert!(
         refused(text, r#"{"op":"rename","key":"A","name":"B"}"#).contains("既に使われています")
     );
@@ -462,6 +524,25 @@ fn internal_block_diagram_ids_reach_parts_one_level_deeper() {
             "flow|u:a|u:a.y|#1",
             "flow|u:a.x|u:b|#1"
         ]
+    );
+}
+
+#[test]
+fn ibd_ids_put_the_context_own_ports_on_the_frame() {
+    // Arrange（対象そのもののポート pwr・out への線は、枠の上のポート `b:` の線（8.2.3.13））
+    let text = "package P { part def E { port p; } part def C { in port pwr; out port res; part a : E; \
+                connect pwr to a.p; flow from a.p to res; connect zz to a.p; } }";
+    // Act
+    let ids = ibd_ids(text, "C");
+    let (deleted, _) = run(
+        text,
+        r#"{"op":"deleteEdge","id":"flow|b:pwr|u:a|#1","ctx":"C"}"#,
+    );
+    // Assert（ポートでも部品でもない端 zz の線は除く）
+    assert_eq!(ids, ["flow|b:pwr|u:a|#1", "flow|u:a|b:res|#1"]);
+    assert!(
+        !deleted.contains("connect pwr to a.p;") && deleted.contains("flow from a.p to res;"),
+        "{deleted}"
     );
 }
 
@@ -720,6 +801,28 @@ fn connect_flow_writes_quoted_part_and_port_names() {
 }
 
 #[test]
+fn connect_refuses_a_relation_that_is_already_written() {
+    // Arrange（同じ満たす・導出の関係を 2 回足さない。空白の違いは同じとみなす。#244）
+    let text = "package P {\n    part def A;\n    requirement def R;\n    requirement def S;\n    satisfy  R by A;\n    #derivation dependency from R to S;\n}\n";
+    // Act・Assert
+    for json in [
+        r#"{"op":"connect","rel":"satisfy","from":"A","to":"R"}"#,
+        r#"{"op":"connect","rel":"derive","from":"R","to":"S"}"#,
+    ] {
+        assert_eq!(refused(text, json), "同じ関係が既にあります", "{json}");
+    }
+    // 向きが逆の導出は別の関係
+    let (after, _) = run(
+        text,
+        r#"{"op":"connect","rel":"derive","from":"S","to":"R"}"#,
+    );
+    assert!(
+        after.contains("#derivation dependency from S to R;"),
+        "{after}"
+    );
+}
+
+#[test]
 fn connect_verify_adds_to_existing_objective() {
     // Arrange
     let text = "package P { requirement def R; requirement def S; verification def V { objective { verify R; } } }";
@@ -733,6 +836,41 @@ fn connect_verify_adds_to_existing_objective() {
         after,
         "package P { requirement def R; requirement def S; verification def V { objective { verify R; verify S; } } }"
     );
+}
+
+#[test]
+fn connect_verify_is_refused_when_the_same_requirement_is_already_verified() {
+    // 同値分割：同じ名前で書いた verify・修飾名で書いた verify（同じ要求を指す）は断る。別の要求は足せる（connect_verify_adds_to_existing_objective）。#267
+    for text in [
+        "package P { requirement def R; verification def V { objective { verify R; } } }",
+        "package P { requirement def R; verification def V { objective { verify P::R; } } }",
+    ] {
+        // Act
+        let why = refused(
+            text,
+            r#"{"op":"connect","rel":"verify","from":"V","to":"R"}"#,
+        );
+        // Assert
+        assert_eq!(why, "同じ関係が既にあります", "{text}");
+    }
+}
+
+#[test]
+fn connect_verify_twice_from_an_empty_verification_writes_one_objective() {
+    // Arrange（境界値：1 回目で objective ができ、2 回目は同じ関係として断る）
+    let text = "package P { requirement def R; verification def V; }";
+    let (once, _) = run(
+        text,
+        r#"{"op":"connect","rel":"verify","from":"V","to":"R"}"#,
+    );
+    // Act
+    let why = refused(
+        &once,
+        r#"{"op":"connect","rel":"verify","from":"V","to":"R"}"#,
+    );
+    // Assert
+    assert_eq!(why, "同じ関係が既にあります");
+    assert_eq!(once.matches("verify R;").count(), 1, "{once}");
 }
 
 #[test]
@@ -948,12 +1086,18 @@ fn update_message_rewrites_name_and_type_keeping_then() {
         "{typed}"
     );
     assert!(bare.contains("then message from b to a;"), "{bare}");
+    // 日本語の名前は引用名で書く。「'」は書けない（#244）
+    let (jp, _) = run(
+        SEQ,
+        r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"沸かす","type":""}"#,
+    );
+    assert!(jp.contains("then message '沸かす' from b to a;"), "{jp}");
     assert!(
         refused(
             SEQ,
-            r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"1x","type":""}"#
+            r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"it's","type":""}"#
         )
-        .contains("英字")
+        .contains("「'」")
     );
 }
 
@@ -1092,6 +1236,27 @@ fn make_port_adds_declaration_and_rewires_flows() {
     );
     assert!(after.contains("flow from a to b.i;"), "{after}");
     assert_eq!(flashed(&after, &out).trim(), "in port i : Sig;");
+}
+
+#[test]
+fn make_port_on_a_nested_part_keeps_the_whole_path() {
+    // Arrange（入れ子の部品 `u:a.x` に、線の行き先の接続点からポートを作る。端は a.x.i にし、a.i にしない）
+    let text = "package P { part def X; part def A { part x : X; } part def B { port o; } \
+                part def C { part a : A; part b : B; flow from b.o to a.x; } }";
+    let id = ibd_ids(text, "C")
+        .into_iter()
+        .find(|i| i.starts_with("flow|"))
+        .expect("流れの線");
+    // Act
+    let (after, _) = run(
+        text,
+        &format!(
+            r#"{{"op":"makePort","key":"u:a.x","ctx":"C","name":"i","dir":"in","type":"","flows":[{{"id":"{id}","to":true}}]}}"#
+        ),
+    );
+    // Assert
+    assert!(after.contains("part def X {\n    in port i;\n}"), "{after}");
+    assert!(after.contains("flow from b.o to a.x.i;"), "{after}");
 }
 
 #[test]
@@ -1234,10 +1399,109 @@ fn save_view_is_refused_without_name_targets_or_with_used_name() {
     assert!(
         refused(
             text,
+            r#"{"op":"saveView","name":"w","kind":"actionFlow","targets":[]}"#
+        )
+        .contains("対象を選んで")
+    );
+    assert!(
+        refused(
+            "part def A;",
             r#"{"op":"saveView","name":"w","kind":"general","targets":[]}"#
         )
-        .contains("要素が無い")
+        .contains("パッケージがありません")
     );
+}
+
+#[test]
+fn save_view_makes_an_empty_general_view() {
+    // Arrange：一般の図は、要素の無い空の図も作れる（F-VIEW-8）
+    let text = "package P {\n    part def A;\n}\n";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"saveView","name":"新しい図","kind":"general","targets":[]}"#,
+    );
+    // Assert
+    assert!(
+        after.contains("    view '新しい図' : GeneralView {\n    }\n}"),
+        "{after}"
+    );
+    let m = Doc::new(&after).m;
+    assert_eq!(m.views[0].name, "新しい図");
+    assert!(m.views[0].node_keys.is_empty());
+}
+
+#[test]
+fn rename_view_rewrites_only_the_view_name() {
+    // Arrange：基本名から引用名へ・引用名から基本名へ（同値分割）
+    let text = "package P {\n    part def v;\n    view v : GeneralView {\n        expose P::v;\n    }\n    view 'その他' { }\n}\n";
+    // Act
+    let (to_quoted, _) = run(text, r#"{"op":"renameView","view":"v","name":"全体"}"#);
+    let (to_basic, _) = run(
+        text,
+        r#"{"op":"renameView","view":"その他","name":" Other "}"#,
+    );
+    let (same, out) = run(text, r#"{"op":"renameView","view":"v","name":"v"}"#);
+    // Assert：同じ名前の部品定義 v と expose の P::v は変えない
+    assert!(
+        to_quoted
+            .contains("    part def v;\n    view '全体' : GeneralView {\n        expose P::v;"),
+        "{to_quoted}"
+    );
+    assert!(to_basic.contains("    view Other { }"), "{to_basic}");
+    assert_eq!(same, text);
+    assert!(out.edits.is_empty());
+    let names: Vec<String> = Doc::new(&to_quoted)
+        .m
+        .views
+        .iter()
+        .map(|v| v.name.clone())
+        .collect();
+    assert_eq!(names, ["全体", "その他"]);
+}
+
+#[test]
+fn rename_view_is_refused_for_empty_used_or_missing_names() {
+    let text = "package P { view v; view w; }";
+    assert!(refused(text, r#"{"op":"renameView","view":"v","name":"w"}"#).contains("既にあります"));
+    assert!(refused(text, r#"{"op":"renameView","view":"v","name":" "}"#).contains("名前を入力"));
+    assert!(refused(text, r#"{"op":"renameView","view":"gone","name":"x"}"#).contains("gone"));
+}
+
+#[test]
+fn view_names_follow_the_element_name_rule() {
+    // 同値分割：「'」「\」・改行を含む名前は、要素の名前の変更と同じ文で断る。空白や日本語を含む名前は付けられる（#267）
+    let text = "package P { part def A; view v; }";
+    for bad in ["it's", "a\\\\b", "a\\nb"] {
+        // Act
+        let saved = refused(
+            text,
+            &format!(r#"{{"op":"saveView","name":"{bad}","kind":"general","targets":[]}}"#),
+        );
+        let renamed = refused(
+            text,
+            &format!(r#"{{"op":"renameView","view":"v","name":"{bad}"}}"#),
+        );
+        // Assert
+        assert_eq!(saved, super::ops::BAD_RENAME, "{bad}");
+        assert_eq!(renamed, super::ops::BAD_RENAME, "{bad}");
+    }
+    let (after, _) = run(
+        text,
+        r#"{"op":"saveView","name":"全体 図","kind":"general","targets":[]}"#,
+    );
+    assert!(after.contains("view '全体 図' : GeneralView"), "{after}");
+}
+
+#[test]
+fn delete_view_keeps_the_exposed_elements() {
+    // Arrange
+    let text = "package P {\n    part def A;\n    view v {\n        expose P::A;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"deleteView","view":"v"}"#);
+    // Assert
+    assert_eq!(after, "package P {\n    part def A;\n}\n");
+    assert!(refused(text, r#"{"op":"deleteView","view":"gone"}"#).contains("gone"));
 }
 
 #[test]
@@ -1351,6 +1615,41 @@ fn connect_succession_refuses_start_targets_and_unnamed_elements() {
     assert!(refused(FLOW, into_start).contains("開始の記号"));
     assert!(refused(FLOW, from_done).contains("終了の記号"));
     assert!(refused(text, unnamed).contains("名前の無い要素"));
+}
+
+#[test]
+fn connect_succession_inside_a_nested_body_writes_into_that_body() {
+    // Arrange（入れ子の本体の要素どうしは、その本体に書く。本体の違う要素どうしは断る）
+    let text = "package P {\n    action def A {\n        action boil {\n            action heat;\n            action wait;\n        }\n        action c;\n    }\n}\n";
+    let inside =
+        r#"{"op":"connect","rel":"succession","from":"a:boil.heat","to":"a:boil.wait","ctx":"A"}"#;
+    let across = r#"{"op":"connect","rel":"succession","from":"a:boil.heat","to":"a:c","ctx":"A"}"#;
+    // Act
+    let (after, _) = run(text, inside);
+    // Assert
+    assert!(
+        after.contains("            action wait;\n            first heat then wait;\n        }"),
+        "{after}"
+    );
+    assert!(refused(text, across).contains("同じアクションの中"));
+}
+
+#[test]
+fn nested_flow_elements_and_lines_can_be_renamed_and_deleted() {
+    // Arrange（入れ子の本体の要素のキー a:boil.heat と、その本体の線）
+    let text = "package P { action def A { action boil { first start then heat; action heat; } } }";
+    // Act
+    let (renamed, _) = run(
+        text,
+        r#"{"op":"rename","key":"a:boil.heat","name":"warm","ctx":"A"}"#,
+    );
+    let (no_line, _) = run(
+        text,
+        r#"{"op":"deleteEdge","id":"succession|a:boil.start|a:boil.heat|#1","ctx":"A"}"#,
+    );
+    // Assert
+    assert!(renamed.contains("action warm;"), "{renamed}");
+    assert!(!no_line.contains("first start then heat;"), "{no_line}");
 }
 
 // ---- 状態遷移の図（StateTransitionView、8.2.3.18） ----
@@ -1468,4 +1767,576 @@ fn connect_transition_refuses_start_and_done_misuse_and_unnamed_states() {
     assert!(refused(STATES, from_start).contains("開始の記号から"));
     assert!(refused(text, other_done).contains("終了の記号へは"));
     assert!(refused(text, unnamed).contains("名前の無い状態"));
+}
+
+// ---- 説明（doc）の編集（F-EDIT-12） ----
+
+#[test]
+fn set_doc_replaces_the_first_doc_of_the_element_only() {
+    // Arrange（入れ子の要素の説明は変えない）
+    let text = "package P {\n    requirement def R {\n        doc /* 古い文 */\n        requirement def S { doc /* 中 */ }\n    }\n}\n";
+    // Act
+    let (after, out) = run(
+        text,
+        r#"{"op":"setDoc","key":"R","text":" 3 分以内に沸かす "}"#,
+    );
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    requirement def R {\n        doc /* 3 分以内に沸かす */\n        requirement def S { doc /* 中 */ }\n    }\n}\n"
+    );
+    assert_eq!(flashed(&after, &out), "doc /* 3 分以内に沸かす */");
+    assert_eq!(
+        Doc::new(&after)
+            .p
+            .entries
+            .iter()
+            .find(|e| e.name == "R")
+            .and_then(|e| e.doc.clone())
+            .as_deref(),
+        Some("3 分以内に沸かす")
+    );
+}
+
+#[test]
+fn set_doc_adds_a_doc_when_missing_and_keeps_line_breaks() {
+    // Arrange（同値分割：; で終わる宣言・本体のある宣言。2 行の文は字下げを揃える）
+    let semi = "package P {\n    requirement def R;\n}\n";
+    let body = "package P {\n    part def A {\n        attribute m : Real;\n    }\n}\n";
+    // Act
+    let (a, _) = run(semi, r#"{"op":"setDoc","key":"R","text":"沸かす"}"#);
+    let (b, _) = run(
+        body,
+        r#"{"op":"setDoc","key":"A","text":"1 行目\n2 行目 */ の後"}"#,
+    );
+    // Assert
+    assert_eq!(
+        a,
+        "package P {\n    requirement def R {\n        doc /* 沸かす */\n    }\n}\n"
+    );
+    assert_eq!(
+        b,
+        "package P {\n    part def A {\n        attribute m : Real;\n        doc /* 1 行目\n           2 行目 * / の後 */\n    }\n}\n"
+    );
+}
+
+#[test]
+fn set_doc_writes_a_blank_line_as_an_empty_line() {
+    // Arrange（段落の間の空の行は、字下げを付けずに空の行のまま書く。#244）
+    let text = "package P {\n    part def A;\n}\n";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"setDoc","key":"A","text":"段落 1\n\n段落 2"}"#,
+    );
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def A {\n        doc /* 段落 1\n\n           段落 2 */\n    }\n}\n"
+    );
+}
+
+#[test]
+fn set_doc_with_empty_text_removes_the_doc() {
+    // Arrange（境界値：空の文。説明が無ければ何も変えない）
+    let text = "package P {\n    requirement def R {\n        doc /* 古い */\n    }\n    requirement def S;\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"setDoc","key":"R","text":"  "}"#);
+    let (same, out) = run(text, r#"{"op":"setDoc","key":"S","text":""}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    requirement def R {\n    }\n    requirement def S;\n}\n"
+    );
+    assert_eq!(same, text);
+    assert!(out.edits.is_empty());
+}
+
+// ---- 属性の編集（F-EDIT-12） ----
+
+#[test]
+fn set_attribute_adds_a_new_attribute() {
+    // Arrange（同値分割：型と値あり・日本語の名前で型と値なし・; で終わる定義）
+    let text =
+        "package P {\n    part def A {\n        attribute m : Real;\n    }\n    part def B;\n}\n";
+    // Act
+    let (full, out) = run(
+        text,
+        r#"{"op":"setAttribute","key":"A","name":"mass","type":"Real","value":"1500 [kg]"}"#,
+    );
+    let (bare, _) = run(text, r#"{"op":"setAttribute","key":"B","name":"重さ"}"#);
+    // Assert
+    assert!(
+        full.contains(
+            "        attribute m : Real;\n        attribute mass : Real = 1500 [kg];\n    }"
+        ),
+        "{full}"
+    );
+    assert_eq!(
+        flashed(&full, &out).trim(),
+        "attribute mass : Real = 1500 [kg];"
+    );
+    assert!(
+        bare.contains("    part def B {\n        attribute '重さ';\n    }"),
+        "{bare}"
+    );
+}
+
+#[test]
+fn set_attribute_rewrites_name_type_and_value_keeping_modifiers() {
+    // Arrange（constant と := を保つ。値を空にすると値を書かない）
+    let text = "package P {\n    part def A {\n        constant attribute m : Real := 1;\n        attribute n : Integer = 3;\n    }\n}\n";
+    // Act
+    let (renamed, _) = run(
+        text,
+        r#"{"op":"setAttribute","key":"A","attr":"m","name":"mass","type":"Real","value":"2"}"#,
+    );
+    let (cleared, _) = run(
+        text,
+        r#"{"op":"setAttribute","key":"A","attr":"n","name":"n","type":"","value":""}"#,
+    );
+    // Assert
+    assert!(
+        renamed.contains(
+            "        constant attribute mass : Real := 2;\n        attribute n : Integer = 3;"
+        ),
+        "{renamed}"
+    );
+    assert!(cleared.contains("        attribute n;\n    }"), "{cleared}");
+}
+
+#[test]
+fn set_attribute_keeps_multiplicity_and_specializations() {
+    // Arrange（インスペクタに出さない多重度と特殊化も書き戻す。#223）
+    let text = "package P {\n    part def A {\n        attribute a : Real;\n        attribute g[2] : Real;\n        attribute f :> a;\n        attribute h[0..*] ordered :>> k;\n    }\n}\n";
+    let cases = [
+        (
+            r#"{"op":"setAttribute","key":"A","attr":"g","name":"g","type":"Real","value":"7"}"#,
+            "attribute g[2] : Real = 7;",
+        ),
+        (
+            r#"{"op":"setAttribute","key":"A","attr":"g","name":"gg","type":"Real","value":""}"#,
+            "attribute gg[2] : Real;",
+        ),
+        (
+            r#"{"op":"setAttribute","key":"A","attr":"f","name":"f","type":"","value":"3"}"#,
+            "attribute f :> a = 3;",
+        ),
+        (
+            r#"{"op":"setAttribute","key":"A","attr":"f","name":"f","type":"Real","value":""}"#,
+            "attribute f : Real :> a;",
+        ),
+        (
+            r#"{"op":"setAttribute","key":"A","attr":"h","name":"h","type":"","value":"1"}"#,
+            "attribute h[0..*] ordered :>> k = 1;",
+        ),
+    ];
+    for (json, want) in cases {
+        // Act
+        let (after, _) = run(text, json);
+        // Assert
+        assert!(after.contains(want), "{json}\n{after}");
+    }
+}
+
+#[test]
+fn set_attribute_renames_the_references_to_the_attribute() {
+    // Arrange（値の式・`:>`・持ち主の中の参照も変える。`k.a` は k の型 D の a を指すので変える。#231・#267）
+    let text = "package P { part def D { attribute a : Real; attribute u : Real = a * 2; attribute f :> a; part k : D; attribute w = k.a; } }";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"setAttribute","key":"D","attr":"a","name":"z","type":"Real","value":"3"}"#,
+    );
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def D { attribute z : Real = 3; attribute u : Real = z * 2; attribute f :> z; part k : D; attribute w = k.z; } }"
+    );
+}
+
+#[test]
+fn set_attribute_rename_follows_redefinitions_chains_and_qualified_names() {
+    // Arrange（型を W にした使用・W を特殊化した定義の `:>> n`、型が W の f の `f.n`、`W::n` は W の n を指す。#267）
+    let text = "package P {\n    part def W { attribute n : Integer = 32; }\n    part def B {\n        part f : W { attribute :>> n = 36; }\n        attribute t : Integer = f.n;\n        attribute s : Integer = W::n;\n    }\n    part def W2 :> W { attribute :>> n = 28; }\n}\n";
+    // Act
+    let (after, _) = run(
+        text,
+        r#"{"op":"setAttribute","key":"W","attr":"n","name":"m","type":"Integer","value":"32"}"#,
+    );
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def W { attribute m : Integer = 32; }\n    part def B {\n        part f : W { attribute :>> m = 36; }\n        attribute t : Integer = f.m;\n        attribute s : Integer = W::m;\n    }\n    part def W2 :> W { attribute :>> m = 28; }\n}\n"
+    );
+}
+
+#[test]
+fn rename_feature_leaves_the_same_name_of_unrelated_elements() {
+    // Arrange（同値分割：別の定義 Z の n・その参照 `Z::n`・型が Z の g の `g.n`・Z の中の `n` は、W の n を指さない。#267）
+    let text = "package P { part def W { attribute n; } part def Z { attribute n; attribute q = n; } part def B { part g : Z { attribute :>> n; } attribute t = g.n; attribute s = Z::n; } part def Z2 :> Z { attribute :>> n; } }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"u:n","ctx":"W","name":"m"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def W { attribute m; } part def Z { attribute n; attribute q = n; } part def B { part g : Z { attribute :>> n; } attribute t = g.n; attribute s = Z::n; } part def Z2 :> Z { attribute :>> n; } }"
+    );
+}
+
+#[test]
+fn rename_feature_follows_inherited_references_through_specializations() {
+    // Arrange（境界値：2 段の特殊化 W3 :> W2 :> W の中の `:>> n`、引き継いだ n を使う式、型が W3 の h の `h.n`）
+    let text = "package P { part def W { attribute n; } part def W2 :> W; part def W3 :> W2 { attribute :>> n; attribute k = n * 2; } part def B { part h : W3; attribute t = h.n; } }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"u:n","ctx":"W","name":"m"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def W { attribute m; } part def W2 :> W; part def W3 :> W2 { attribute :>> m; attribute k = m * 2; } part def B { part h : W3; attribute t = h.m; } }"
+    );
+}
+
+#[test]
+fn rename_feature_stops_on_a_usage_that_redefines_its_own_general() {
+    // Arrange（異常系：p の一般の側が自分の中の q で、q が q を再定義する輪。たどり続けずに終わる）
+    let text = "package P { part def W { attribute n; } part p :> p.q { part q :>> q; attribute k = n; } }";
+    // Act
+    let (after, _) = run(text, r#"{"op":"rename","key":"u:n","ctx":"W","name":"m"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P { part def W { attribute m; } part p :> p.q { part q :>> q; attribute k = n; } }"
+    );
+}
+
+#[test]
+fn set_attribute_is_refused_for_bad_or_used_names_and_stray_characters() {
+    // 同値分割：空の名前・既にある名前・型や値に ; { } 改行・見つからない属性・本体のある属性
+    let text = "package P { part def A { attribute m; attribute n; attribute b { } } }";
+    assert!(refused(text, r#"{"op":"setAttribute","key":"A","name":" "}"#).contains("名前を入力"));
+    assert!(
+        refused(
+            text,
+            r#"{"op":"setAttribute","key":"A","attr":"m","name":"n"}"#
+        )
+        .contains("既にあります")
+    );
+    assert!(
+        refused(
+            text,
+            r#"{"op":"setAttribute","key":"A","name":"x","value":"1; part q"}"#
+        )
+        .contains("書けません")
+    );
+    assert!(
+        refused(
+            text,
+            r#"{"op":"setAttribute","key":"A","name":"x","type":"T = 1"}"#
+        )
+        .contains("書けません")
+    );
+    assert!(
+        refused(
+            text,
+            r#"{"op":"setAttribute","key":"A","attr":"gone","name":"x"}"#
+        )
+        .contains("見つかりません")
+    );
+    assert!(
+        refused(
+            text,
+            r#"{"op":"setAttribute","key":"A","attr":"b","name":"b2"}"#
+        )
+        .contains("テキストで直して")
+    );
+}
+
+#[test]
+fn remove_attribute_removes_the_line() {
+    // Arrange
+    let text = "package P {\n    part def A {\n        attribute m : Real;\n        attribute n;\n    }\n}\n";
+    // Act
+    let (after, _) = run(text, r#"{"op":"removeAttribute","key":"A","attr":"m"}"#);
+    // Assert
+    assert_eq!(
+        after,
+        "package P {\n    part def A {\n        attribute n;\n    }\n}\n"
+    );
+    assert!(
+        refused(text, r#"{"op":"removeAttribute","key":"A","attr":"gone"}"#)
+            .contains("見つかりません")
+    );
+}
+
+// ---- 複数のファイル（ADR-0021 §5） ----
+
+const FLEET: &str = "package Fleet {\n    part def Car;\n    requirement def Safe;\n}\n";
+
+/// ほかのファイル `FLEET` とつないで意図を当てる。
+fn run_in(text: &str, json: &str) -> Result<String, Refused> {
+    let intent: Intent = serde_json::from_str(json).unwrap_or_else(|e| panic!("{json}: {e}"));
+    let others = vec![project::merge::parse_file(FLEET).expect("短いファイル")];
+    edit_in(text, others, &intent).map(|out| apply(text, &out.edits))
+}
+
+#[test]
+fn element_of_another_file_is_not_rewritten() {
+    // Arrange（異常系：ほかのファイルの要素の名前の変更・削除）
+    let text = "package App {\n    import Fleet::*;\n    part c : Car;\n}\n";
+    for json in [
+        r#"{"op":"rename","key":"Car","name":"Bus"}"#,
+        r#"{"op":"delete","keys":["Car"]}"#,
+    ] {
+        // Act
+        let got = run_in(text, json);
+        // Assert
+        assert_eq!(
+            got,
+            Err(Refused {
+                reason: IN_OTHER_FILE.to_owned(),
+                file: Some(1)
+            }),
+            "{json}"
+        );
+    }
+}
+
+#[test]
+fn element_of_the_open_file_is_rewritten_with_other_files() {
+    // Arrange
+    let text = "package App {\n    import Fleet::*;\n    part c : Car;\n}\n";
+    // Act
+    let got = run_in(text, r#"{"op":"rename","key":"c","name":"d"}"#);
+    // Assert
+    assert_eq!(
+        got.as_deref(),
+        Ok("package App {\n    import Fleet::*;\n    part d : Car;\n}\n")
+    );
+}
+
+#[test]
+fn relation_to_another_file_without_import_uses_the_qualified_name() {
+    // Arrange（import が無いと名前だけでは見えないので、修飾名で書く（ADR-0021。#232））
+    let text = "package App {\n    part def Fleet2 { part b : Fleet::Car; }\n    satisfy Fleet::Safe by Fleet2;\n    part def Other;\n}\n";
+    // Act
+    let comp = run_in(
+        text,
+        r#"{"op":"connect","rel":"comp","from":"Other","to":"Car"}"#,
+    );
+    let sat = run_in(
+        text,
+        r#"{"op":"connect","rel":"satisfy","from":"Other","to":"Safe"}"#,
+    );
+    // Assert
+    let comp = comp.expect("書ける");
+    assert!(comp.contains("part car : Fleet::Car;"), "{comp}");
+    let sat = sat.expect("書ける");
+    assert!(sat.contains("satisfy Fleet::Safe by Other;"), "{sat}");
+}
+
+#[test]
+fn relation_to_another_file_is_written_in_the_open_file() {
+    // Arrange（ほかのファイルの要求を満たす関係は、表示中のファイルに書く。Safe は既にある関係で図に出ている）
+    let added = "package App {\n    import Fleet::*;\n    part def Brake;\n    part def Horn;\n    part c : Car;\n    satisfy Safe by Brake;\n}\n";
+    // Act
+    let got = run_in(
+        added,
+        r#"{"op":"connect","rel":"satisfy","from":"Horn","to":"Safe"}"#,
+    );
+    // Assert
+    let after = got.expect("書ける");
+    assert!(after.contains("satisfy Safe by Horn;"), "{after}");
+    assert!(
+        after.starts_with("package App {") && after.ends_with("}\n"),
+        "{after}"
+    );
+}
+
+/// ほかのファイル 1 つ（`other`）とつないで意図を当てる。
+fn run_with(text: &str, other: &str, json: &str) -> Result<String, Refused> {
+    let intent: Intent = serde_json::from_str(json).unwrap_or_else(|e| panic!("{json}: {e}"));
+    let others = vec![project::merge::parse_file(other).expect("短いファイル")];
+    edit_in(text, others, &intent).map(|out| apply(text, &out.edits))
+}
+
+// 表示中のファイルの要素への操作が、ほかのファイルの中身によって断られないこと（探すだけの走査で、ほかのファイルの位置に触れない）
+
+const OWN: &str = "package A {\n    part def X;\n}\n";
+
+#[test]
+fn definition_of_the_open_file_is_renamed_whatever_other_files_hold() {
+    // Arrange（同値分割：ほかのファイルが、別の定義を持つ・X を参照する・定義の中に同じ名前を持つ。境界：`package B;` だけ・空）
+    for other in [
+        "package B {\n    part def Y;\n}\n",
+        "package B {\n    part y : A::X;\n}\n",
+        "package B {\n    part def M {\n        part def X;\n    }\n}\n",
+        "package B;\n",
+        "",
+    ] {
+        // Act
+        let got = run_with(OWN, other, r#"{"op":"rename","key":"X","name":"Z"}"#);
+        // Assert（変えるのは表示中のファイルだけ。F-EDIT-3）
+        assert_eq!(
+            got.as_deref(),
+            Ok("package A {\n    part def Z;\n}\n"),
+            "{other:?}"
+        );
+    }
+}
+
+#[test]
+fn usage_of_the_open_file_is_renamed_when_another_file_declares_the_same_name() {
+    // Arrange（ほかのファイルの定義の中の同じ名前は、表示中のファイルの名前を隠さない）
+    let text = "package A {\n    part def K {\n        part x;\n    }\n}\n";
+    let other = "package B {\n    part def M {\n        part x;\n    }\n}\n";
+    // Act
+    let got = run_with(
+        text,
+        other,
+        r#"{"op":"rename","key":"u:x","ctx":"K","name":"z"}"#,
+    );
+    // Assert
+    assert_eq!(
+        got.as_deref(),
+        Ok("package A {\n    part def K {\n        part z;\n    }\n}\n")
+    );
+}
+
+#[test]
+fn definition_is_added_to_the_open_file_whatever_other_files_hold() {
+    // Arrange（同値分割：ほかのファイルに同じ種類の定義がある・無い。境界：`package B;` だけ・コメントだけ・空）
+    for (kind, name, other) in [
+        ("part def", "NewPart", "package B {\n    part def Y;\n}\n"),
+        (
+            "requirement def",
+            "NewRequirement",
+            "package B {\n    requirement def R;\n}\n",
+        ),
+        (
+            "action def",
+            "NewAction",
+            "package B {\n    action def Act;\n}\n",
+        ),
+        (
+            "state def",
+            "NewStates",
+            "package B {\n    state def St;\n}\n",
+        ),
+        (
+            "part def",
+            "NewPart",
+            "package B {\n    requirement def R;\n}\n",
+        ),
+        ("part def", "NewPart", "package B;\n"),
+        ("part def", "NewPart", "// メモ\n"),
+        ("part def", "NewPart", ""),
+    ] {
+        // Act
+        let got = run_with(
+            OWN,
+            other,
+            &format!(r#"{{"op":"addNode","kind":"{kind}"}}"#),
+        );
+        // Assert（表示中のファイルの package に置く）
+        let after = got.unwrap_or_else(|r| panic!("{kind} {other:?}: {r:?}"));
+        assert!(
+            after.starts_with("package A {\n    part def X;\n") && after.ends_with("    }\n}\n"),
+            "{kind} {other:?}: {after}"
+        );
+        assert!(after.contains(&format!("    {kind} {name} {{")), "{after}");
+    }
+}
+
+#[test]
+fn package_of_another_file_is_not_chosen_when_the_open_file_has_none() {
+    // Arrange（境界：表示中のファイルに package が無く、ほかのファイルにだけある）
+    let (text, other) = ("part def X;\n", "package B;\n");
+    // Act
+    let made = run_with(
+        text,
+        other,
+        r#"{"op":"addNode","kind":"part def","newPackage":"M"}"#,
+    );
+    let none = run_with(text, other, r#"{"op":"addNode","kind":"part def"}"#);
+    let view = run_with(
+        text,
+        other,
+        r#"{"op":"saveView","name":"v","kind":"general","targets":[]}"#,
+    );
+    // Assert（作る名前があれば表示中のファイルに package を作る。無ければ、package が無いという理由で断る）
+    assert_eq!(
+        made.as_deref(),
+        Ok("part def X;\n\npackage M {\n    part def NewPart {\n    }\n}\n")
+    );
+    assert_eq!(
+        none,
+        Err(Refused {
+            reason: "要素を配置するパッケージがありません".to_owned(),
+            file: None
+        })
+    );
+    assert_eq!(
+        view,
+        Err(Refused {
+            reason: "図を置くパッケージがありません。先にパッケージを作ってください".to_owned(),
+            file: None
+        })
+    );
+}
+
+#[test]
+fn element_of_the_open_file_is_deleted_when_another_file_has_a_dependency() {
+    // Arrange（ほかのファイルの依存の文は、消す相手を探すだけでも調べない）
+    let other = "package B {\n    part def P;\n    part def Q;\n    dependency from P to Q;\n}\n";
+    // Act
+    let got = run_with(OWN, other, r#"{"op":"delete","keys":["X"]}"#);
+    // Assert
+    assert_eq!(got.as_deref(), Ok("package A {\n}\n"));
+}
+
+#[test]
+fn relation_is_written_in_the_open_file_when_another_file_has_the_same_kind() {
+    // Arrange（ほかのファイルに同じ種類の関係があっても、その隣（ほかのファイル）には書かない）
+    let text = "package A {\n    part def X;\n    requirement def R;\n    requirement def S;\n}\n";
+    let other = "package B {\n    part def P;\n    requirement def Q;\n    requirement def T;\n    satisfy Q by P;\n    #derivation dependency from Q to T;\n}\n";
+    for (json, line) in [
+        (
+            r#"{"op":"connect","rel":"satisfy","from":"X","to":"R"}"#,
+            "    satisfy R by X;\n}\n",
+        ),
+        (
+            r#"{"op":"connect","rel":"derive","from":"R","to":"S"}"#,
+            "    #derivation dependency from R to S;\n}\n",
+        ),
+    ] {
+        // Act
+        let got = run_with(text, other, json);
+        // Assert
+        let after = got.unwrap_or_else(|r| panic!("{json}: {r:?}"));
+        assert!(after.ends_with(line), "{json}: {after}");
+    }
+}
+
+#[test]
+fn element_of_another_file_is_still_not_rewritten_when_the_open_file_has_the_same_kind() {
+    // Arrange（異常系：ほかのファイルで宣言された定義の名前の変更・削除は、今までどおり、そのファイルを添えて断る）
+    let text = "package A {\n    import B::*;\n    part def X;\n    part y : Y;\n}\n";
+    let other = "package B {\n    part def Y;\n}\n";
+    for json in [
+        r#"{"op":"rename","key":"Y","name":"Z"}"#,
+        r#"{"op":"delete","keys":["Y"]}"#,
+    ] {
+        // Act
+        let got = run_with(text, other, json);
+        // Assert
+        assert_eq!(
+            got,
+            Err(Refused {
+                reason: IN_OTHER_FILE.to_owned(),
+                file: Some(1)
+            }),
+            "{json}"
+        );
+    }
 }

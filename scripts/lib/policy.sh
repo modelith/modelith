@@ -48,22 +48,53 @@ policy_merge_decision() {
   esac
 }
 
-# git push の違反（保護ブランチへの push、保護ブランチ上での push、--force）。
+# コマンド文字列から、git push の引数（push より後ろ）だけを 1 行に 1 つずつ出力する。
+# ほかのコマンド（`git fetch origin dev && git push ...` の fetch など）と、ヒアドキュメントの本文（コミットメッセージなど）は見ない。
+# 例: policy_push_args 'git fetch origin dev && git push -u origin feat/x' → " -u origin feat/x"
+policy_push_args() {
+  local cmd=$1 line seg heredoc="" nl=$'\n'
+  local heredoc_re="<<-?[[:space:]]*[\"']?([A-Za-z_][A-Za-z0-9_]*)"
+  # 前置き（`env X=1`・`sudo`・`xargs` などとそのオプション）と git のオプション（`-C <dir>`・`-c <k=v>`）を許す。
+  local prefix_re='((env|command|sudo|time|nohup|exec|xargs|-[^[:space:]]*|[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)[[:space:]]+)*'
+  local push_re="^[[:space:](]*${prefix_re}git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)*[[:space:]]+push(([[:space:]].*)?)\$"
+  while IFS= read -r line; do
+    if [[ -n $heredoc ]]; then
+      # `<<-` の終わりの印は、行頭のタブを付けて書ける
+      [[ ${line#"${line%%[!$'\t']*}"} == "$heredoc" ]] && heredoc=""
+      continue
+    fi
+    [[ $line =~ $heredoc_re ]] && heredoc=${BASH_REMATCH[1]}
+    line=${line//&&/$nl}
+    line=${line//||/$nl}
+    line=${line//;/$nl}
+    line=${line//|/$nl}
+    while IFS= read -r seg; do
+      [[ $seg =~ $push_re ]] && printf '%s\n' "${BASH_REMATCH[4]}"
+    done <<<"$line"
+  done <<<"$cmd"
+  return 0
+}
+
+# git push の違反（保護ブランチへの push、保護ブランチ上での push、--force）。push の引数だけを見る。
 policy_git_push() {
-  local cmd=$1 branch=$2
-  [[ $cmd =~ git[[:space:]]+push ]] || return 0
-  if [[ $cmd =~ (^|[[:space:]:])(refs/heads/)?(${HARNESS_PROTECTED_BRANCHES})([[:space:]]|$) ]]; then
-    echo "保護ブランチ（${HARNESS_PROTECTED_BRANCHES//|/ \/ }）への直接 push は禁止です。トピックブランチから PR を作成してください。"
-    return 1
-  fi
-  if [[ $branch =~ ^(${HARNESS_PROTECTED_BRANCHES})$ && ! $cmd =~ [[:space:]][a-z]+/ ]]; then
-    echo "$branch ブランチ上での push は禁止です。"
-    return 1
-  fi
-  if [[ $cmd =~ (--force([[:space:]]|$)|[[:space:]]-f([[:space:]]|$)) ]]; then
-    echo "--force は禁止です。必要なら自分のブランチに限り --force-with-lease を使ってください。"
-    return 1
-  fi
+  local cmd=$1 branch=$2 args
+  local protected_re="(^|[[:space:]:+])(refs/heads/)?(${HARNESS_PROTECTED_BRANCHES})([[:space:])]|\$)"
+  local force_re='(--force([[:space:]]|$)|(^|[[:space:]])-f([[:space:]]|$))'
+  while IFS= read -r args; do
+    if [[ $args =~ $protected_re ]]; then
+      echo "保護ブランチ（${HARNESS_PROTECTED_BRANCHES//|/ \/ }）への直接 push は禁止です。トピックブランチから PR を作成してください。"
+      return 1
+    fi
+    if [[ $branch =~ ^(${HARNESS_PROTECTED_BRANCHES})$ && ! $args =~ [[:space:]][a-z]+/ ]]; then
+      echo "$branch ブランチ上での push は禁止です。"
+      return 1
+    fi
+    if [[ $args =~ $force_re ]]; then
+      echo "--force は禁止です。必要なら自分のブランチに限り --force-with-lease を使ってください。"
+      return 1
+    fi
+  done < <(policy_push_args "$cmd")
+  return 0
 }
 
 # 保護ブランチ上で履歴を変える操作の違反。

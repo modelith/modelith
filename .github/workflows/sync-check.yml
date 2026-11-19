@@ -1,0 +1,48 @@
+name: Sync check
+
+# main に入れたものが dev に戻っているか（main が dev の祖先か）を定期的に確かめる（ADR-0022 §2）。
+# 戻っていなければ Issue を開いて知らせ、戻ったら閉じる。
+# 戻す PR そのものは開かない（GITHUB_TOKEN で開いた PR では CI が動かず、マージできないため）。
+# 戻すのは、main → dev の PR（食い違うときは sync/* のブランチ）をマージコミットで入れる（branching-strategy.md）。
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: sync-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # main と dev を読む
+      issues: write   # 戻していないことを Issue で知らせる
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TITLE: "main に入れたものが dev に戻っていません"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: dev
+          fetch-depth: 0  # 祖先関係を確かめるため、すべての履歴と origin/main を取る
+      - name: Check that main is in dev and report it as an issue
+        run: |
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if result=$(scripts/check-main-in-dev.sh origin/main origin/dev 2>&1); then
+            echo "$result"
+            if [[ -n $open ]]; then
+              gh issue close "$open" --repo "$GITHUB_REPOSITORY" --comment "main は dev に戻りました（$(git rev-parse --short origin/dev)）。"
+            fi
+          elif [[ -z $open ]]; then
+            echo "$result"
+            body=$(printf '%s\n\n%s\n\n%s\n' "$result" \
+              "main → dev の PR（食い違うときは dev から作った sync/* のブランチ）を、マージコミットで入れてください（docs/development/branching-strategy.md の「main を dev に戻す」）。" \
+              "このIssue は .github/workflows/sync-check.yml が開きました。戻ったら自動で閉じます。")
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body "$body"
+          else
+            echo "$result（Issue #$open で知らせ済み）"
+          fi

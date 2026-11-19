@@ -270,12 +270,26 @@ describe("Workspace: 未保存の変更と競合（F-FILE-5・7・8）", () => {
     fa.externalWrite("A theirs");
     fb.externalWrite("B theirs");
     // Act
-    const reloaded = await s.ws.checkExternal();
+    const found = await s.ws.checkExternal();
     // Assert
-    expect(reloaded).toEqual([a.key]);
+    expect(found).toEqual({ reloaded: [a.key], stale: [b.key] });
     expect(a.text).toBe("A theirs");
     expect(b.text).toBe("B edited");
     expect(b.stale).toBe(true);
+  });
+
+  it("前から印の付いた文書は、もう一度確かめても今回の印の一覧に入れない（F-FILE-8）", async () => {
+    // Arrange
+    const s = setup();
+    const { file, doc } = await openA(s);
+    s.ws.setText(doc.key, "A edited");
+    file.externalWrite("A theirs");
+    await s.ws.checkExternal();
+    // Act
+    const found = await s.ws.checkExternal();
+    // Assert
+    expect(found).toEqual({ reloaded: [], stale: [] });
+    expect(doc.stale).toBe(true);
   });
 
   it("他で変更されていなければ何もしない（境界値: 変更なし）", async () => {
@@ -285,10 +299,41 @@ describe("Workspace: 未保存の変更と競合（F-FILE-5・7・8）", () => {
     let notified = 0;
     s.ws.subscribe(() => notified++);
     // Act
-    const reloaded = await s.ws.checkExternal();
+    const found = await s.ws.checkExternal();
     // Assert
-    expect(reloaded).toEqual([]);
+    expect(found).toEqual({ reloaded: [], stale: [] });
     expect(notified).toBe(0);
+  });
+
+  it("編集し始めたときに確かめ、他のアプリで変わっていれば印を付けて知らせる（F-FILE-18、正常系）", async () => {
+    // Arrange
+    const s = setup();
+    const { file, doc } = await openA(s);
+    s.ws.setText(doc.key, "A edited");
+    file.externalWrite("A theirs");
+    let notified = 0;
+    s.ws.subscribe(() => notified++);
+    // Act
+    const changed = await s.ws.changedElsewhere(doc.key);
+    // Assert（中身は読み直さない）
+    expect(changed).toBe(true);
+    expect(doc.stale).toBe(true);
+    expect(doc.text).toBe("A edited");
+    expect(notified).toBe(1);
+  });
+
+  it("他のアプリで変わっていない・前から印がある・無題の文書・無い文書は false（F-FILE-18、境界値・異常系）", async () => {
+    // Arrange
+    const s = setup();
+    const { file, doc } = await openA(s);
+    const untitled = s.ws.newUntitled("u", "x");
+    // Act・Assert
+    expect(await s.ws.changedElsewhere(doc.key)).toBe(false);
+    file.externalWrite("A theirs");
+    expect(await s.ws.changedElsewhere(doc.key)).toBe(true);
+    expect(await s.ws.changedElsewhere(doc.key)).toBe(false);
+    expect(await s.ws.changedElsewhere(untitled.key)).toBe(false);
+    expect(await s.ws.changedElsewhere("doc:999")).toBe(false);
   });
 
   it("表示中の文書を閉じると隣の文書に切り替わり、最後の 1 つを閉じると表示中は無くなる", () => {
@@ -1254,5 +1299,353 @@ describe("Workspace: 前回の続き（F-FILE-13）", () => {
     // Assert
     expect(s.sessions.load()).toEqual({ folder: false, docs: [{ draft: 0 }], active: 0 });
     expect(s.drafts.load().drafts.map((d) => d.name)).toEqual(["u2.sysml"]);
+  });
+});
+
+describe("Workspace: フォルダのファイルを 1 つのモデルにする（ADR-0021、F-FILE-15）", () => {
+  it("フォルダのモデルのファイルを読み、開いている文書は編集中のテキストを使う", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("parts.sysml", "package Parts;");
+    s.root.put("notes.md", "# メモ");
+    const { doc } = await openA(s);
+    // Act
+    s.ws.setText(doc.key, "package A { import Parts::*; }");
+    // Assert（.sysml だけ、a.sysml は編集中のテキスト）
+    expect(s.ws.projectTexts()).toEqual(new Map([["a.sysml", "package A { import Parts::*; }"], ["parts.sysml", "package Parts;"]]));
+    expect(s.ws.folderPath(doc.key)).toBe("a.sysml");
+  });
+
+  it("開いていないファイルが他のアプリで変わったら、画面に戻ったときに読み直す", async () => {
+    // Arrange
+    const s = setup();
+    const parts = s.root.put("parts.sysml", "package Parts;");
+    await openA(s);
+    // Act
+    parts.content = "package Parts { part def Car; }";
+    parts.lastModified += 1;
+    await s.ws.checkExternal();
+    // Assert
+    expect(s.ws.projectTexts().get("parts.sysml")).toBe("package Parts { part def Car; }");
+  });
+
+  it("保存した文書は、閉じた後も保存した中身をモデルに入れる", async () => {
+    // Arrange
+    const s = setup();
+    const { doc } = await openA(s);
+    s.ws.setText(doc.key, "package A2;");
+    // Act
+    await s.ws.save(doc.key, s.browser);
+    s.ws.close(doc.key);
+    // Assert
+    expect(s.ws.projectTexts().get("a.sysml")).toBe("package A2;");
+  });
+
+  it("フォルダを開いていない・無題の文書では空（異常系）", () => {
+    // Arrange
+    const s = setup();
+    const doc = s.ws.newUntitled("u.sysml", "package U;");
+    // Act・Assert
+    expect(s.ws.projectTexts().size).toBe(0);
+    expect(s.ws.folderPath(doc.key)).toBeNull();
+  });
+});
+
+describe("Workspace: 仮に開く（F-FILE-17）", () => {
+  /** a・b・c のフォルダを開く。 */
+  async function folder() {
+    const s = setup();
+    for (const n of ["a", "b", "c"]) s.root.put(`${n}.sysml`, `package ${n.toUpperCase()};`);
+    await s.ws.openFolder(s.local);
+    const ref = (n: string) => fileIn(s.ws.folder()!.entries, `${n}.sysml`);
+    return { ...s, ref };
+  }
+  const names = (s: { ws: Workspace }) => s.ws.list().map((d) => `${d.name}${d.preview ? "*" : ""}`);
+
+  it("仮に開いたファイルは、次に仮に開くファイルと同じ場所で置き換わる（正常系）", async () => {
+    // Arrange
+    const s = await folder();
+    await s.ws.openRef(s.ref("a"));
+    await s.ws.openRef(s.ref("b"), { preview: true });
+    // Act
+    const c = await s.ws.openRef(s.ref("c"), { preview: true });
+    // Assert
+    expect(names(s)).toEqual(["a.sysml", "c.sysml*"]);
+    expect(s.ws.active()?.key).toBe(c.key);
+  });
+
+  it("編集した仮のファイルは開いたままになり、置き換わらない", async () => {
+    // Arrange
+    const s = await folder();
+    const b = await s.ws.openRef(s.ref("b"), { preview: true });
+    s.ws.setText(b.key, "package B2;");
+    // Act
+    await s.ws.openRef(s.ref("c"), { preview: true });
+    // Assert
+    expect(names(s)).toEqual(["b.sysml", "c.sysml*"]);
+  });
+
+  it("仮でなく開き直す・pin すると開いたままになる", async () => {
+    // Arrange
+    const s = await folder();
+    await s.ws.openRef(s.ref("a"), { preview: true });
+    await s.ws.openRef(s.ref("a"));
+    const b = await s.ws.openRef(s.ref("b"), { preview: true });
+    s.ws.pin(b.key);
+    // Act
+    await s.ws.openRef(s.ref("c"), { preview: true });
+    // Assert
+    expect(names(s)).toEqual(["a.sysml", "b.sysml", "c.sysml*"]);
+  });
+
+  it("開いているファイルを仮に開き直しても、開いたままのものは仮にならない（境界値）", async () => {
+    // Arrange
+    const s = await folder();
+    await s.ws.openRef(s.ref("a"));
+    // Act
+    await s.ws.openRef(s.ref("a"), { preview: true });
+    // Assert
+    expect(names(s)).toEqual(["a.sysml"]);
+  });
+
+  it("pin は、仮でない文書や無い文書には何もしない（異常系）", async () => {
+    // Arrange
+    const s = await folder();
+    const a = await s.ws.openRef(s.ref("a"));
+    // Act
+    s.ws.pin(a.key);
+    s.ws.pin("doc:999");
+    // Assert
+    expect(names(s)).toEqual(["a.sysml"]);
+  });
+});
+
+describe("Workspace: 同じファイルを続けて開く（F-FILE-17）", () => {
+  it("読み込み中に同じファイルをもう一度開いても、文書は 1 つで、仮でなく開いた方が残る", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.sysml", "package A;");
+    await s.ws.openFolder(s.local);
+    const ref = fileIn(s.ws.folder()!.entries, "a.sysml");
+    // Act（1 回目のクリックで仮に開き、読み終わる前にダブルクリックで開く）
+    const [first, second] = await Promise.all([s.ws.openRef(ref, { preview: true }), s.ws.openRef(ref)]);
+    // Assert
+    expect(second.key).toBe(first.key);
+    expect(s.ws.list()).toHaveLength(1);
+    expect(s.ws.list()[0]?.preview).toBeUndefined();
+  });
+});
+
+describe("Workspace: ファイルの一覧の名前の変更・削除・新しいフォルダ（F-FILE-19）", () => {
+  it("ファイルの名前を変えると、配置ファイルも動き、開いていた文書は新しいファイルに付け替わる（正常系）", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.layout.json", '{"modelith":"layout"}');
+    const { doc } = await openA(s);
+    // Act
+    await s.ws.renameEntry("a.sysml", "b.sysml");
+    // Assert
+    expect(paths(s.ws.folder()!.entries)).toEqual(["b.sysml"]);
+    expect(s.root.entries.has("a.layout.json")).toBe(false);
+    expect(s.root.entries.has("b.layout.json")).toBe(true);
+    expect(doc.ref?.path).toBe("b.sysml");
+    expect(doc.name).toBe("b.sysml");
+    expect(s.ws.isDirty(doc)).toBe(false);
+  });
+
+  it("新しい名前の配置ファイルが既にあれば、何も動かさずに断る（異常系。#225）", async () => {
+    // Arrange（b.sysml は無いが、持ち主の無い b.layout.json がある）
+    const s = setup();
+    s.root.put("a.layout.json", '{"modelith":"layout","mine":"a"}');
+    s.root.put("b.layout.json", '{"modelith":"layout","mine":"b"}');
+    const { doc } = await openA(s);
+    // Act
+    const renamed = s.ws.renameEntry("a.sysml", "b.sysml");
+    // Assert
+    await expect(renamed).rejects.toThrow("図の配置のファイル「b.layout.json」が既にあるため、「b.sysml」にできません");
+    expect(s.root.entries.has("a.sysml")).toBe(true);
+    expect(s.root.entries.has("b.sysml")).toBe(false);
+    expect((s.root.entries.get("a.layout.json") as FakeFile).content).toContain('"mine":"a"');
+    expect((s.root.entries.get("b.layout.json") as FakeFile).content).toContain('"mine":"b"');
+    expect(doc.ref?.path).toBe("a.sysml");
+  });
+
+  it("未保存の変更のある文書は、変更を残したまま付け替わり、新しいファイルへ上書き保存できる", async () => {
+    // Arrange
+    const s = setup();
+    const { doc } = await openA(s);
+    s.ws.setText(doc.key, "package A2;");
+    await s.ws.renameEntry("a.sysml", "b.sysml");
+    // Act
+    const outcome = await s.ws.save(doc.key, s.browser);
+    // Assert
+    expect(outcome).toBe("saved");
+    expect((s.root.entries.get("b.sysml") as FakeFile).content).toBe("package A2;");
+  });
+
+  it("フォルダの名前を変えると、中の開いていた文書も付け替わる", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("models/x.sysml", "package X;");
+    await s.ws.openFolder(s.local);
+    const doc = await s.ws.openRef(fileIn(s.ws.folder()!.entries, "models/x.sysml"));
+    // Act
+    await s.ws.renameEntry("models", "parts");
+    // Assert
+    expect(doc.ref?.path).toBe("parts/x.sysml");
+    expect(s.ws.folderPath(doc.key)).toBe("parts/x.sysml");
+    expect(s.ws.projectTexts().get("parts/x.sysml")).toBe("package X;");
+  });
+
+  it("ファイルを消すと、配置ファイルも消え、開いていた文書が閉じる", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.layout.json", "{}");
+    s.root.put("b.sysml", "package B;");
+    const { doc } = await openA(s);
+    // Act
+    await s.ws.removeEntry("a.sysml");
+    // Assert
+    expect(paths(s.ws.folder()!.entries)).toEqual(["b.sysml"]);
+    expect(s.root.entries.has("a.layout.json")).toBe(false);
+    expect(s.ws.get(doc.key)).toBeUndefined();
+  });
+
+  it("docsIn は、そのファイルかフォルダの中の文書だけを返す（境界値: 名前の始まりが同じフォルダ）", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("models/x.sysml", "");
+    s.root.put("models2/y.sysml", "");
+    await s.ws.openFolder(s.local);
+    const x = await s.ws.openRef(fileIn(s.ws.folder()!.entries, "models/x.sysml"));
+    await s.ws.openRef(fileIn(s.ws.folder()!.entries, "models2/y.sysml"));
+    // Act
+    const docs = s.ws.docsIn("models");
+    // Assert
+    expect(docs.map((d) => d.key)).toEqual([x.key]);
+  });
+
+  it("新しいフォルダを作ると一覧に出る。同じ名前があれば作らない（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    await openA(s);
+    // Act
+    await s.ws.createFolder("parts");
+    // Assert
+    expect(paths(s.ws.folder()!.entries)).toEqual(["parts/", "a.sysml"]);
+    await expect(s.ws.createFolder("parts")).rejects.toThrow("「parts」は既にあります");
+  });
+
+  it("フォルダを開いていなければ、名前の変更・削除・新しいフォルダはできない（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    // Act・Assert
+    await expect(s.ws.renameEntry("a.sysml", "b.sysml")).rejects.toThrow("フォルダが開かれていません");
+    await expect(s.ws.removeEntry("a.sysml")).rejects.toThrow("フォルダが開かれていません");
+    await expect(s.ws.createFolder("x")).rejects.toThrow("フォルダが開かれていません");
+  });
+});
+
+/** 一覧のパス（フォルダは末尾に /）。 */
+function paths(es: DirEntry[]): string[] {
+  return es.flatMap((e) => (e.kind === "dir" ? [e.path + "/", ...paths(e.children)] : [e.ref.path]));
+}
+
+describe("Workspace: プロジェクトの一覧（F-PROJ-3）", () => {
+  it("一覧のフォルダに切り替えても、開いている文書は未保存の変更ごと残る", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.sysml", "package A;");
+    await s.ws.openFolder(s.local);
+    const doc = await s.ws.openRef(fileIn(s.ws.folder()?.entries ?? [], "a.sysml"));
+    s.ws.setText(doc.key, "package A2;");
+    const other = new FakeDir("other");
+    other.put("o.sysml", "package O;");
+    s.api.folder = other;
+    await s.ws.openFolder(s.local);
+    // Act
+    const opened = await s.ws.openRecentFolder(s.local, "1");
+    // Assert
+    expect(opened).toBe(true);
+    expect(s.ws.folder()?.ref.name).toBe("project");
+    expect(s.ws.get(doc.key)?.text).toBe("package A2;");
+  });
+
+  it("一覧に無いフォルダは開かない（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    // Act
+    const opened = await s.ws.openRecentFolder(s.local, "9");
+    // Assert
+    expect(opened).toBe(false);
+    expect(s.ws.folder()).toBeNull();
+  });
+
+  it("フォルダを閉じても、開いている文書は閉じない", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.sysml", "package A;");
+    await s.ws.openFolder(s.local);
+    const doc = await s.ws.openRef(fileIn(s.ws.folder()?.entries ?? [], "a.sysml"));
+    let changes = 0;
+    s.ws.subscribe(() => changes++);
+    // Act
+    s.ws.closeFolder();
+    // Assert
+    expect(s.ws.folder()).toBeNull();
+    expect(s.ws.get(doc.key)).toBeDefined();
+    expect(s.ws.projectTexts().size).toBe(0);
+    expect(changes).toBe(1);
+  });
+
+  it("フォルダを開いていなければ、閉じても何も知らせない（境界値）", () => {
+    // Arrange
+    const s = setup();
+    let changes = 0;
+    s.ws.subscribe(() => changes++);
+    // Act
+    s.ws.closeFolder();
+    // Assert
+    expect(changes).toBe(0);
+  });
+});
+
+describe("Workspace: フォルダごとの削除（F-PROJ-4）", () => {
+  it("フォルダを消し、中のファイルの文書を閉じ、フォルダの外の文書は残す", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.sysml", "package A;");
+    await s.ws.openFolder(s.local);
+    const inFolder = await s.ws.openRef(fileIn(s.ws.folder()?.entries ?? [], "a.sysml"));
+    const untitled = s.ws.newUntitled("untitled-1.sysml", "package U;");
+    // Act
+    await s.ws.deleteFolder();
+    // Assert
+    expect(s.root.removed).toBe(true);
+    expect(s.ws.folder()).toBeNull();
+    expect(s.ws.get(inFolder.key)).toBeUndefined();
+    expect(s.ws.get(untitled.key)).toBeDefined();
+  });
+
+  it("消せなければ、文書もフォルダもそのまま（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.sysml", "package A;");
+    s.root.remove = undefined;
+    await s.ws.openFolder(s.local);
+    const doc = await s.ws.openRef(fileIn(s.ws.folder()?.entries ?? [], "a.sysml"));
+    // Act
+    const act = s.ws.deleteFolder();
+    // Assert
+    await expect(act).rejects.toThrow("フォルダそのものを削除できません");
+    expect(s.ws.folder()?.ref.name).toBe("project");
+    expect(s.ws.get(doc.key)).toBeDefined();
+  });
+
+  it("フォルダを開いていなければ拒否する（境界値）", async () => {
+    // Arrange
+    const s = setup();
+    // Act・Assert
+    await expect(s.ws.deleteFolder()).rejects.toThrow("フォルダが開かれていません");
   });
 });

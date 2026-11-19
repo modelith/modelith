@@ -23,10 +23,13 @@ pub struct Span {
 }
 
 /// 要素に書かれた式。`via` は囲んでいる無名ブロックのキーワード。
+/// `neg` は否定した制約（`assert not constraint …`、8.2.2.20）。否定していなければ JSON に出さない。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Expr {
     pub text: String,
     pub via: String,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub neg: bool,
 }
 
 /// 書いた順を保つ文字列の表（メタデータの名前の順を JSON にそのまま出す）。
@@ -110,6 +113,12 @@ pub struct Entry {
     pub value_op: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub doc: Option<String>,
+    /// 説明の本文を、行の区切りと空の行を保ったもの（インスペクタで見せ、書き換える。`doc` は空白を 1 つにまとめたもので、図に描く）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub doc_text: Option<String>,
+    /// ケース・解析・検証の目的（`objective { doc /* … */ }`、8.2.2.21）の説明。持ち主の説明（`doc`）とは分けて持つ。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub objective: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meta: Option<OrderedMap<OrderedMap<String>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -441,9 +450,28 @@ pub struct Alias {
     pub target: String,
     /// 別名を書いた宣言の番号（package など）。ファイルの直下なら `None`。
     pub pe: Option<usize>,
+    /// 文の位置（UTF-16。指す先が見つからないときの問題の位置）。
+    pub start: usize,
 }
 
 /// `metadata M about A` の相手のうち、見つからなかったもの（8.2.2.27）。
+/// `import` 1 つ（Import、8.2.2.5）。名前の解決に使い、TS には渡さない。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Import {
+    /// 取り込む名前空間か要素の修飾名（`::*`・`::**` を除き、引用符を外して `::` でつなぐ）。
+    pub path: String,
+    /// 名前空間の中身を取り込む（`P::*`・`P::**`）か。
+    pub members: bool,
+    /// 入れ子の中身まで取り込む（`P::**`）か。
+    pub recursive: bool,
+    /// `private import` か（取り込んだ名前を、書いた名前空間の外へ見せない）。
+    pub private: bool,
+    /// 書いた名前空間の宣言の番号。ファイルの一番上なら `None`。
+    pub pe: Option<usize>,
+    /// 文の位置（UTF-16。どのファイルに書いたかを知るため）。
+    pub start: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MissingRef {
     /// 文の位置（UTF-16 のオフセット）。
@@ -466,6 +494,9 @@ pub struct ParseResult {
     /// `import` の対象の修飾名（`ISQ::*` なら `ISQ`。書いた順）。標準ライブラリの型の判定にだけ使い、TS には渡さない。
     #[serde(skip)]
     pub imports: Vec<String>,
+    /// `import` の詳しい形（書いた順。`imports` と同じ数）。
+    #[serde(skip)]
+    pub import_list: Vec<Import>,
     /// `metadata M about A` の相手のうち、見つからなかったもの。問題一覧に出すためだけに使い、TS には渡さない。
     #[serde(skip)]
     pub missing_about: Vec<MissingRef>,

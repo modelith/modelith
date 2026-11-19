@@ -10,6 +10,7 @@ import SAMPLE_LAYOUT from "./samples/electric-kettle.layout.json?raw";
 import { initCanvas, fit } from "./app/canvas";
 import { stageLabel } from "./app/stage";
 import { initCtxMenu } from "./app/ctxmenu";
+import { initDiagramList } from "./app/diagram-list";
 import { $, isFormField, store } from "./app/dom";
 import { FieldHistory, globalShortcut } from "./app/keyboard";
 import { modalOpen } from "./app/modal";
@@ -17,18 +18,19 @@ import { initEditor } from "./app/editor";
 import { initWordHelp } from "./app/word-help";
 import { initTextMode } from "./app/text-mode";
 import { initExportDialog, showExportDialog } from "./app/export-dialog";
+import { initLevelsDialog, showLevelsDialog } from "./app/levels-dialog";
 import { initFiles } from "./app/files";
 import { closeMenus, initMenuBar } from "./app/menubar";
 import { initHistory, redo, undo } from "./app/history";
 import { initInspector, renderInspector } from "./app/inspector";
 import { setSelection } from "./app/ops";
-import { saveAsView } from "./app/view-ops";
-import { applyPanes, initPanels, initTabs, loadUi, resumeTabs, saveUi, TABS_KEY, UI_KEY } from "./app/panels";
+import { createDiagram } from "./app/view-ops";
+import { applyPanes, DOC_TABS_KEY, initPanels, initTabs, loadUi, resumeTabs, saveUi, TABS_KEY, UI_KEY } from "./app/panels";
 import { loadingView, watchLoading } from "./app/loading";
 import { recoveryHtml, showStartupBox, startupErrorHtml } from "./app/recovery";
 import { highlight, render, renderMinimap } from "./app/render";
 import { S } from "./app/state";
-import { DEFS } from "./app/svg";
+import { DEFS } from "./render/svg";
 import { attachCore, coreHooks, onAnalyzed, relayout, settled, toast } from "./app/sync";
 import { installUnexpectedErrorHandlers } from "./app/unexpected";
 import { CC } from "./app/views";
@@ -65,6 +67,10 @@ function initMenus(): void {
   $("#btnExport").onclick = () => {
     closeMenus();
     showExportDialog();
+  };
+  $("#menuLevels").onclick = () => {
+    closeMenus();
+    showLevelsDialog();
   };
   $("#appVersion").textContent = __APP_VERSION__ + (__APP_COMMIT__ ? ` (${__APP_COMMIT__.slice(0, 7)})` : "");
   // 見出しの札と「ヘルプ」の開発段階は、版の名前（alpha・beta・rc）から決める。正式版では出さない
@@ -125,7 +131,7 @@ function selectAll(): void {
  * キーボードの近道（Ctrl/⌘+A ですべて選ぶ、Ctrl/⌘+Z で元に戻す、Ctrl/⌘+Shift+Z・Ctrl/⌘+Y でやり直す）をつなぐ。
  */
 function initToolbar(): void {
-  $("#btnSaveView").onclick = $("#menuSaveView").onclick = () => void saveAsView();
+  $("#btnSaveView").onclick = $("#menuSaveView").onclick = () => void createDiagram();
   $("#btnEdge").onclick = toggleEdgeStyle;
   $("#menuEdgeOrtho").onclick = () => chooseEdgeStyle("ortho");
   $("#menuEdgeCurve").onclick = () => chooseEdgeStyle("curve");
@@ -235,7 +241,7 @@ try {
  * 保存した設定（パネルの配置・図のタブ）を消して、ページを読み直す（Q-7）。下書き・前回の続き・プラグインの許可は消さない。
  */
 function resetSettingsAndReload(): void {
-  for (const key of [UI_KEY, TABS_KEY]) store.remove(key);
+  for (const key of [UI_KEY, TABS_KEY, DOC_TABS_KEY]) store.remove(key);
   location.reload();
 }
 
@@ -248,11 +254,13 @@ try {
   initPanels();
   initCanvas();
   initCtxMenu();
+  initDiagramList();
   initEditor();
   initWordHelp();
   initTextMode();
   initHistory();
   initExportDialog();
+  initLevelsDialog();
   initMenus();
   initToolbar();
   await initFiles({ name: "electric-kettle.sysml", text: SAMPLE, layout: SAMPLE_LAYOUT }, { onResumed: resumeTabs });

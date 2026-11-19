@@ -123,6 +123,38 @@ pub fn comment_body(raw: &str) -> String {
     }
 }
 
+/// 説明（`doc /* … */`、8.2.2.4）の本文を、行の区切りと空の行を保って取り出す。`/*`・`*/` を外し、各行の前後の空白を除き、
+/// 前後の空の行を捨て、続く空の行は 1 つにまとめる（インスペクタで段落を見せるため。#244）。
+///
+/// # 引数
+///
+/// - `inner`：`/*` と `*/` の間の文字列
+///
+/// # 戻り値
+///
+/// 本文。中身が空白だけなら空文字列。
+///
+/// # 例
+///
+/// ```text
+/// doc_body(" 1 行目\n      2 行目 ")          → "1 行目\n2 行目"
+/// doc_body(" 段落 1\n\n\n   段落 2 ")       → "段落 1\n\n段落 2"
+/// doc_body("   ")                            → ""
+/// ```
+pub fn doc_body(inner: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for l in inner.lines().map(str::trim) {
+        if l.is_empty() && out.last().is_none_or(|x| x.is_empty()) {
+            continue;
+        }
+        out.push(l);
+    }
+    while out.last().is_some_and(|x| x.is_empty()) {
+        out.pop();
+    }
+    out.join("\n")
+}
+
 /// 別の言語での表し方の本文（TextualRepresentation、8.2.2.4）。`/*`・`*/` を外し、前後の空の行と、
 /// 2 行目からの空でない行に共通する頭の空白（字下げ）と、行末の空白を除く。字下げの違いは残す（コードとして読めるように）。
 ///
@@ -719,6 +751,31 @@ mod tests {
         let got: Vec<String> = cases.iter().map(|c| comment_body(c)).collect();
         // Assert
         assert_eq!(got, ["安全のため", "1 行目\n2 行目", "", "閉じていない"]);
+    }
+
+    #[test]
+    fn doc_body_keeps_line_breaks_and_one_blank_line_between_paragraphs() {
+        // Arrange（同値クラス: 1 行・字下げのある複数行・段落の間の空の行（続く空の行）・空。境界値: 前後の空の行）
+        let cases = [
+            " 安全のため ",
+            " 1 行目\n           2 行目  ",
+            " 段落 1\n   \n\n   段落 2",
+            "\n\n  前後  \n\n",
+            "   ",
+        ];
+        // Act
+        let got: Vec<String> = cases.iter().map(|c| doc_body(c)).collect();
+        // Assert
+        assert_eq!(
+            got,
+            [
+                "安全のため",
+                "1 行目\n2 行目",
+                "段落 1\n\n段落 2",
+                "前後",
+                ""
+            ]
+        );
     }
 
     #[test]

@@ -1,22 +1,24 @@
 // パネル（ツリー｜図｜テキスト）の配置、図のタブ、パレット、モデルツリー、ビューのサブバー。
 
-import { stdViewLabel, type Entry } from "../core";
+import { inOpenFile, stdViewLabel, type Entry } from "../core";
 import { fit, local, placeUsageAt, toCanvas } from "./canvas";
+import { renderDiagramList } from "./diagram-list";
 import { $, closest, esc, isFormField, store } from "./dom";
-import { W } from "./geometry";
+import { W } from "../render/geometry";
 import { nextTabIndex, rovingStop } from "./keyboard";
 import { act, renderInspector } from "./inspector";
-import { kindLabel, savedViewHint, tabTitle, v2ViewNote, viewHint } from "./labels";
+import { kindLabel, savedViewHint, tabTitle, v2ViewNote, viewHint } from "../render/labels";
 import { addToView, canAddToView, editableView } from "./view-ops";
 import { deleteSel, OPS, PHASEOPS } from "./ops";
 import { PINOPS, selPinInfo } from "./pins";
 import { applyTf, centerOn, highlight, render, scrollEditorTo } from "./render";
 import { cancelConnect, clearSel, S, type Tab, type Tool, type UiPrefs } from "./state";
 import { parseSavedTabs, type SavedTabs } from "./saved-tabs";
-import { HAND_ICON, kindIcon, SELECT_ICON, viewIcon } from "./svg";
+import { firstTabs, moveDocTabs, movedDocId, parseDocTabs, rememberDocTabs } from "./doc-tabs";
+import { HAND_ICON, kindIcon, SELECT_ICON, viewIcon } from "../render/svg";
 import { ensureLayout, toast } from "./sync";
-import { defaultFlowContext, flowContexts } from "./action-flow";
-import { defaultStateContext, isPseudoState, stateContexts } from "./state-machine";
+import { defaultFlowContext, flowContexts } from "../render/action-flow";
+import { defaultStateContext, isPseudoState, stateContexts } from "../render/state-machine";
 import { baseViewOf, CC, defaultIbdContext, edgeById, ibdContexts, modelView, nodeByKey, phaseLabel, seqContexts, VIEWS } from "./views";
 import { isCtxOpen } from "./ctxmenu";
 import { goToGap } from "./gap-guide";
@@ -26,6 +28,8 @@ import { goToGap } from "./gap-guide";
 export const UI_KEY = "modelith-ui-v1";
 /** 図のタブを置く localStorage のキー（起動に失敗したときに初期化する設定。Q-6）。 */
 export const TABS_KEY = "modelith-tabs-v1";
+/** ファイルごとの図のタブを置く localStorage のキー（F-VIEW-17。起動に失敗したときに初期化する設定。Q-6）。 */
+export const DOC_TABS_KEY = "modelith-doc-tabs-v1";
 
 /**
  * 保存したパネルの設定（表示・幅など）を localStorage から S.ui に読み込む。壊れていれば既定値のままにする。
@@ -249,16 +253,85 @@ function syncCurTab(): void {
   t.phase = S.phase || "";
 }
 
+/** ファイルごとの図のタブ（記憶の名前 → タブ。F-VIEW-17）。表示中のファイルのものは、切り替えるときに書き戻す。 */
+let docTabs = new Map<string, SavedTabs>();
+/** 表示中のファイルの記憶の名前。まだファイルを表示していなければ null。 */
+let shownDocId: string | null = null;
+/** 図のタブを用意し終えたか（initTabs の前に表示したファイルは、用意してからそのタブを戻す）。 */
+let tabsReady = false;
+
 /**
- * 開いているタブと表示中のタブを localStorage に保存する（F-VIEW-2）。
+ * タブを、記憶に書く形にする（表示位置は書かない）。
+ *
+ * @param tabs タブ
+ * @returns 記憶に書くタブ
+ * @example
+ * storedTabs([{ id: 1, view: "trace", ctx: null, phase: "", tf: { x: 0, y: 0, k: 1 } }]) // → [{ id: 1, view: "trace", ctx: null, phase: "" }]
+ */
+const storedTabs = (tabs: readonly Tab[]): Tab[] => tabs.map(({ id, view, ctx, phase, mv }) => ({ id, view, ctx, phase, ...(mv ? { mv } : {}) }));
+
+/**
+ * 開いているタブと表示中のタブを localStorage に保存する（F-VIEW-2）。表示中のファイルのタブとして、ファイルごとの記憶にも書く（F-VIEW-17）。
  */
 export function saveTabs(): void {
   syncCurTab();
-  store.set(TABS_KEY, JSON.stringify({ tabs: S.tabs.map(({ id, view, ctx, phase, mv }) => ({ id, view, ctx, phase, ...(mv ? { mv } : {}) })), active: S.tabId }));
+  store.set(TABS_KEY, JSON.stringify({ tabs: storedTabs(S.tabs), active: S.tabId }));
+  // 用意する前（記憶をまだ読んでいない）に書くと、ほかのファイルの記憶を消してしまう
+  if (shownDocId === null || !tabsReady) return;
+  rememberDocTabs(docTabs, shownDocId, { tabs: S.tabs.map((t) => ({ ...t })), active: S.tabId });
+  storeDocTabs();
+}
+
+/** ファイルごとの図のタブの記憶を localStorage に書く（F-VIEW-17）。 */
+function storeDocTabs(): void {
+  store.set(DOC_TABS_KEY, JSON.stringify(Object.fromEntries([...docTabs].map(([id, t]) => [id, { tabs: storedTabs(t.tabs), active: t.active }]))));
+}
+
+/**
+ * ファイルかフォルダの名前を変えた・消したときに、その中のファイルの図のタブの記憶を移す・消す（F-FILE-19）。
+ * 表示中のファイルを消したなら、表示中のファイルの記憶の名前を忘れる（消したファイルの記憶を書き戻さないため）。
+ *
+ * @param provider ファイルのプロバイダ
+ * @param from 名前を変えた・消したもののパス
+ * @param to 新しいパス。消したなら null
+ */
+export function moveDocTabsMemory(provider: string, from: string, to: string | null): void {
+  if (!tabsReady) return;
+  if (shownDocId !== null) shownDocId = movedDocId(shownDocId, provider, from, to);
+  moveDocTabs(docTabs, provider, from, to);
+  storeDocTabs();
+}
+
+/**
+ * 表示するファイルのタブに切り替える（F-VIEW-17）。今のファイルのタブ（表示位置も）を記憶してから、切り替え先のファイルで最後に開いていたタブを戻す。
+ * 記憶の無いファイルは「すべて」の図から始める。ただし起動して最初に表示するファイルは、記憶が無ければ今のタブ（前回のタブ）をそのまま使う。
+ *
+ * @param id 表示するファイルの記憶の名前（docTabsId）。ファイルを表示しなくなったら null
+ */
+export function switchDocTabs(id: string | null): void {
+  if (id === shownDocId) return;
+  // タブを用意する前（起動の途中）は、どのファイルかだけを覚え、記憶を書き換えない
+  if (!tabsReady) {
+    shownDocId = id;
+    return;
+  }
+  if (shownDocId !== null) {
+    syncCurTab();
+    const cur = curTab();
+    if (cur) cur.tf = { ...S.tf };
+    saveTabs();
+  }
+  const first = shownDocId === null;
+  shownDocId = id;
+  if (id === null) return;
+  const saved = docTabs.get(id) ?? (first ? null : firstTabs());
+  if (saved) applySavedTabs({ tabs: saved.tabs.map((t) => ({ ...t })), active: saved.active });
+  saveTabs();
 }
 
 /**
  * 図のタブバーを描き直す（F-VIEW-2）。タブが 2 つ以上なら閉じるボタンを付け、末尾に、自動で描く図と作成した図を見出しで分けて開く「＋」メニューを置く。
+ * サイドバーの「図」も、表示中の図に合わせて描き直す（F-VIEW-11）。
  */
 export function renderTabs(): void {
   syncCurTab();
@@ -281,6 +354,7 @@ export function renderTabs(): void {
       ? S.M.views.map((v) => viewMenuItem(`data-open-mv="${esc(v.name)}"`, viewIcon(baseViewOf(v)), v.name, savedViewHint(v.std), savedViewHint(v.std))).join("")
       : `<div class="pnote">作成した図はまだありません。図のメニューの「新しい図を作成…」で作れます</div>`) +
     `</div></details>`;
+  renderDiagramList();
 }
 
 /**
@@ -380,6 +454,26 @@ function closeTab(id: number): void {
 }
 
 /**
+ * 削除した作成した図のタブを閉じる（F-VIEW-11）。それが最後のタブなら、閉じずに自動の図「すべて」に切り替える。
+ *
+ * @param name 削除した図の名前
+ */
+export function closeViewTabs(name: string): void {
+  for (const t of S.tabs.filter((x) => x.mv === name)) {
+    if (S.tabs.length > 1) {
+      closeTab(t.id);
+      continue;
+    }
+    delete t.mv;
+    t.view = "all";
+    if (S.tabId === t.id) S.modelView = null;
+    activateTab(t.id, { fit: true });
+  }
+  renderTabs();
+  saveTabs();
+}
+
+/**
  * 新しく開くタブの既定の対象を選ぶ。内部ブロック図は部品の最も多いブロック、シーケンス図は最初のシナリオ、
  * アクションの流れの図は線の最も多いアクション定義、状態遷移の図は遷移の最も多い状態定義。
  *
@@ -427,7 +521,10 @@ let startTabs: SavedTabs | null = null;
  * @param saved 保存したタブと表示中のタブの id（形は readSavedTabs が確かめ済み。無ければ null）
  */
 function applySavedTabs(saved: SavedTabs | null): void {
-  if (saved) S.tabs = saved.tabs;
+  if (saved) {
+    S.tabs = saved.tabs;
+    S.tabId = null;
+  }
   if (!S.tabs.length) {
     S.tabs = [
       { id: 1, view: "trace", ctx: null, phase: "" },
@@ -459,6 +556,15 @@ export function initTabs(): void {
   // 戻すタブと、後で戻し直すためのタブは、別々に読む（戻した方は表示の途中で書き換わる）
   startTabs = readSavedTabs();
   applySavedTabs(readSavedTabs());
+  docTabs = parseDocTabs(store.get(DOC_TABS_KEY), VIEWS.map((v) => v.id));
+  tabsReady = true;
+  // 用意する前に表示したファイルに記憶があれば、そのタブにする（F-VIEW-17）
+  const own = shownDocId === null ? undefined : docTabs.get(shownDocId);
+  if (own) applySavedTabs({ tabs: own.tabs.map((t) => ({ ...t })), active: own.active });
+  // 表示中の図にこのファイルの要素が無いときの「すべて」の図を開くボタン（F-VIEW-17）
+  $("#empty").addEventListener("click", (ev) => {
+    if (closest(ev, "[data-open-all]")) openTab("all");
+  });
 
   const bar = $("#tabbar");
   // タブバーは横にスクロールするので、その中のメニューは枠で切れてしまう。開いたときに画面に対する位置で出す
@@ -910,7 +1016,8 @@ export function renderTree(): void {
       );
     });
   };
-  for (const e of S.P.entries) if (!e.pe) walk(e, 0);
+  // ツリーには表示中のファイルの要素だけを出す（ほかのファイルの宣言もつないで持っている。ADR-0021）
+  for (const e of S.P.entries) if (!e.pe && inOpenFile(e)) walk(e, 0);
   el.innerHTML = rows.join("") || `<div class="tree-empty">${q ? "一致する要素がありません" : "要素を追加すると、ここにモデルの構造が表示されます"}</div>`;
   // Tab で入る行は 1 つだけにする。描き直す前に行に入力があれば、同じ行へ入力を戻す（行が消えたら選んでいる行か先頭の行）
   const again = focusedKey ? el.querySelector<HTMLElement>(focusedKey) : null;

@@ -19,12 +19,14 @@
           <button id="btnNew">新しいファイル</button>
           <button id="btnOpen">ファイルを開く…<span class="kbd">Ctrl+O</span></button>
           <button id="btnOpenFolder">フォルダを開く…</button>
+          <div id="recentMenu" class="recent"></div>
+          <button id="btnCloseFolder" hidden>フォルダを閉じる</button>
           <div class="sep"></div>
           <button id="btnSave">保存<span class="kbd">Ctrl+S</span></button>
           <button id="btnSaveAs">名前を付けて保存…<span class="kbd">Ctrl+Shift+S</span></button>
           <label class="check"><input type="checkbox" id="autoSave"> 自動保存</label>
           <div class="sep"></div>
-          <button id="btnExport" title="表示中の図を、SVG 画像や draw.io のファイルとしてダウンロードする">エクスポート…</button>
+          <button id="btnExport" title="表示中の図を、画像（SVG・PNG・JPEG）や draw.io のファイルとしてダウンロードする">エクスポート…</button>
           <div class="sep"></div>
           <button id="btnSample">サンプルを開く</button>
           <label class="check" title="オフにすると、前回の続き（開いていたフォルダとファイル）から始めます"><input type="checkbox" id="startSample"> 起動時にサンプルを開く</label>
@@ -53,12 +55,14 @@
           <div class="phead">線の形</div>
           <button id="menuEdgeOrtho" aria-pressed="true" title="図の線を、直角に折れる線で描く">直角</button>
           <button id="menuEdgeCurve" aria-pressed="false" title="図の線を、曲線で描く">曲線</button>
+          <div class="sep"></div>
+          <button id="menuLevels" title="トレースの抜け・まだ扱えない書き方・チェックルールの結果を、エラー・警告・情報・出さないのどれで知らせるかを選ぶ">知らせの重さ…</button>
         </div>
       </details>
       <details class="menu" id="diagramMenu">
         <summary>図</summary>
         <div class="pop">
-          <button id="menuSaveView" title="今の図の要素と配置のまま、名前の付いた新しい図を作成する。作成した図には、あとから要素を入れたり外したりできる">新しい図を作成…</button>
+          <button id="menuSaveView" title="名前と図の種類を選んで、新しい図を作成する。今の図の要素と配置のまま作ることも、空の図から始めることもできる">新しい図を作成…</button>
           <button id="menuLayout" title="この図を自動で並べ直す">整列</button>
         </div>
       </details>
@@ -104,6 +108,7 @@
       <div class="sidetabs" role="tablist" aria-label="サイドバーの切り替え">
         <button id="sideFiles" role="tab" aria-selected="true">エクスプローラー</button>
         <button id="sideModel" role="tab" aria-selected="false">モデル</button>
+        <button id="sideViews" role="tab" aria-selected="false">図</button>
       </div>
       <div class="side" id="filesSide">
         <div class="explorer" id="explorer" role="tree" aria-label="ファイル"></div>
@@ -111,6 +116,10 @@
       <div class="side" id="modelSide" hidden>
         <div class="panehead"><input id="treeSearch" type="search" placeholder="要素を名前で絞り込み" aria-label="モデル要素を名前で絞り込む"></div>
         <div class="tree" id="tree" role="tree" aria-label="モデルツリー"></div>
+      </div>
+      <div class="side" id="viewsSide" hidden>
+        <div class="panehead"><button id="btnNewDiagram" title="名前と図の種類を選んで、新しい図を作成する">＋ 新しい図を作成…</button></div>
+        <div class="tree" id="diagramList" role="tree" aria-label="作成した図"></div>
       </div>
     </aside>
     <div class="split" id="splitTree" role="separator" aria-orientation="vertical" aria-label="ツリーの幅を変更"></div>
@@ -120,7 +129,7 @@
         <div class="palette" id="palette" role="toolbar" aria-label="要素パレット"></div>
         <div class="spacer"></div>
         <div class="subbar" id="subbar"></div>
-        <button id="btnSaveView" title="今の図の要素と配置のまま、名前の付いた新しい図を作成する。作成した図には、あとから要素を入れたり外したりできる">新しい図を作成</button>
+        <button id="btnSaveView" title="名前と図の種類を選んで、新しい図を作成する。今の図の要素と配置のまま作ることも、空の図から始めることもできる">新しい図を作成</button>
         <button id="btnEdge" title="線の描き方を切り替える">線：直角</button>
         <button id="btnLayout" title="この図を自動で並べ直す">整列</button>
       </div>
@@ -184,13 +193,24 @@
     <div class="row" id="dialogButtons"></div>
   </div>
 </div>
+<div class="modal" id="levelsDialog" hidden role="dialog" aria-modal="true" aria-labelledby="levelsTitle" aria-describedby="levelsText">
+  <div class="box">
+    <b id="levelsTitle">知らせの重さ</b>
+    <p id="levelsText"></p>
+    <div class="lvlist" id="levelsList"></div>
+    <div class="row"><button type="button" id="levelsClose" class="primary">閉じる</button></div>
+  </div>
+</div>
 <div class="modal" id="exportDialog" hidden role="dialog" aria-modal="true" aria-labelledby="exportTitle" aria-describedby="exportText">
   <form class="box" id="exportForm">
     <b id="exportTitle">エクスポート</b>
-    <p id="exportText">表示中の図を、ファイルとしてダウンロードします。draw.io のファイルは、draw.io でそのまま開けます。</p>
+    <p id="exportText">表示中の図を、ファイルとしてダウンロードします。draw.io のファイルは、draw.io でそのまま開けます。「画像をコピー」を押すと、ほかのアプリに貼り付けられます。</p>
     <label class="field"><span>ファイル名</span><input id="exportName" type="text" autocomplete="off" spellcheck="false"></label>
     <label class="field"><span>形式</span><select id="exportFormat"></select></label>
-    <div class="row"><button type="submit" id="exportOk" class="primary">エクスポート</button><button type="button" id="exportCancel">やめる</button></div>
+    <label class="field" id="exportRangeField"><span>範囲</span><select id="exportRange"><option value="all">図の全体</option><option value="selection">選んだ要素</option></select></label>
+    <label class="field" id="exportScaleField"><span>倍率</span><select id="exportScale"></select></label>
+    <label class="field" id="exportBgField"><span>背景</span><select id="exportBg"><option value="white">白</option><option value="transparent">透明</option></select></label>
+    <div class="row"><button type="submit" id="exportOk" class="primary">エクスポート</button><button type="button" id="exportCopy">画像をコピー</button><button type="button" id="exportCancel">やめる</button></div>
   </form>
 </div>
 <script type="module" src="/src/main.ts"></script>

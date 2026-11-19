@@ -71,7 +71,8 @@ fn anonymous_block_owns_its_members_and_names_expressions() {
         entry(&r, "R").exprs,
         vec![Expr {
             text: "a <= b".to_owned(),
-            via: "require".to_owned()
+            via: "require".to_owned(),
+            neg: false,
         }]
     );
 }
@@ -554,6 +555,18 @@ fn doc_in_the_package_body_is_still_the_package_doc() {
 }
 
 #[test]
+fn doc_text_keeps_the_paragraphs_that_doc_joins_into_one_line() {
+    // Arrange（説明の 2 つの形：図に描く doc は 1 行に、インスペクタの docText は段落を保つ。#244）
+    let text = "package P { part def A {\n    doc /* 段落 1\n       続き\n\n       段落 2 */\n} }";
+    // Act
+    let r = run(text);
+    // Assert
+    let a = entry(&r, "A");
+    assert_eq!(a.doc.as_deref(), Some("段落 1 続き 段落 2"));
+    assert_eq!(a.doc_text.as_deref(), Some("段落 1\n続き\n\n段落 2"));
+}
+
+#[test]
 fn metadata_body_redefinitions_keep_their_value_on_the_metadata() {
     // Arrange（同値分割：:>>・redefines・値の無い再定義・入れ子の本体。MetadataBodyUsage、8.2.2.27）
     let text = "package P { metadata def M { attribute x : Integer; attribute y : Integer; } \
@@ -818,11 +831,13 @@ fn alias_is_recorded_with_its_owner_and_qualified_target() {
                 name: "B".to_owned(),
                 target: "Q::A".to_owned(),
                 pe: Some(p),
+                start: 12,
             },
             Alias {
                 name: "C".to_owned(),
                 target: "D".to_owned(),
                 pe: Some(p),
+                start: 30,
             },
         ]
     );
@@ -1170,7 +1185,16 @@ fn named_constraint_without_body_is_kept_as_an_owner_expression() {
     );
     assert_eq!(
         texts("H"),
-        pairs(&[("c4 : CD", "assert"), ("not c5 : CD", "assert")])
+        pairs(&[("c4 : CD", "assert"), ("c5 : CD", "assert")])
+    );
+    // 否定（not）は式の文字列から外し、neg として持つ（8.2.2.20）
+    assert_eq!(
+        entry(&r, "H")
+            .exprs
+            .iter()
+            .map(|x| x.neg)
+            .collect::<Vec<_>>(),
+        [false, true]
     );
 }
 
@@ -1182,6 +1206,27 @@ fn imports_are_recorded_by_their_package_path() {
     let r = run(text);
     // Assert
     assert_eq!(r.imports, ["ISQ", "ScalarValues::Real", "SI"]);
+    let kinds: Vec<(&str, bool, bool, bool, bool)> = r
+        .import_list
+        .iter()
+        .map(|i| {
+            (
+                i.path.as_str(),
+                i.members,
+                i.recursive,
+                i.private,
+                i.pe.is_some(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            ("ISQ", true, false, true, true),
+            ("ScalarValues::Real", false, false, false, true),
+            ("SI", true, true, false, true),
+        ]
+    );
 }
 
 #[test]
@@ -2027,4 +2072,120 @@ fn parallel_states_are_marked() {
         parallel,
         [("S", true), ("a", true), ("x", false), ("b", false)]
     );
+}
+
+#[test]
+fn assert_not_with_a_body_records_negation() {
+    // Arrange（AssertConstraintUsage の本体のある形。否定は neg として持つ、8.2.2.20）
+    let text = "part def H { assert constraint d { x < 0 } assert not constraint e { y > 1 } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let got: Vec<(String, bool)> = entry(&r, "H")
+        .exprs
+        .iter()
+        .map(|x| (x.text.clone(), x.neg))
+        .collect();
+    assert_eq!(
+        got,
+        [("x < 0".to_owned(), false), ("y > 1".to_owned(), true)]
+    );
+}
+
+#[test]
+fn objective_doc_is_kept_apart_from_the_owner_doc() {
+    // Arrange（ObjectiveMember、8.2.2.21。目的の説明は持ち主の説明を上書きしない）
+    let text = "verification def V { doc /* 検証の説明 */ objective { doc /* 沸く時間を確かめる */ verify R; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let v = entry(&r, "V");
+    assert_eq!(v.doc.as_deref(), Some("検証の説明"));
+    assert_eq!(v.objective.as_deref(), Some("沸く時間を確かめる"));
+}
+
+#[test]
+fn merge_appends_other_files_with_shifted_indices_and_positions() {
+    // Arrange（ADR-0021：ほかのファイルの宣言・関係の番号と位置をずらしてつなぐ）
+    use super::merge::{FILE_STRIDE, file_of, merge};
+    let focus = run("package A { part def X; }");
+    let other =
+        run("package B { part def Y; part def Z { part y : Y; } connection c connect y to y; }");
+    let broken = run("package C {");
+    // Act
+    let m = merge(focus, vec![other, broken]);
+    // Assert（B の中身は B を指し、位置は 2 つ目のファイルの区切りから。壊れたファイルの構文エラーは混ぜない）
+    let b = m.entries.iter().position(|e| e.name == "B").expect("B");
+    let y = entry(&m, "Y");
+    assert_eq!(y.pe, Some(b));
+    assert_eq!(m.entries[b].start, FILE_STRIDE);
+    assert_eq!(file_of(y.start), 1);
+    assert_eq!(file_of(entry(&m, "X").start), 0);
+    let z = m.entries.iter().position(|e| e.name == "Z").expect("Z");
+    assert!(
+        m.entries[z]
+            .children
+            .iter()
+            .all(|&c| m.entries[c].pe == Some(z))
+    );
+    let usage = m.rels.iter().find_map(|r| match r.kind {
+        RelKind::Connect { usage, .. } => Some(usage),
+        _ => None,
+    });
+    assert_eq!(usage.map(|u| m.entries[u].name.as_str()), Some("c"));
+    assert!(m.errors.is_empty(), "{:?}", m.errors);
+    assert_eq!(file_of(entry(&m, "C").start), 2);
+}
+
+#[test]
+fn merge_with_no_other_files_keeps_the_focus_result() {
+    // Arrange（境界値：ほかのファイルが無い）
+    use super::merge::merge;
+    let focus = run("package A { part def X; }");
+    // Act
+    let m = merge(focus.clone(), vec![]);
+    // Assert
+    assert_eq!(m, focus);
+}
+
+#[test]
+fn file_longer_than_the_stride_is_not_joined() {
+    // Arrange（境界値：区切りちょうどの長さのファイルはつながない。短いファイルはつなぐ）
+    let huge = " ".repeat(merge::FILE_STRIDE);
+    // Act
+    let p = merge::project_files("part def X;", &[&huge, "part def Y;"]);
+    // Assert
+    let names: Vec<&str> = p.entries.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names, ["X", "Y"]);
+    assert_eq!(merge::file_of(p.entries[1].start), 1);
+}
+
+#[test]
+fn files_keep_other_files_in_path_order_without_the_open_one() {
+    // Arrange
+    let mut files = merge::Files::default();
+    files.set("c.sysml", "part def C;");
+    files.set("a.sysml", "part def A;");
+    files.set("b.sysml", "part def B;");
+    // Act
+    files.set("c.sysml", "part def C2;");
+    files.remove("a.sysml");
+    let (paths, parsed) = files.others(Some("b.sysml"));
+    // Assert（置き換えたファイルは新しい中身、消したファイルと表示中のファイルは入らない）
+    assert_eq!(paths, ["c.sysml"]);
+    assert_eq!(parsed[0].entries[0].name, "C2");
+}
+
+#[test]
+fn files_forget_a_file_that_grows_too_long() {
+    // Arrange（境界値：区切りの長さになったファイルは、前の中身も忘れる）
+    let mut files = merge::Files::default();
+    files.set("a.sysml", "part def A;");
+    // Act
+    files.set("a.sysml", &" ".repeat(merge::FILE_STRIDE));
+    // Assert
+    assert_eq!(files.others(None).0, Vec::<String>::new());
+    files.set("b.sysml", "part def B;");
+    files.clear();
+    assert_eq!(files.others(None).0, Vec::<String>::new());
 }

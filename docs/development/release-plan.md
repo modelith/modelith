@@ -9,7 +9,7 @@
 
 | 項目 | 決定 |
 | --- | --- |
-| 公開先 | GitHub Pages（`https://modelith.github.io/modelith/`）。サーバを持たず、データは利用者の手元か、利用者自身のクラウドに置く |
+| 公開先 | GitHub Pages（安定版 `https://modelith.github.io/modelith/`、リリース候補版 `…/modelith/rc/`、プレビュー版 `…/modelith/preview/`。ADR-0020・ADR-0022）。サーバを持たず、データは利用者の手元か、利用者自身のクラウドに置く |
 | 独自ドメイン | 持たない。モデルは利用者がファイルとして保存するため、将来 URL が変わっても移行できる。org の Pages には第三者が書いた HTML を置かない（保存領域を共有するため） |
 | 配布形態 | Web アプリ。デスクトップアプリ（Tauri）は beta 前後に要否を判断する |
 | フィードバック | GitHub Issues（不具合・要望のテンプレート） |
@@ -40,7 +40,7 @@
 | 14 | `0.1.0-beta.4` | メニューを画面の左に並べ直す（Q-9。機能は足さず、今ある操作の置き場所だけを変える。機能の固定後に、メンテナの判断で入れた例外。下の「beta.4 の内容」）（公開済み） |
 | 15 | `0.1.0-beta.5` | 図のエクスポートを「ファイル」メニューの 1 つの画面にまとめ、「書き出し・取り込み」を「エクスポート・インポート」と呼ぶ（F-EXP-1・F-EXP-2）。「図を保存…」を「新しい図を作成…」と呼ぶ（F-VIEW-8。機能の固定後に、メンテナの判断で入れた例外。下の「beta.5 の内容」）（公開済み） |
 | 16 | `0.1.0-beta.6` | トレースの抜けを、図を見ている人にも直せるように案内する（F-TRACE-2。機能の固定後に、メンテナの判断で入れた例外。下の「beta.6 の内容」）（公開済み） |
-| — | `0.1.0-rc.1` → `0.1.0` | 1 週間、重大な報告がなければ正式版 |
+| — | `0.1.0-rc.1`〜`0.1.0-rc.4` → `0.1.0` | 1 週間、重大な報告がなければ正式版（`0.1.0-rc.1` は 2026-10-22 に公開済み）。`0.1.0-rc.2` で、同じフォルダを新しい版と行き来しても配置ファイルを壊さない修正と、プラグインが動く本体の版の範囲（ADR-0023）を入れた。`main` から出した初めての候補（ADR-0022。2026-11-07 公開済み）。`0.1.0-rc.3` で、0.2.0-beta.3 の探索テストで見つかった不具合のうち rc.2 にもあったものを直した（2026-11-11 公開済み）。`0.1.0-rc.4` で、rc.3 と 0.2.0-beta.4 の探索テストで見つかった不具合のうち 0.1 にもあったもの（#266）を直した（2026-11-12 公開済み）。`0.1.0` は 2026-11-19 に公開済み |
 
 テストユーザーの報告次第で、スプリントの内容は入れ替える。
 alpha.7〜alpha.9 は、beta で機能を固定する前に、alpha で直せる文法の不足を埋めるために入れた（メンテナの判断、2026-10-19）。
@@ -143,13 +143,16 @@ beta.5 では、図のサブバーの「トレースの抜け N 件」を押す�
 | `0.1.0-alpha.8` | 構造の関係を図に描く：特殊化・部分集合・再定義・参照の線、多重度、`:=` と `default` の区別、`dependency` の線、`comment … about`・`rep` の本文、単独の `connect`・n 項の `connect`・`bind`・`binding`、`allocation`・`allocate`、`flow def`・名前付きのフロー。GeneralView・InterconnectionView の不足を埋める |
 | `0.1.0-alpha.9` | 振る舞いの流れを描く：継起（`first … then`・`succession`・`succession flow`）、`fork`・`join`・`merge`・`decide`、`send`・`accept`・`assign`・`terminate`、`if`・`while`・`for`、ActionFlowView。状態の `entry`・`do`・`exit`・`parallel`、遷移の線と省略形、StateTransitionView・SequenceView の不足。`render` の合成形、`filter` の論理式、3 段以上の特徴量の連鎖 |
 | `0.1.0-alpha.10` | 誤った表示（⚠）をなくす：本体が `true`・`false`・`not` で始まる制約と計算、定義の中の型の無い部品を端にする線、`satisfy requirement r : R by x`・`verify requirement r : R` と `view def` の中の `satisfy`、`@M { :>> x = 1; }`、KerML の宣言の本体の漏れ、`crosses`（`=>`）、キーワードの無い特性（`x : Real;`）と型の無い `ref`、`flow of p : T` の運ぶもの、本体付きの式（`->collect{ … }`）、関係の本体の `doc`、`'~Pt'` の共役ポート。黙って捨てる短い書き方を読む：`from` の無い `flow`・`succession flow`、`message a to b`、`connect` の無い `interface`、参照の形の `perform x.y;`・`exhibit s;`・`frame c;` |
-| `0.2.0` | パッケージやファイルをまたぐ名前の解決：`import`（フィルタ付きを含む）・別のファイルの `alias`・修飾名・可視性、`expose` で import を通した名前。「複数のファイルにまたがるモデル」（ADR-0019）とあわせて行う |
-| `0.3.0` 以降 | 新しい仕組みが要るもの：式の文法と評価・単位（`filter` のメタデータの値の比較を含む）、KerML の文法、標準ライブラリの同梱、GeometryView・GridView・BrowserView、`asTextualNotation`・`asElementTable`、SequenceView の複合フラグメントと入れ子のシーケンス図、ActionFlowView のパラメータとその間のフロー・区画（swim lane）、StateTransitionView の状態の使用の中の遷移と複数の状態定義、`assert constraint`・`assert not`、モデル交換（`.kpar`） |
+| `0.2.0` | 要求図・ブロック定義図・内部ブロック図・アクティビティ図の不足（[0.2.0 の計画](release-plan-0.2.0.md#図の不足を埋める)）。パッケージやファイルをまたぐ名前の解決：`import`・別のファイルの `alias`・修飾名・可視性、`expose` で import を通した名前。「複数のファイルにまたがるモデル」（ADR-0019）とあわせて行う。フィルタ付きの `import` と package 直下の `filter` は 0.3.0 に回した |
+| `0.3.0` | AI がテキストを書くようになるので、読めずに捨てる書き方を減らす（メンテナの判断、2026-11-12）。小さな文法：フィルタ付きの `import Q::*[@F]`、package 直下の `filter @X;`、関係の本体の `doc`・`comment`、複数の型 `: A, B`、値付きの列挙値 `enum b = 3;`。式の文法（評価はしない。ADR-0015 の段階 B）：値と単位 `1500 [kg]`、本体付きの式 `->collect{ … }` を構文として読む |
+| `0.4.0` | KerML の文法（`classifier`・`struct`・`function` などの宣言。`.kerml` のファイルを読む） |
+| `0.5.0` 以降 | 新しい仕組みが要るもの：式の評価と単位（`filter` のメタデータの値の比較を含む）、標準ライブラリの同梱、GeometryView・GridView・BrowserView、`asTextualNotation`・`asElementTable`、SequenceView の複合フラグメントと入れ子のシーケンス図、StateTransitionView の状態の使用の中の遷移と複数の状態定義、モデル交換（`.kpar`） |
 必要になってから作る（YAGNI）。利用者の声（Issues）が無い機能は、ここに先回りして入れない。オフライン利用（PWA）も、声が出てから判断する。
 
 ## 0.1.0 より先の方向
 
-保存と共有は、必要になったら次の順に広げる。前の段階の仕組みを、次の段階でそのまま使う。どの段階も、今は着手しない。
+保存と共有は、もとは次の順に広げる予定だった。2026-11-11 のメンテナの判断で、AI との連携と、サーバでの共同編集（セルフホスティング）を前に出し、
+0.3.0 から版ごとに進める。道のりは [リリース計画（0.3.0 から先）](release-plan-0.3.0.md) に書く。下の表は、もとの予定として残す。
 
 | 段階 | 内容 | サーバ | 判断 |
 | --- | --- | --- | --- |

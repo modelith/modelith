@@ -497,6 +497,44 @@ test.describe("作成した図（テキストの view、F-VIEW-7、ADR-0005）",
     await expect(page.locator('[data-edge="flow|u:pump|u:pump.impeller|#1"]')).toHaveCount(1);
   });
 
+  test("F-VIEW-14: 内部ブロック図で、対象そのもののポートを枠の上に描き、その線を図から削除できる", async ({ page }) => {
+    // Arrange
+    const text = `package W {
+    port def Sig;
+    part def Heater { port pin : Sig; }
+    part def Kettle {
+        in port power : Sig;
+        part heater : Heater;
+        connect power to heater.pin;
+    }
+    view iv : InterconnectionView { expose W::Kettle; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="iv"]').click();
+    await expect(page.locator('.boundary[data-key="b:power"]')).toHaveText("power");
+    // Act（線の上の点（始まりから 1 割の位置）を押して選び、2 回押しで削除。線の矩形の中央は部品に重なる）
+    const at = await page.locator('[data-edge="flow|b:power|u:heater|#1"] path.hit').evaluate((el) => {
+      const path = el as SVGPathElement;
+      const p = path.getPointAtLength(path.getTotalLength() * 0.1);
+      const m = path.getScreenCTM();
+      return m ? { x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f } : null;
+    });
+    if (!at) throw new Error("線の位置が分かりません");
+    await page.mouse.click(at.x, at.y);
+    await expect(page.locator("#insp")).toContainText("power → heater");
+    await page.locator('#insp [data-act="delEdge"]').click();
+    await page.locator('#insp [data-act="delEdge"]').click();
+    // Assert（線と、線の端でなくなった枠の上のポートが消え、ポートの宣言は残る）
+    await expect(page.locator("#ed")).not.toHaveValue(/connect power to heater\.pin;/);
+    await expect(page.locator("#ed")).toHaveValue(/in port power : Sig;/);
+    await expect(page.locator('[data-edge="flow|b:power|u:heater|#1"]')).toHaveCount(0);
+    await expect(page.locator('.boundary[data-key="b:power"]')).toHaveCount(0);
+  });
+
   test("F-VIEW-7: GeneralView に、割り当ての線を «allocate» の破線と開いた矢印で描く", async ({ page }) => {
     // Arrange
     const text = `package A {
@@ -690,6 +728,132 @@ test.describe("アクティビティ図（ActionFlowView、F-VIEW-7、8.2.3.17�
     // Assert
     await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/act Boil/);
     await expect.poll(() => nodeKeys(page)).toContain("a:notify");
+  });
+
+  test("F-VIEW-15: アクティビティ図に、パラメータとその間の流れを描き、流れを図から削除できる", async ({ page }) => {
+    // Arrange
+    const text = `package T {
+    item def Water;
+    action def MakeTea {
+        in item cold : Water;
+        out item tea : Water;
+        action boil { in item w : Water; out item hot : Water; }
+        action brew { in item water : Water; out item t : Water; }
+        flow cold to boil.w;
+        flow of Water from boil.hot to brew.water;
+        flow brew.t to tea;
+    }
+    view teaFlow : ActionFlowView { expose T::MakeTea; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="teaFlow"]').click();
+    // Assert（パラメータは縁の接続点、アクション定義そのもののパラメータは枠の上の四角、流れは実線と矢印）
+    await expect(page.locator('.pin[data-node="a:boil"][data-pin="port:hot"]')).toHaveCount(1);
+    await expect(page.locator('.boundary[data-key="b:cold"]')).toHaveText("cold");
+    await expect(page.locator('.boundary[data-key="b:tea"]')).toHaveText("tea");
+    const water = page.locator('[data-edge="flow|a:boil|a:brew|Water#1"]');
+    await expect(water.locator("path.line")).not.toHaveAttribute("stroke-dasharray", /./);
+    await expect(water.locator("text")).toHaveText("Water");
+    // Act（流れの上の点を押して選び、2 回押しで削除）
+    const at = await water.locator("path.hit").evaluate((el) => {
+      const path = el as SVGPathElement;
+      const p = path.getPointAtLength(path.getTotalLength() * 0.5);
+      const m = path.getScreenCTM();
+      return m ? { x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f } : null;
+    });
+    if (!at) throw new Error("線の位置が分かりません");
+    await page.mouse.click(at.x, at.y);
+    await page.locator('#insp [data-act="delEdge"]').click();
+    await page.locator('#insp [data-act="delEdge"]').click();
+    // Assert
+    await expect(page.locator("#ed")).not.toHaveValue(/flow of Water from boil\.hot to brew\.water;/);
+    await expect(page.locator("#ed")).toHaveValue(/flow cold to boil\.w;/);
+    await expect(water).toHaveCount(0);
+  });
+
+  test("F-VIEW-15: アクティビティ図に、アクションの中の流れ（入れ子の本体）を、そのアクションの中に描く", async ({ page }) => {
+    // Arrange
+    const text = `package T {
+    action def MakeTea {
+        first start then boil;
+        action boil {
+            first start then heat;
+            action heat;
+            then wait;
+            action wait;
+            then done;
+        }
+        first boil then pour;
+        action pour;
+        then done;
+    }
+    view teaFlow : ActionFlowView { expose T::MakeTea; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    // Act
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="teaFlow"]').click();
+    // Assert（中の要素はアクション boil の矩形の中にあり、中の線も描く）
+    await expect.poll(async () => (await nodeKeys(page)).sort()).toEqual(
+      ["a:boil", "a:boil.done", "a:boil.heat", "a:boil.start", "a:boil.wait", "a:done", "a:pour", "a:start"],
+    );
+    const box = async (k: string) => (await page.locator(`[data-key="${k}"] .body`).boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 };
+    const [outer, inner] = [await box("a:boil"), await box("a:boil.heat")];
+    expect(inner.x).toBeGreaterThan(outer.x);
+    expect(inner.y + inner.height).toBeLessThan(outer.y + outer.height);
+    await expect(page.locator('[data-edge="succession|a:boil.heat|a:boil.wait|#1"]')).toHaveCount(1);
+  });
+
+  test("F-VIEW-15: アクティビティ図に、要素を受け持つ部品ごとの区画（swimlane）を描き、要素をその区画の中に置く", async ({ page }) => {
+    // Arrange
+    const text = `package T {
+    action def MakeTea {
+        first start then boil;
+        action boil;
+        then pour;
+        action pour;
+        then done;
+    }
+    action makeTea : MakeTea;
+    part kettle {
+        perform makeTea;
+        part heater { perform makeTea.boil; }
+        part ctrl { perform makeTea.pour; }
+    }
+    view teaFlow : ActionFlowView { expose T::MakeTea; }
+}
+`;
+    await openApp(page);
+    await page.locator("#ed").fill(text);
+    await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ。反映でタブのメニューが描き直されるため
+    // Act
+    await page.locator(".tabadd summary").click();
+    await page.locator('[data-open-mv="teaFlow"]').click();
+    // Assert（区画は «performer» と部品の道のりの見出しを持ち、受け持つ要素はその区画の中にある）
+    const heater = page.locator('.lane[data-lane="kettle.heater"]');
+    await expect(heater).toContainText("«performer»");
+    await expect(heater).toContainText("kettle.heater");
+    await expect(page.locator('.lane[data-lane="kettle.ctrl"]')).toHaveCount(1);
+    const box = async (sel: string) => (await page.locator(sel).first().boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 };
+    const [lane, boil] = [await box('.lane[data-lane="kettle.heater"] rect'), await box('[data-key="a:boil"] .body')];
+    expect(boil.x).toBeGreaterThan(lane.x);
+    expect(boil.x + boil.width).toBeLessThan(lane.x + lane.width);
+    // draw.io へのエクスポートにも、区画を破線の四角で入れる（F-EXP-2）
+    await page.locator("#fileMenu summary").click();
+    await page.locator("#btnExport").click();
+    await page.locator("#exportFormat").selectOption({ label: "draw.io（.drawio）" });
+    const download = page.waitForEvent("download");
+    await page.locator("#exportName").press("Enter");
+    const xml = Buffer.concat(await (await (await download).createReadStream()).toArray()).toString();
+    expect(xml).toContain("«performer»&lt;br&gt;&lt;b&gt;kettle.heater&lt;/b&gt;");
+    expect(xml).toContain("dashed=1;strokeColor=#5B4B8A;");
   });
 
   test("F-VIEW-7: 順序の線を図から削除すると、テキストからその文だけが消える", async ({ page }) => {
@@ -924,7 +1088,7 @@ test.describe("画面から図を作る（F-VIEW-8、ADR-0005）", () => {
     // Act
     await page.locator('#dialogButtons [data-id="ok"]', { hasText: "作成" }).click();
     // Assert
-    await expect(page.locator("#toast")).toHaveText("図「overview」を作成しました。＋メニューの「作成した図」からいつでも開けます");
+    await expect(page.locator("#toast")).toHaveText("図「overview」を作成しました。サイドバーの「図」からいつでも開けます");
     await expect(page.locator('.tab[aria-selected="true"]')).toHaveAttribute("title", /^作成した図「overview」/);
     await page.locator(".tabadd summary").click();
     await expect(page.locator(".tabadd .phead")).toHaveText(["自動で描く図", "作成した図"]);
@@ -941,7 +1105,7 @@ test.describe("画面から図を作る（F-VIEW-8、ADR-0005）", () => {
     expect(await editorText(page)).toContain("view '全体の図' : GeneralView {");
   });
 
-  test("F-VIEW-8: 断られた名前（パッケージの名前）は、理由を示し、入れた名前のままダイアログを開き直す（異常系。#266）", async ({ page }) => {
+  test("F-VIEW-8: 断られた名前（パッケージの名前）は、理由を示し、入れた名前と種類のままダイアログを開き直す（異常系。#266）", async ({ page }) => {
     // Arrange
     await openAll(page);
     // Act
@@ -951,18 +1115,6 @@ test.describe("画面から図を作る（F-VIEW-8、ADR-0005）", () => {
     await expect(page.locator("#dialogTitle")).toHaveText("新しい図を作成");
     await expect(page.locator("#dialogInput")).toHaveValue("P");
     expect(await editorText(page)).not.toContain("view P");
-  });
-
-  test("F-VIEW-8: 作成した図を表示中に図のメニューの「新しい図を作成…」を押すと、作れない理由を示す（#266）", async ({ page }) => {
-    // Arrange
-    await openAll(page);
-    await saveView(page, "overview");
-    await expect(page.locator('.tab[aria-selected="true"]')).toHaveText(/overview/);
-    // Act
-    await page.locator("#diagramMenu > summary").click();
-    await page.locator("#menuSaveView").click();
-    // Assert
-    await expect(page.locator("#toast")).toHaveText("作成した図を表示しているため、ここからは新しい図を作成できません。自動で描く図を開いてから作成してください");
   });
 
   test("F-VIEW-8: 作成した図にパレットから置いた要素は、モデルに作られ、その図にも入る", async ({ page }) => {

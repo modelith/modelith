@@ -1,7 +1,10 @@
 // コアを動かす Web Worker（ADR-0003・ADR-0016）。テキストと解析を Worker の中で持ち、画面のスレッドを止めない。
 
 /// <reference lib="webworker" />
-import initWasm, { analyze, checkPluginMessage, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, RulePlugins, updateProjectPlugin } from "./wasm/modelith_core.js";
+import initWasm, {
+  analyze, checkPluginMessage, clearProjectFiles, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, problemKinds, projectProblems, removeProjectFile, RulePlugins,
+  setFocusFile, setProblemLevels, setProjectFile, updateProjectLevel, updateProjectPlugin,
+} from "./wasm/modelith_core.js";
 import { failedReply, handle, type CoreFns, type CoreRequest, type CoreResponse, type CoreState } from "./protocol";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -13,10 +16,18 @@ const fns: CoreFns = {
   parseProjectFile,
   createProjectFile,
   updateProjectPlugin,
+  updateProjectLevel,
+  setProblemLevels,
+  problemKinds,
   describePlugin,
   loadPlugins: (json) => new RulePlugins(json),
   modelSnapshot,
   checkPluginMessage,
+  setProjectFile,
+  removeProjectFile,
+  clearProjectFiles,
+  setFocusFile,
+  projectProblems,
 };
 /**
  * 画面のスレッドに返事を送る（`postMessage`）。

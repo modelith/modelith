@@ -9,8 +9,8 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 # 配布物（x86_64 Linux）のハッシュ。wasm-bindgen を上げたら、ここも更新する
-WASM_BINDGEN_VERSION_PINNED=0.2.129
-WASM_BINDGEN_SHA256=82d12bb940e2d4e72e0d5605387fc1b8ca179044e012b620f0ce4e7440e8320e
+WASM_BINDGEN_VERSION_PINNED=0.2.130
+WASM_BINDGEN_SHA256=9687f3bb551b9f66f37ed32a40d7913a00f7962db653054e56857bc306c3227f
 
 OUT_DIR=web/src/core/wasm
 

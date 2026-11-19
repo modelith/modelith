@@ -1,13 +1,15 @@
 // フォルダのハンドルを IndexedDB に保存する（HandleStore のブラウザ実装）。
 // ハンドルは構造化複製できるが localStorage には入らないため IndexedDB を使う。
 
-import type { DirHandleLike, HandleStore } from "./local-folder";
+import { channelName } from "../channel";
+import type { HandleStore } from "./local-folder";
 
-const DB = "modelith";
+/** データベースの名前（公開の系列ごとに分ける。ADR-0020）。 */
+const DB = channelName("modelith");
 const STORE = "handles";
 
 /**
- * IndexedDB のデータベース（modelith）を開く。初めてならハンドルを入れる場所（handles）を作る。
+ * IndexedDB のデータベース（modelith。プレリリース版は modelith@preview）を開く。初めてならハンドルを入れる場所（handles）を作る。
  *
  * @returns 開いたデータベース。開けなければ（プライベートモードなど）Error で拒否する
  * @example
@@ -78,26 +80,26 @@ function run<T>(mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest)
 
 export const idbHandleStore: HandleStore = {
   /**
-   * 覚えたフォルダのハンドルを引く。
+   * 覚えた値（フォルダのハンドルや、ハンドルを含む一覧）を引く。
    *
    * @param key 覚えたときのキー
-   * @returns ハンドル。無いときや IndexedDB が使えないとき（プライベートモードなど）は undefined（例外は投げない）
+   * @returns 覚えた値。無いときや IndexedDB が使えないとき（プライベートモードなど）は undefined（例外は投げない）
    * @example
-   * await idbHandleStore.get("recent") // → FileSystemDirectoryHandle（覚えているとき）
-   * await idbHandleStore.get("nope")   // → undefined
+   * await idbHandleStore.get("recent-folders") // → [{ id: "1", handle: FileSystemDirectoryHandle, project: null }]（覚えているとき）
+   * await idbHandleStore.get("nope")           // → undefined
    */
   async get(key) {
     try {
-      return await run<DirHandleLike | undefined>("readonly", (s) => s.get(key));
+      return await run<unknown>("readonly", (s) => s.get(key));
     } catch {
       return undefined; // プライベートモードなどで使えなくても、前回のフォルダを覚えないだけ
     }
   },
   /**
-   * フォルダのハンドルを覚える（同じキーがあれば置き換える）。IndexedDB が使えなければ何もしない（例外は投げない）。
+   * 値（フォルダのハンドルや、ハンドルを含む一覧）を覚える（同じキーがあれば置き換える）。IndexedDB が使えなければ何もしない（例外は投げない）。
    *
    * @param key キー
-   * @param value 覚えるフォルダのハンドル
+   * @param value 覚える値（構造化複製できるもの）
    */
   async set(key, value) {
     try {

@@ -3,7 +3,9 @@
 
 import {
   ConflictError,
+  hasFolderEdits,
   hasFolderFiles,
+  hasFolderTrees,
   hasSiblingFiles,
   isReadable,
   isWritable,
@@ -17,6 +19,8 @@ import {
   type RecentFolders,
   type SaveAsTarget,
 } from "../files/types";
+import { childPath, movedPath, parentPath } from "../files/entry-names";
+import { modelFiles, projectTexts } from "./project-files";
 import { findFile, hasContent, restoreOrder, sessionFrom, type Session, type SessionStore } from "./session";
 
 /** 開いている文書。ref が null なら保存先の無い「無題」の文書。 */
@@ -41,6 +45,8 @@ export interface Doc {
   layoutVersion: string | null;
   /** 配置ファイルが開いた後に他のアプリで変更された（保存で競合した）。 */
   layoutStale: boolean;
+  /** 仮に開いている（次に仮に開くファイルと置き換える。編集・ダブルクリックで開いたままにする。F-FILE-17）。 */
+  preview?: boolean;
 }
 
 /** 無題の文書の下書き。 */
@@ -114,11 +120,25 @@ async function readProjectText(source: FolderSource, ref: FolderRef): Promise<st
  */
 const sameRef = (a: FileRef | null, b: FileRef): boolean => !!a && a.provider === b.provider && a.id === b.id;
 
+/**
+ * ファイルの参照を見分ける文字列（読み込み中のファイルを覚えるのに使う）。
+ *
+ * @param ref ファイルの参照
+ * @returns プロバイダと id をつないだ文字列
+ * @example
+ * refKey({ provider: "local", id: "dir:1/a.sysml", … }) // → "local\u0000dir:1/a.sysml"
+ */
+const refKey = (ref: FileRef): string => `${ref.provider}\u0000${ref.id}`;
+
 export class Workspace {
   private readonly docs: Doc[] = [];
   private activeKey: string | null = null;
   private folderState: OpenFolder | null = null;
+  /** 開いているフォルダのモデルのファイルを、最後に読んだテキスト（パス → テキスト。ADR-0021）。 */
+  private disk = new Map<string, string>();
   private readonly listeners = new Set<() => void>();
+  /** 読み込み中のファイル（プロバイダと id → 読み終わる Promise）。同じファイルを二重に開かない。 */
+  private readonly loading = new Map<string, Promise<void>>();
   private seq = 0;
   /** 前回の続きを書き換えずにおくか。起動して前回の続きを戻し終えるまでは書き換えない（F-FILE-13）。 */
   private sessionHeld = true;
@@ -407,25 +427,67 @@ export class Workspace {
 
   /**
    * ファイルを開いて表示中にする（開いていれば、読み直さずにそれに切り替える）。隣の配置ファイルがあれば一緒に読む。
+   * 仮に開くなら（F-FILE-17）、仮に開いていた変更の無いファイルを閉じ、その場所に置く。仮にでなく開くなら、仮に開いていたそのファイルも開いたままにする。
    *
    * @param ref 開くファイルの参照
+   * @param opts preview：仮に開く（フォルダの一覧の 1 回クリック）
    * @returns 開いた（切り替えた）文書。読めるプロバイダが無い・読めないときは例外を投げる
    * @example
    * await ws.openRef(ref)  // → { ref, name: "a.sysml", text: "package A;", … }
    * await ws.openRef(ref)  // → 同じ文書（2 回目。未保存の変更も残る）
+   * await ws.openRef(b, { preview: true }) // → b を仮に開く（仮に開いていた a は閉じ、b がその場所に入る）
    */
-  async openRef(ref: FileRef): Promise<Doc> {
+  async openRef(ref: FileRef, opts: { preview?: boolean } = {}): Promise<Doc> {
+    // 読み込み中の同じファイル（続けて押した・ダブルクリック）は、読み込み終わるのを待って同じ文書にする
+    const waiting = this.loading.get(refKey(ref));
+    if (waiting) await waiting;
     const open = this.docs.find((d) => sameRef(d.ref, ref));
     if (open) {
+      if (!opts.preview) delete open.preview;
       this.activate(open.key);
       return open;
     }
-    const doc = await this.load(ref);
+    const pending = this.load(ref);
+    this.loading.set(refKey(ref), pending.then(() => undefined, () => undefined));
+    let doc: Doc;
+    try {
+      doc = await pending;
+    } finally {
+      this.loading.delete(refKey(ref));
+    }
+    if (opts.preview) this.replacePreview(doc);
     this.activeKey = doc.key;
     // すべて閉じた後に開いたら、「すべて閉じて終えた」の記録を消す
     if (this.docs.length === 1) this.persistDrafts();
     this.changed();
     return doc;
+  }
+
+  /**
+   * 仮に開いた文書を、開いたままにする（F-FILE-17。ダブルクリック）。key の文書が無い・仮に開いていなければ何もしない。
+   *
+   * @param key 文書のキー
+   * @example
+   * ws.pin(doc.key) // → doc.preview が消え、次に仮に開くファイルと置き換わらない
+   */
+  pin(key: string): void {
+    const doc = this.get(key);
+    if (!doc?.preview) return;
+    delete doc.preview;
+    this.changed();
+  }
+
+  /**
+   * 開いた文書を仮に開いた文書にし、仮に開いていた変更の無い文書があれば閉じて、その場所に置く（F-FILE-17）。
+   *
+   * @param doc 開いたばかりの文書（一覧の最後にある）
+   */
+  private replacePreview(doc: Doc): void {
+    doc.preview = true;
+    const i = this.docs.findIndex((d) => d.preview && d !== doc && !this.isDirty(d));
+    if (i < 0) return;
+    this.docs.splice(this.docs.indexOf(doc), 1);
+    this.docs.splice(i, 1, doc);
   }
 
   /**
@@ -522,6 +584,9 @@ export class Workspace {
       }
       doc.savedText = doc.text;
       doc.stale = false;
+      // 閉じた後も、保存した中身をモデルに入れる（ADR-0021）
+      const path = this.folderPath(key);
+      if (path) this.disk.set(path, doc.text);
     }
     try {
       await this.writeLayout(doc, { force: opts.force });
@@ -612,6 +677,26 @@ export class Workspace {
   }
 
   /**
+   * 配置ファイルだけを読み直し、保存した配置と版を今のファイルのものにする（今の配置は変えない）。
+   * 他のアプリで変わった配置ファイルに上書きする前に、そのファイルの知らない項目や、この版では書けない印を見るために使う（#226）。
+   * key の文書が無い・隣を扱えないなら何もしない。
+   *
+   * @param key 文書のキー
+   * @returns 読み直した配置ファイルの中身（無ければ ""）。読み直さなかったら null
+   * @example
+   * await ws.reloadSavedLayout(doc.key) // → '{"modelith":"layout",…,"requires":["shared-layers"]}'（doc.savedLayout も同じになり、layoutStale は消える）
+   * await ws.reloadSavedLayout("gone")  // → null
+   */
+  async reloadSavedLayout(key: string): Promise<string | null> {
+    const doc = this.get(key);
+    if (!doc?.ref || doc.layoutHome !== "sibling") return null;
+    const { savedLayout, layoutVersion } = await this.readLayout(doc.ref);
+    Object.assign(doc, { savedLayout, layoutVersion, layoutStale: false });
+    this.changed();
+    return savedLayout;
+  }
+
+  /**
    * 文書を閉じる。閉じたのが表示中なら隣の文書（後ろ、無ければ前）に切り替え、最後の 1 つなら表示中を無くす（新しい文書は作らない。F-FILE-14）。
    * 無題の文書なら下書きからも消す。最後の 1 つなら、すべて閉じたことを下書きの保存先に残す。key の文書が無ければ何もしない。
    *
@@ -628,16 +713,17 @@ export class Workspace {
   }
 
   /**
-   * 他のアプリでの変更を確かめる（画面に戻ったときに呼ぶ）。未保存の変更が無ければ読み直し、
+   * 他のアプリでの変更を確かめる（画面に戻ったときに呼ぶ。F-FILE-8）。未保存の変更が無ければ読み直し、
    * あれば読み直さずに stale にする。上書きできない保存先と、読めないファイルは確かめない。
    *
-   * @returns 読み直した文書の key の一覧。変更が無ければ空
+   * @returns 読み直した文書の key の一覧（reloaded）と、今回初めて stale にした文書の key の一覧（stale。前から stale のものは入れない）
    * @example
-   * await ws.checkExternal() // → [a.key]（a は変更なし、b は未保存の変更ありで stale になった）
-   * await ws.checkExternal() // → []（他で変更されていない）
+   * await ws.checkExternal() // → { reloaded: [a.key], stale: [b.key] }（a は未保存の変更なしで読み直し、b は未保存の変更ありで stale になった）
+   * await ws.checkExternal() // → { reloaded: [], stale: [] }（他で変更されていない。b は前から stale）
    */
-  async checkExternal(): Promise<string[]> {
+  async checkExternal(): Promise<{ reloaded: string[]; stale: string[] }> {
     const reloaded: string[] = [];
+    const stale: string[] = [];
     let any = false;
     for (const doc of this.docs) {
       const p = doc.ref && this.providers.get(doc.ref.provider);
@@ -650,14 +736,45 @@ export class Workspace {
       }
       if (cur.version === doc.version) continue;
       any = true;
-      if (this.isDirty(doc)) doc.stale = true;
-      else {
+      if (this.isDirty(doc)) {
+        if (!doc.stale) stale.push(doc.key);
+        doc.stale = true;
+      } else {
         Object.assign(doc, { text: cur.text, savedText: cur.text, version: cur.version, stale: false, layoutStale: false, ...(await this.readLayout(doc.ref)) });
         reloaded.push(doc.key);
       }
     }
+    // 開いていないファイルも、他のアプリで変わっていればモデルに入れ直す（ADR-0021 §3）
+    if (await this.readModelFiles()) any = true;
     if (any) this.changed();
-    return reloaded;
+    return { reloaded, stale };
+  }
+
+  /**
+   * 文書のファイルが、開いた（最後に読んだ・保存した）後に他のアプリで変わったかを確かめる（編集し始めたときに呼ぶ。F-FILE-18）。
+   * 変わっていれば stale にして変更を知らせる。中身は読み直さない（読み直すかは呼び手が尋ねて reload する）。
+   * 無題の文書・上書きできない保存先・読めないファイル・すでに stale の文書は確かめず false を返す。
+   *
+   * @param key 文書のキー
+   * @returns 他のアプリで変わっていて、今回 stale にしたら true
+   * @example
+   * await ws.changedElsewhere(a.key) // → true（a.sysml が他のアプリで書き換えられていた。a は stale になる）
+   * await ws.changedElsewhere(a.key) // → false（変わっていない、または前から stale）
+   */
+  async changedElsewhere(key: string): Promise<boolean> {
+    const doc = this.get(key);
+    const p = doc?.ref && this.providers.get(doc.ref.provider);
+    if (!doc?.ref || doc.stale || !p || !isWritable(p) || !isReadable(p)) return false;
+    let cur;
+    try {
+      cur = await p.read(doc.ref);
+    } catch {
+      return false; // 消えた・読めないファイルは、保存するときに知らせる
+    }
+    if (cur.version === doc.version || doc.stale) return false;
+    doc.stale = true;
+    this.changed();
+    return true;
   }
 
   /* ---- フォルダ ---- */
@@ -672,6 +789,36 @@ export class Workspace {
    */
   folder(): OpenFolder | null {
     return this.folderState;
+  }
+
+  /**
+   * 開いているフォルダのモデルのファイルを、1 つのモデルとしてコアに渡すテキストにする（ADR-0021）。
+   * 開いている文書は、保存していない変更も含めた今のテキストを使う。
+   *
+   * @returns フォルダからのパス → テキスト。フォルダを開いていなければ空
+   * @example
+   * ws.projectTexts() // → Map { "parts.sysml" → "package Parts { … }", "app.sysml" → "package App { … }"（編集中のテキスト） }
+   * ws.projectTexts() // → Map {}（フォルダを開いていない）
+   */
+  projectTexts(): Map<string, string> {
+    const f = this.folderState;
+    return f ? projectTexts(modelFiles(f.entries), this.disk, this.docs) : new Map();
+  }
+
+  /**
+   * 文書が、開いているフォルダの中のファイルなら、そのパスを返す（コアに表示中のファイルを伝えるのに使う）。
+   *
+   * @param key 文書のキー
+   * @returns フォルダからのパス。無題・フォルダの外のファイル・文書が無ければ null
+   * @example
+   * ws.folderPath(doc.key) // → "models/app.sysml"
+   * ws.folderPath(untitled.key) // → null
+   */
+  folderPath(key: string): string | null {
+    const ref = this.get(key)?.ref;
+    const f = this.folderState;
+    if (!ref || !f) return null;
+    return modelFiles(f.entries).some((r) => r.provider === ref.provider && r.id === ref.id) ? ref.path : null;
   }
 
   /**
@@ -702,12 +849,60 @@ export class Workspace {
     return this.setFolder(source, await source.reopenRecent(opts));
   }
 
+  /**
+   * プロジェクトの一覧のフォルダを開き、中身を一覧する（F-PROJ-3）。今開いているフォルダと切り替わる。開いている文書は開いたまま残す。
+   * 許可を求めることがあるので、利用者の操作から呼ぶ。
+   *
+   * @param source プロジェクトの一覧を覚えているプロバイダ
+   * @param id 一覧の項目の名前
+   * @returns 開いたら true。一覧に無い・許可されなければ false。フォルダが消された・読めないときは例外を投げる
+   * @example
+   * await ws.openRecentFolder(local, "2") // → true（ws.folder() が一覧の 2 のフォルダになる）
+   * await ws.openRecentFolder(local, "9") // → false（一覧に無い）
+   */
+  async openRecentFolder(source: FolderSource & RecentFolders, id: string): Promise<boolean> {
+    return this.setFolder(source, await source.openRecent(id));
+  }
+
+  /**
+   * 開いているフォルダを中身ごと消す（F-PROJ-4）。消したら、そのフォルダのファイルの文書を閉じ、フォルダを閉じて、変更を知らせる。
+   * 未保存の変更は失われるので、呼ぶ前に利用者に確かめる。
+   *
+   * @returns 消し終えたら解決する Promise。フォルダが開かれていない・消せないときは、何も変えずに例外（Error）で拒否する
+   * @example
+   * await ws.deleteFolder() // → フォルダが無くなり、ws.folder() が null、中のファイルの文書も閉じる
+   */
+  async deleteFolder(): Promise<void> {
+    const f = this.folderState;
+    if (!f) throw new Error("フォルダが開かれていません");
+    if (!hasFolderEdits(f.source)) throw new Error("このフォルダは削除できません");
+    const docs = this.docs.filter((d) => this.folderPath(d.key) !== null);
+    await f.source.removeFolder(f.ref);
+    for (const d of docs) this.close(d.key);
+    this.closeFolder();
+  }
+
+  /**
+   * 開いているフォルダを閉じ、変更を知らせる（F-PROJ-3）。開いている文書は閉じない（未保存の変更を失わないため）。
+   * フォルダが開かれていなければ何もしない。
+   *
+   * @example
+   * ws.closeFolder() // → ws.folder() が null になり、ws.list() は変わらない
+   */
+  closeFolder(): void {
+    if (!this.folderState) return;
+    this.folderState = null;
+    this.disk = new Map();
+    this.changed();
+  }
+
   /** 開いているフォルダの中身とプロジェクトの設定ファイルを読み直し、変更を知らせる。フォルダが開かれていなければ何もしない。 */
   async refreshFolder(): Promise<void> {
     const f = this.folderState;
     if (!f) return;
     f.entries = await f.source.list(f.ref);
     f.projectText = await readProjectText(f.source, f.ref);
+    await this.readModelFiles();
     this.changed();
   }
 
@@ -748,7 +943,119 @@ export class Workspace {
     if (!f) throw new Error("フォルダが開かれていません");
     const ref = await f.source.createFile(f.ref, path, text);
     f.entries = await f.source.list(f.ref);
+    await this.readModelFiles();
     return this.openRef(ref);
+  }
+
+  /**
+   * 開いているフォルダの中に空のフォルダを作り、一覧し直す（ファイルの一覧の「新しいフォルダ」。F-FILE-19）。
+   *
+   * @param path 作るフォルダの、フォルダからの相対パス
+   * @returns 作り終えたら解決する Promise。フォルダが開かれていない・作れない・同じ名前があるときは例外（Error）で拒否する
+   * @example
+   * await ws.createFolder("models/parts") // → ws.folder() の一覧に models/parts が出る
+   * await ws.createFolder("models")       // → Error「「models」は既にあります」（あるとき）
+   */
+  async createFolder(path: string): Promise<void> {
+    const f = this.folderState;
+    if (!f) throw new Error("フォルダが開かれていません");
+    if (!hasFolderEdits(f.source)) throw new Error("このフォルダにはフォルダを作れません");
+    await f.source.createFolder(f.ref, path);
+    await this.refreshFolder();
+  }
+
+  /**
+   * 開いているフォルダの文書のうち、path のファイルか、path のフォルダの中のファイルのもの（名前の変更・削除の前に、影響を確かめる。F-FILE-19）。
+   *
+   * @param path フォルダからの相対パス（ファイルかフォルダ）
+   * @returns 該当する文書（開いた順）。フォルダが開かれていなければ空
+   * @example
+   * ws.docsIn("models")         // → [models/a.sysml の文書, models/sub/b.sysml の文書]
+   * ws.docsIn("models/a.sysml") // → [models/a.sysml の文書]
+   */
+  docsIn(path: string): Doc[] {
+    return this.docs.filter((d) => {
+      const at = this.folderPath(d.key);
+      return at !== null && movedPath(at, path, path) !== null;
+    });
+  }
+
+  /**
+   * 開いているフォルダの中のファイルかフォルダの名前を変える（動かす。F-FILE-19）。
+   * モデルのファイルなら隣の配置ファイル（名前.layout.json）も合わせて動かす（フォルダなら中身ごと動く）。
+   * 動かしたファイルを開いていれば、文書を新しいファイルに付け替える（未保存の変更はそのまま残す）。
+   *
+   * @param from 名前を変えるもののパス
+   * @param to 新しいパス
+   * @returns 動かし終えたら解決する Promise。フォルダが開かれていない・動かせない・動かす先に何かあるとき
+   *   （モデルのファイルなら、新しい名前の配置ファイルが既にあるときも。何も動かさない）は例外（Error）で拒否する
+   * @example
+   * await ws.renameEntry("a.sysml", "b.sysml") // → b.sysml と b.layout.json になり、a.sysml の文書は b.sysml の文書になる
+   * await ws.renameEntry("a.sysml", "c.sysml") // → Error「図の配置のファイル「c.layout.json」が既にあるため、…」（c.sysml が無く c.layout.json だけあるとき）
+   * await ws.renameEntry("models", "parts")    // → parts/… になり、中の文書も付け替わる
+   */
+  async renameEntry(from: string, to: string): Promise<void> {
+    const f = this.folderState;
+    if (!f) throw new Error("フォルダが開かれていません");
+    const source = f.source;
+    if (!hasFolderEdits(source)) throw new Error("このフォルダでは名前を変えられません");
+    const docs = this.docsIn(from);
+    const isFile = modelFiles(f.entries).some((r) => r.path === from);
+    const layoutFrom = childPath(parentPath(from), layoutNameFor(from.slice(from.lastIndexOf("/") + 1)));
+    const layoutTo = childPath(parentPath(to), layoutNameFor(to.slice(to.lastIndexOf("/") + 1)));
+    const files = isFile && layoutFrom !== layoutTo && hasFolderFiles(source) ? source : null;
+    // 新しい名前の配置ファイルが既にあれば、何も動かす前に断る（動かした後では、モデルだけが動いて別の配置と組になるため。#225）
+    if (files && (await files.readInFolder(f.ref, layoutTo)) !== null) {
+      throw new Error(`図の配置のファイル「${layoutTo}」が既にあるため、「${to}」にできません。別の名前にしてください`);
+    }
+    await source.moveInFolder(f.ref, from, to);
+    if (files && (await files.readInFolder(f.ref, layoutFrom)) !== null) await source.moveInFolder(f.ref, layoutFrom, layoutTo);
+    f.entries = await source.list(f.ref);
+    await this.readModelFiles();
+    const moved = modelFiles(f.entries);
+    for (const doc of docs) {
+      const path = doc.ref && movedPath(doc.ref.path, from, to);
+      const ref = path === null || path === undefined ? undefined : moved.find((r) => r.path === path);
+      if (ref) await this.relink(doc, ref);
+    }
+    this.changed();
+  }
+
+  /**
+   * 開いているフォルダの中のファイルかフォルダを消す（F-FILE-19）。モデルのファイルなら隣の配置ファイルも消す。
+   * 消したファイルを開いていれば、その文書を閉じる（未保存の変更は失われるので、呼ぶ前に利用者に確かめる）。
+   *
+   * @param path 消すもののパス
+   * @returns 消し終えたら解決する Promise。フォルダが開かれていない・消せないときは例外（Error）で拒否する
+   * @example
+   * await ws.removeEntry("a.sysml") // → a.sysml と a.layout.json が無くなり、a.sysml の文書が閉じる
+   * await ws.removeEntry("models")  // → models が中身ごと無くなる
+   */
+  async removeEntry(path: string): Promise<void> {
+    const f = this.folderState;
+    if (!f) throw new Error("フォルダが開かれていません");
+    const source = f.source;
+    if (!hasFolderTrees(source)) throw new Error("このフォルダでは削除できません");
+    const docs = this.docsIn(path);
+    const isFile = modelFiles(f.entries).some((r) => r.path === path);
+    if (!(await source.removeInFolder(f.ref, path))) throw new Error(`「${path}」が見つかりません`);
+    if (isFile) await source.removeInFolder(f.ref, childPath(parentPath(path), layoutNameFor(path.slice(path.lastIndexOf("/") + 1))));
+    for (const doc of docs) this.close(doc.key);
+    await this.refreshFolder();
+  }
+
+  /**
+   * 動かしたファイルの新しい参照に、文書を付け替える。中身と版を読み直し、未保存の変更が無ければ中身も合わせる（配置も同じ）。
+   *
+   * @param doc 付け替える文書
+   * @param ref 動かした先のファイルの参照
+   */
+  private async relink(doc: Doc, ref: FileRef): Promise<void> {
+    const dirty = this.isDirty(doc);
+    const cur = await this.readable(ref).read(ref);
+    const layout = await this.readLayout(ref);
+    Object.assign(doc, { ref, name: ref.name, version: cur.version, stale: false, layoutStale: false, layoutVersion: layout.layoutVersion, layoutHome: layout.layoutHome });
+    if (!dirty) Object.assign(doc, { text: cur.text, savedText: cur.text, layout: layout.layout, savedLayout: layout.savedLayout });
   }
 
   /**
@@ -764,8 +1071,36 @@ export class Workspace {
   private async setFolder(source: FolderSource, ref: FolderRef | null): Promise<boolean> {
     if (!ref) return false;
     this.folderState = { source, ref, entries: await source.list(ref), projectText: await readProjectText(source, ref) };
+    this.disk = new Map();
+    await this.readModelFiles();
     this.changed();
     return true;
+  }
+
+  /**
+   * 開いているフォルダのモデルのファイルをすべて読み直す（ADR-0021 §3）。読めないファイルは入れない（読めるようになれば次に入る）。
+   *
+   * @returns 読んだテキストが前と変わったら true
+   * @example
+   * await this.readModelFiles() // → true（parts.sysml が他のアプリで変わった）
+   * await this.readModelFiles() // → false（変わっていない・フォルダを開いていない）
+   */
+  private async readModelFiles(): Promise<boolean> {
+    const f = this.folderState;
+    const source = f?.source;
+    if (!f || !source || !isReadable(source)) return false;
+    const next = new Map<string, string>();
+    for (const ref of modelFiles(f.entries)) {
+      try {
+        next.set(ref.path, (await source.read(ref)).text);
+      } catch {
+        // 消えた・読めないファイルはモデルに入れない
+      }
+    }
+    if (this.folderState !== f) return false;
+    const changed = next.size !== this.disk.size || [...next].some(([path, text]) => this.disk.get(path) !== text);
+    this.disk = next;
+    return changed;
   }
 
   /* ---- 内部 ---- */
@@ -783,6 +1118,11 @@ export class Workspace {
     const before = { text: doc.text, layout: doc.layout, dirty: this.isDirty(doc), unsaved: this.layoutUnsaved(doc) };
     fn(doc);
     if (doc.text === before.text && doc.layout === before.layout) return;
+    // 編集した仮のファイルは、開いたままにする（F-FILE-17）
+    if (doc.preview && this.isDirty(doc)) {
+      delete doc.preview;
+      this.changed();
+    }
     if (!doc.ref) this.persistDrafts();
     if (before.dirty !== this.isDirty(doc) || before.unsaved !== this.layoutUnsaved(doc)) this.changed();
   }

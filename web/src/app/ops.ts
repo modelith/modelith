@@ -1,22 +1,23 @@
 // 図からの編集操作。すべてテキストの書き換えとして行い、setText で反映する（ADR-0001）。
 
-import type { Entry, ModelEdge, ModelNode } from "../core";
+import { inOpenFile, type Entry, type ModelEdge, type ModelNode } from "../core";
+import { renameEdgeKeys } from "./edge-shape";
 import { ask } from "./dialog";
 import { perform } from "./intent";
-import { flowName } from "./action-flow";
-import { renamedStateKeys, stateName } from "./state-machine";
-import { kindLabel } from "./labels";
+import { flowName } from "../render/action-flow";
+import { renamedStateKeys, stateName } from "../render/state-machine";
+import { docChangedMessage, kindLabel } from "../render/labels";
 import { addToView, editableView } from "./view-ops";
 import { shownDocName } from "./files";
-import { nodeH, W } from "./geometry";
-import { renderInspector, startRename } from "./inspector";
+import { nodeH, W } from "../render/geometry";
+import { docLabel, renderInspector, startRename } from "./inspector";
 import { attachEnds } from "./pins";
 import { KW_FOR, type RelKind } from "./relations";
 import { highlight, render } from "./render";
 import { cancelConnect, clearSel, S } from "./state";
-import { commitLayout, setText, settled, toast } from "./sync";
+import { commitLayout, dismissToast, setText, settled, toast } from "./sync";
 import { CC, curLayout, nodeByKey, phaseLabel } from "./views";
-import type { Pos } from "./layout";
+import type { Pos } from "../render/layout";
 import { isPackageName, packageNameFor } from "./new-package";
 import { renamedMessage } from "./rename-text";
 
@@ -47,7 +48,7 @@ export const uniqueChild = (entry: Entry, base: string): string => {
  * // S.text が "part def A;" のとき
  * firstPackage() // → undefined
  */
-const firstPackage = (): Entry | undefined => S.P.entries.find((e) => e.kind === "package");
+const firstPackage = (): Entry | undefined => S.P.entries.find((e) => e.kind === "package" && inOpenFile(e));
 
 /**
  * 表示中の内部ブロック図・シーケンス図の対象のキーを返す（コアが `u:`・`l:` のキーの要素を探す先。意図の ctx に渡す）。
@@ -157,6 +158,65 @@ export const OPS = {
   },
 
   /**
+   * 属性を足すか書き換える（意図 `setAttribute`、F-EDIT-12）。書いたらトーストで知らせる。
+   *
+   * @param n 属性を持つ定義
+   * @param attr 書き換える属性の今の名前（足すときは null）
+   * @param name 新しい名前
+   * @param type 型（空なら書かない）
+   * @param value 値（空なら書かない）
+   * @returns 書いたなら true。コアが断った（名前が空・既にある名前・使えない文字など）なら false
+   * @example
+   * await OPS.setAttribute(A, null, "mass", "Real", "1500") // → true（attribute mass : Real = 1500; を足す）
+   * await OPS.setAttribute(A, "mass", "mass", "", "")        // → true（型と値を消す）
+   */
+  async setAttribute(n: ModelNode, attr: string | null, name: string, type: string, value: string): Promise<boolean> {
+    const r = await perform({ op: "setAttribute", key: n.key, ...(attr === null ? {} : { attr }), name, type, value, ctx: ctxKey() });
+    if (!r) return false;
+    setText(r.text, { changeAt: r.at, flash: r.flash });
+    toast(attr === null ? `「${n.name}」に属性「${name.trim()}」を足しました` : `属性「${name.trim()}」を書き換えました`);
+    return true;
+  },
+
+  /**
+   * 属性を消す（意図 `removeAttribute`、F-EDIT-12）。消したらトーストで知らせる。
+   *
+   * @param n 属性を持つ定義
+   * @param attr 消す属性の名前
+   * @returns 消したなら true。コアが断ったなら false
+   * @example
+   * await OPS.removeAttribute(A, "mass") // → true（attribute mass … ; の行が消える）
+   */
+  async removeAttribute(n: ModelNode, attr: string): Promise<boolean> {
+    const r = await perform({ op: "removeAttribute", key: n.key, attr, ctx: ctxKey() });
+    if (!r) return false;
+    setText(r.text, { changeAt: r.at, flash: r.flash });
+    toast(`属性「${attr}」を消しました`);
+    return true;
+  },
+
+  /**
+   * 要素の説明（要求なら要求の文章。テキストの doc）を書き換える（意図 `setDoc`、F-EDIT-12）。空なら説明を消す。
+   * 書き換えたらトーストで知らせる。
+   *
+   * @param n 説明を書き換える要素
+   * @param text 新しい説明の文（前後の空白は除く）
+   * @returns 書き換えた（または同じ文で変える必要が無かった）なら true。コアが断ったなら false
+   * @example
+   * // requirement def R { doc /* 古い *\/ } があるとき
+   * await OPS.setDoc(R, "3 分で沸かす") // → true（テキストの doc が変わる）
+   * await OPS.setDoc(R, "古い")          // → true（何も変えない）
+   */
+  async setDoc(n: ModelNode, text: string): Promise<boolean> {
+    if (text.trim() === (n.entry.docText ?? n.entry.doc ?? "")) return true;
+    const r = await perform({ op: "setDoc", key: n.key, text, ctx: ctxKey() });
+    if (!r) return false;
+    setText(r.text, { changeAt: r.at, flash: r.flash });
+    toast(docChangedMessage(n.name, docLabel(n), text));
+    return true;
+  },
+
+  /**
    * 名前を変え、参照と配置情報もまとめて書き換える（意図 `rename`、F-EDIT-3）。
    * すべてのビューの座標・接続点・線の端のキーを新しい名前に付け替え（`u:`・`l:` は付けたまま。状態遷移の図の状態は、中の要素のキーも）、
    * 選び直して配置を確定し、トーストで知らせる。
@@ -171,7 +231,10 @@ export const OPS = {
    * await OPS.rename(A, "B")     // → false（B が既にあるとき。理由をトーストで出す）
    */
   async rename(n: ModelNode, nn: string): Promise<boolean> {
-    if (nn === n.name) return true;
+    if (nn === n.name) {
+      dismissToast(); // 何も変えないので、前の知らせを残さない（#244）
+      return true;
+    }
     const r = await perform({ op: "rename", key: n.key, name: nn, ctx: ctxKey() });
     if (!r) return false;
     // 図の要素のキーも名前に合わせて変える（内部ブロック図の部品・ライフラインは u:・l: を付けたまま。状態は中の要素のキーも変える）
@@ -189,13 +252,10 @@ export const OPS = {
           v.pins[newKey] = pv;
           delete v.pins[ok];
         }
-        for (const [k, val] of Object.entries(v.ends)) {
-          const parts = k.split("|");
-          if (parts[1] === ok || parts[2] === ok) {
-            v.ends[parts.map((s, i) => ((i === 1 || i === 2) && s === ok ? newKey : s)).join("|")] = val;
-            delete v.ends[k];
-          }
-        }
+        // 線の ID に要素のキーが入るので、線の端・曲がり角・付け替えた端の鍵も付け替える
+        renameEdgeKeys(v.ends, ok, newKey);
+        renameEdgeKeys(v.bends, ok, newKey);
+        renameEdgeKeys(v.anchors, ok, newKey);
       }
     }
     S.sel = moves[0]?.[1] ?? nk;

@@ -1,6 +1,8 @@
 // 2 つの要素の間に追加できる関係の候補（F-EDIT-2）。要求をつなぐ関係は、線を引いた向きによらず出す。
 import { describe, expect, it } from "vitest";
-import { build, parse, type ModelNode } from "../core";
+import { build, parse, type Model, type ModelNode } from "../core";
+import { flowContentOf } from "../render/action-flow";
+import { stateContentOf } from "../render/state-machine";
 import { relOptions, reqRelOptions, type ReqRelEnd } from "./relations";
 
 const end = (key: string, kind: string): ReqRelEnd => ({ key, kind });
@@ -102,5 +104,54 @@ describe("relOptions（線を引いたときの関係の候補）", () => {
     const opts = relOptions(n("H"), n("I"));
     // Assert
     expect(opts).toEqual([{ rel: "comp", label: "アイテムとして持つ" }]);
+  });
+});
+
+describe("relOptions（アクションの流れの図・状態遷移の図で引ける線）", () => {
+  /**
+   * テキストのモデルから、対象の図の要素をキーで引く関数を作る。
+   *
+   * @param text SysML v2 のテキスト
+   * @param ctx 対象の定義の名前
+   * @param contentOf 図の中身の作り方（flowContentOf・stateContentOf）
+   * @returns キーから要素を引く関数（無ければ例外）
+   */
+  function nodesOf(text: string, ctx: string, contentOf: (M: Model, ctx: ModelNode) => { nodes: ModelNode[] }): (key: string) => ModelNode {
+    const M = build(parse(text));
+    const c = M.nodes.find((n) => n.key === ctx);
+    if (!c) throw new Error(`${ctx} がありません`);
+    const { nodes } = contentOf(M, c);
+    return (key) => {
+      const n = nodes.find((x) => x.key === key);
+      if (!n) throw new Error(`${key} がありません`);
+      return n;
+    };
+  }
+
+  it("アクションの流れの図で、名前のある要素どうしは、順序の線だけを引ける", () => {
+    // Arrange
+    const n = nodesOf("package P { action def A { first start; then action a; then action b; send S() to b; then done; } }", "A", flowContentOf);
+    // Act
+    const opts = relOptions(n("a:a"), n("a:b"));
+    // Assert
+    expect(opts).toEqual([{ rel: "succession", label: "この後に実行する（順序 succession）" }]);
+  });
+
+  it("状態遷移の図で、名前のある状態どうしは、遷移を引ける", () => {
+    // Arrange
+    const n = nodesOf("package P { state def S { entry; then off; state off; state on; } }", "S", stateContentOf);
+    // Act
+    const opts = relOptions(n("s:off"), n("s:on"));
+    // Assert
+    expect(opts).toEqual([{ rel: "transition", label: "この状態から遷移する（transition）" }]);
+  });
+
+  it("状態遷移の図で、開始の記号へは何も引けない（異常系）", () => {
+    // Arrange
+    const n = nodesOf("package P { state def S { entry; then off; state off; } }", "S", stateContentOf);
+    // Act
+    const opts = relOptions(n("s:off"), n("s:#start"));
+    // Assert
+    expect(opts).toEqual([]);
   });
 });

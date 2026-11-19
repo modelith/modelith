@@ -1,22 +1,22 @@
 // 右クリック（長押し）メニュー。
 
 import type { ModelEdge, ModelNode } from "../core";
-import { flowName } from "./action-flow";
-import { isPseudoState, stateName } from "./state-machine";
+import { flowName } from "../render/action-flow";
+import { isPseudoState, stateName } from "../render/state-machine";
 import { local, placeUsageAt, fit, toCanvas } from "./canvas";
 import { $, closest, esc } from "./dom";
-import type { Pin } from "./geometry";
+import type { Pin } from "../render/geometry";
 import { act, renderInspector, startRename } from "./inspector";
 import { alignSel, deleteSel, MSGOPS, OPS, PHASEOPS, setPhaseSel, setSelection, toggleSel } from "./ops";
 import { openEntry, openTarget, PALETTE, placeTool, selectEntry, setTab } from "./panels";
 import { DIR_LABEL, PINOPS, pinsFor } from "./pins";
 import { highlight, render, scrollEditorTo } from "./render";
 import { clearSel, S } from "./state";
-import { kindLabel } from "./labels";
-import { kindIcon } from "./svg";
+import { kindLabel } from "../render/labels";
+import { kindIcon } from "../render/svg";
 import { relayout, toast } from "./sync";
 import { CC, edgeById, nodeByKey, phaseLabel } from "./views";
-import { addToView, canAddToView, editableView, removeFromView } from "./view-ops";
+import { addToView, canAddToView, deleteDiagram, editableView, removeFromView, renameDiagram } from "./view-ops";
 
 export type CtxItem = { sep: true } | { head: string } | { label: string; icon?: string; disabled?: boolean; act: () => void };
 
@@ -392,6 +392,9 @@ export function initCtxMenu(): void {
       });
     }
     if (n) items.push({ sep: true }, { label: "名前を変更", act: () => { selectOnly(n.key); startRename(); } }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
+    else if (e.kind === "view" && S.M.views.some((v) => v.name === e.name)) {
+      items.push({ sep: true }, { label: "図の名前を変更", act: () => void renameDiagram(e.name) }, { label: "図を削除", act: () => void deleteDiagram(e.name) });
+    }
     closeCtx();
     openCtx(ev.clientX, ev.clientY, items);
   });

@@ -6,6 +6,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use modelith_core::levels;
 use modelith_core::project_file;
 use modelith_core::rules::{self, LoadedPlugin, ReadError};
 
@@ -69,16 +70,36 @@ pub fn run(folder: &Path) -> Result<(String, bool), String> {
     }
     let files =
         model_files(folder).map_err(|e| format!("フォルダの内容を読み込めません（{e}）"))?;
+    // フォルダのすべてのファイルを 1 つのモデルとし、ファイルごとにその要素を検査する（ADR-0021）
+    let mut texts: Vec<(String, String)> = Vec::new();
     for file in &files {
         let path = relative(folder, file);
         match read_text(file) {
-            Ok(text) => entries.extend(
-                rules::check_text(&text, &plugins)
-                    .iter()
-                    .map(|l| report::from_finding(&path, l)),
-            ),
+            Ok(text) => texts.push((path, text)),
             Err(e) => entries.push(unreadable_model(&path, &e)),
         }
+    }
+    for (k, (path, text)) in texts.iter().enumerate() {
+        let others: Vec<&str> = texts
+            .iter()
+            .enumerate()
+            .filter(|&(j, _)| j != k)
+            .map(|(_, (_, t))| t.as_str())
+            .collect();
+        // プロジェクトで選んだ知らせの重さを当てる（F-EDIT-11。画面と同じ）
+        let located = rules::check_text(text, &others, &plugins);
+        entries.extend(
+            located
+                .into_iter()
+                .filter_map(|l| {
+                    let finding = levels::apply_findings(vec![l.finding], &project.levels).pop()?;
+                    Some(rules::Located {
+                        place: l.place,
+                        finding,
+                    })
+                })
+                .map(|l| report::from_finding(path, &l)),
+        );
     }
     Ok(report::render(entries, files.len()))
 }

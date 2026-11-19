@@ -192,6 +192,16 @@ test.describe("モデルツリー", () => {
   });
 });
 
+test("Q-3・Q-8: テキスト欄に Tab で入ると、フォーカスの印（枠）が見える（#244）", async ({ page }) => {
+  // Arrange
+  await openApp(page);
+  // Act
+  expect(await tabUntil(page, "#ed")).toBe(true);
+  // Assert
+  const outline = await page.locator("#ed").evaluate((el) => getComputedStyle(el).outlineStyle);
+  expect(outline).toBe("solid");
+});
+
 test("Q-8: テキストの色付けの層には Tab で止まらず、テキスト欄に入る（#237）", async ({ page }) => {
   // Arrange
   await openApp(page);
@@ -233,7 +243,7 @@ test.describe("入力欄の中の元に戻す（#266）", () => {
 });
 
 test.describe("エクスプローラー（#266）", () => {
-  test("Q-8: キーボードだけで、フォルダのファイルを開き、開いている文書を切り替え、選んでいない文書も閉じられる", async ({ page }) => {
+  test("Q-8: キーボードだけで、フォルダのファイルを開き、開いている文書を切り替え、選んでいない文書の「閉じる」も押せる", async ({ page }) => {
     // Arrange
     await openApp(page);
     await putFiles(page, { "a.sysml": "package A;\n", "b.sysml": "package B;\n" });
@@ -245,13 +255,14 @@ test.describe("エクスプローラー（#266）", () => {
     await page.locator('#explorer [data-file][title="b.sysml"]').focus();
     await page.keyboard.press(" ");
     await expect(page.locator("#docName")).toHaveText("b.sysml");
-    // 選んでいない a.sysml の文書の行から、Tab で「閉じる」へ移って押す
-    const rowA = page.locator("#explorer [data-doc]:not(.sel)", { hasText: "a.sysml" });
-    await rowA.focus();
+    // 選んでいない文書の行から、Tab で「閉じる」へ移って押す（1 回押して開くファイルは仮に開くので、b.sysml が a.sysml に置き換わる。F-FILE-17）
+    // 残っているのは最初に開いたサンプル（無題の文書）なので、閉じる前の確認が出る
+    const row = page.locator("#explorer [data-doc]:not(.sel)").first();
+    await row.focus();
     await page.keyboard.press("Tab");
     // Assert
-    await expect(rowA.locator("[data-close]")).toBeFocused();
+    await expect(row.locator("[data-close]")).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.locator("#explorer [data-doc]", { hasText: "a.sysml" })).toHaveCount(0);
+    await expect(page.locator("#dialog")).toBeVisible();
   });
 });

@@ -1,7 +1,7 @@
 // 配置ファイル（model.sysml の隣の model.layout.json、ADR-0005）の読み書き。判断だけの純粋関数。
 // 差分とマージを読みやすくするため、キー順を固定し、要素ごとに 1 行で書く。
 
-import { emptyView, layoutFromJson, layoutToJson, type Layout } from "./layout";
+import { emptyView, isLayoutJson, layoutFromJson, layoutToJson, type Layout } from "../render/layout";
 
 /** 配置ファイルの形式の版。古い版が読み違える変更をしたときだけ上げる（ADR-0023 §3）。 */
 export const LAYOUT_FORMAT = 1;
@@ -9,14 +9,48 @@ export const LAYOUT_FORMAT = 1;
 /** この版が知っている、いちばん外側の項目。 */
 const KNOWN_TOP = new Set(["modelith", "format", "views"]);
 
-/** この版が知っている、ビューの中の `@` で始まる項目。 */
-const KNOWN_VIEW = new Set(["@pins", "@ends"]);
+/** この版が知っている、ビューの中の `@` で始まる項目（線の曲がり角 `@bends` と端の位置 `@anchors` は 0.2 から）。 */
+const KNOWN_VIEW = new Set(["@pins", "@ends", "@bends", "@anchors"]);
+
+/** 線の調整（曲がり角 `@bends` と端の位置 `@anchors`）の機能の名前。要素の位置と組で意味を持つので、古い版が残すだけでは線が食い違う。 */
+export const EDGE_SHAPES = "edge-shapes";
 
 /**
- * この版が守れる機能の名前。新しい版は、古い版が残すだけでは中身が食い違う機能を使ったとき、その名前を配置ファイルの
- * `requires` に書く（ADR-0023 §3）。ここに無い名前があれば、この版はそのファイルを保存しない。この版は、名前の付いた機能をまだ持たない。
+ * この版が守れる機能の名前。古い版が残すだけでは中身が食い違う機能を使ったとき、その名前を配置ファイルの
+ * `requires` に書く（ADR-0023 §3）。ここに無い名前があれば、この版はそのファイルを保存しない。
  */
-export const KNOWN_FEATURES: ReadonlySet<string> = new Set();
+export const KNOWN_FEATURES: ReadonlySet<string> = new Set([EDGE_SHAPES]);
+
+/**
+ * 配置が使っている、古い版が守れない機能の名前（`requires` に書くもの）。
+ *
+ * @param layout ビューごとの配置
+ * @returns 使っている機能の名前。線の調整がどこかのビューにあれば `edge-shapes`。無ければ空
+ * @example
+ * usedFeatures({ v: { pos: {}, pins: {}, ends: {}, bends: { e: [[1, 2]] } } }) // → ["edge-shapes"]
+ * usedFeatures({ v: { pos: { A: [0, 0] }, pins: {}, ends: {} } })              // → []
+ */
+export function usedFeatures(layout: Layout): string[] {
+  const shaped = Object.values(layout).some((v) => Object.keys(v.bends ?? {}).length > 0 || Object.keys(v.anchors ?? {}).length > 0);
+  return shaped ? [EDGE_SHAPES] : [];
+}
+
+/**
+ * 書く `requires` を決める。読んだときにあった、この版の知らない機能の名前は残し、この版の機能は今の配置が使うものだけにする。
+ *
+ * @param layout ビューごとの配置
+ * @param read 読んだときの `requires` の値（無ければ undefined）
+ * @returns 書く機能の名前（名前の順）。空なら `requires` は書かない
+ * @example
+ * requiresOf(L_with_bends, undefined)              // → ["edge-shapes"]
+ * requiresOf(L_without_bends, ["edge-shapes"])     // → []（もう使っていない）
+ * requiresOf(L_without_bends, ["shared-layers"])   // → ["shared-layers"]（この版の知らない名前は残す）
+ */
+function requiresOf(layout: Layout, read: unknown): string[] {
+  const names = Array.isArray(read) ? read.map(String) : read === undefined ? [] : [String(read)];
+  const kept = names.filter((n) => !KNOWN_FEATURES.has(n));
+  return [...new Set([...kept, ...usedFeatures(layout)])].sort();
+}
 
 /** 配置ファイルの、この版が知らない項目。保存するときに、そのまま書き戻す（ADR-0023 §3）。 */
 export interface LayoutExtras {
@@ -56,9 +90,10 @@ function stable(v: unknown): string {
 }
 
 /**
- * 配置を、配置ファイル（`model.layout.json`、ADR-0005）の文字列にする。キー順を固定し、接続点・線の端は要素ごとに 1 行で書く。空のビューは書かない。
+ * 配置を、配置ファイル（`model.layout.json`、ADR-0005）の文字列にする。キー順を固定し、接続点・線の端・曲がり角・端の位置は要素・線ごとに 1 行で書く。空のビューは書かない。
  *
  * 読んだときにあった、この版の知らない項目（extras）も書き戻す。項目はいちばん外側なら `views` の後に、ビューの中ならそのビューに並べる。
+ * 線の調整を使っていれば、`requires` に `edge-shapes` を書き、古い版がこのファイルを書き換えないようにする（ADR-0023 §3）。
  *
  * @param layout ビューごとの配置
  * @param extras 書き戻す、知らない項目（省くと無し）
@@ -67,8 +102,10 @@ function stable(v: unknown): string {
  * serializeLayout({ trace: { pos: { B: [10, 20], A: [0, 0] }, pins: {}, ends: {} } })
  * // → '{\n  "modelith": "layout",\n  "format": 1,\n  "views": {\n    "trace": {\n      "A": [0,0],\n      "B": [10,20]\n    }\n  }\n}\n'
  * serializeLayout({}) // → '{\n  "modelith": "layout",\n  "format": 1,\n  "views": {}\n}\n'（境界値）
- * serializeLayout({}, { top: { note: 1 }, views: { trace: { "@bends": {} } } })
- * // → '{\n  "modelith": "layout",\n  "format": 1,\n  "views": {\n    "trace": {\n      "@bends": {}\n    }\n  },\n  "note": 1\n}\n'
+ * serializeLayout({}, { top: { note: 1 }, views: { trace: { "@future": {} } } })
+ * // → '{\n  "modelith": "layout",\n  "format": 1,\n  "views": {\n    "trace": {\n      "@future": {}\n    }\n  },\n  "note": 1\n}\n'
+ * serializeLayout({ v: { pos: {}, pins: {}, ends: {}, bends: { e: [[1, 2]] } } })
+ * // → '…\n  },\n  "requires": ["edge-shapes"]\n}\n'（線の調整を使っている）
  */
 export function serializeLayout(layout: Layout, extras: LayoutExtras = NO_EXTRAS): string {
   const known = layoutToJson(layout);
@@ -77,8 +114,8 @@ export function serializeLayout(layout: Layout, extras: LayoutExtras = NO_EXTRAS
   const views = sortKeys(merged).filter(([, v]) => Object.keys(v).length);
   const view = ([vk, v]: [string, Record<string, unknown>]): string => {
     const lines = sortKeys(v).map(([k, x]) => {
-      // 接続点・線の端は、要素ごとに 1 行にする
-      if ((k === "@pins" || k === "@ends") && x && typeof x === "object") {
+      // 接続点・線の端・曲がり角・端の位置は、要素・線ごとに 1 行にする
+      if ((k === "@pins" || k === "@ends" || k === "@bends" || k === "@anchors") && x && typeof x === "object") {
         const inner = sortKeys(x as Record<string, unknown>).map(([ik, ix]) => `        ${JSON.stringify(ik)}: ${stable(ix)}`);
         return `      ${JSON.stringify(k)}: {\n${inner.join(",\n")}\n      }`;
       }
@@ -87,7 +124,10 @@ export function serializeLayout(layout: Layout, extras: LayoutExtras = NO_EXTRAS
     return `    ${JSON.stringify(vk)}: {\n${lines.join(",\n")}\n    }`;
   };
   const body = views.length ? `{\n${views.map(view).join(",\n")}\n  }` : "{}";
-  const top = sortKeys(extras.top).map(([k, x]) => `,\n  ${JSON.stringify(k)}: ${stable(x)}`).join("");
+  const { requires: read, ...rest } = extras.top;
+  const requires = requiresOf(layout, read);
+  const topItems: Record<string, unknown> = requires.length ? { ...rest, requires } : rest;
+  const top = sortKeys(topItems).map(([k, x]) => `,\n  ${JSON.stringify(k)}: ${stable(x)}`).join("");
   return `{\n  "modelith": "layout",\n  "format": ${LAYOUT_FORMAT},\n  "views": ${body}${top}\n}\n`;
 }
 
@@ -101,6 +141,8 @@ export function serializeLayout(layout: Layout, extras: LayoutExtras = NO_EXTRAS
  * readRaw("")                                          // → "empty"
  * readRaw("{}")                                        // → "empty"（中身の無いオブジェクト）
  * readRaw("{ broken")                                  // → { error: "配置ファイルを読めません（JSON の形が壊れています）" }
+ * readRaw('{"modelith":"layout","format":1,"views":{"v":[]}}') // → { error: "配置ファイルの形が違います" }（ビューが配列）
+ * readRaw('{"modelith":"layout","format":1,"views":[]}')       // → { error: "配置ファイルの形が違います" }（views が配列）
  * readRaw('{"modelith":"layout","format":"1","views":{}}') // → { error: "配置ファイルの形式の書き方が違います" }
  */
 function readRaw(text: string): { top: Record<string, unknown>; views: Record<string, unknown> } | { error: string } | "empty" {
@@ -114,12 +156,15 @@ function readRaw(text: string): { top: Record<string, unknown>; views: Record<st
   // 中身の無いオブジェクト（手で作った `{}` など）は、失うものが無いので空のファイルと同じに扱う
   if (raw && typeof raw === "object" && !Array.isArray(raw) && !Object.keys(raw).length) return "empty";
   const o = raw as { modelith?: unknown; format?: unknown; views?: unknown } | null;
-  if (!o || typeof o !== "object" || o.modelith !== "layout" || typeof o.views !== "object" || o.views === null) {
+  // views は名前で引くオブジェクト。配列（[]）も typeof は object なので、別に断る（#267）
+  if (!o || typeof o !== "object" || o.modelith !== "layout" || typeof o.views !== "object" || o.views === null || Array.isArray(o.views)) {
     return { error: "配置ファイルの形が違います" };
   }
   // 数でない形式（"1" など）は、対応しない版の数と取り違えないよう別の文にする（#243）
   if (typeof o.format !== "number") return { error: "配置ファイルの形式の書き方が違います" };
   if (o.format !== LAYOUT_FORMAT) return { error: `配置ファイルの形式（${String(o.format)}）に対応していません` };
+  // 知っている項目の形が違えば、読み飛ばして保存で消さないよう、読めないファイルとして扱う（C-11、#244）
+  if (!isLayoutJson(o.views as Record<string, unknown>)) return { error: "配置ファイルの形が違います" };
   return { top: o as Record<string, unknown>, views: o.views as Record<string, unknown> };
 }
 
@@ -216,7 +261,7 @@ export function parseLayoutFile(text: string): { layout: Layout; error: string |
 }
 
 /**
- * 配置が空か（どのビューにも座標・接続点・線の端が無い）を判定する。
+ * 配置が空か（どのビューにも座標・接続点・線の端・曲がり角が無い）を判定する。
  *
  * @param layout ビューごとの配置
  * @returns 空なら true。ビューが無いときも true
@@ -226,7 +271,9 @@ export function parseLayoutFile(text: string): { layout: Layout; error: string |
  * isEmptyLayout({ v: { pos: { A: [0, 0] }, pins: {}, ends: {} } }) // → false
  */
 export const isEmptyLayout = (layout: Layout): boolean =>
-  Object.values(layout).every((v) => !Object.keys(v.pos).length && !Object.keys(v.pins).length && !Object.keys(v.ends).length);
+  Object.values(layout).every(
+    (v) => !Object.keys(v.pos).length && !Object.keys(v.pins).length && !Object.keys(v.ends).length && !Object.keys(v.bends ?? {}).length && !Object.keys(v.anchors ?? {}).length,
+  );
 
 /**
  * ビューの配置を取り出す。無ければ空の配置を作って layout に足す（layout を書き換える）。

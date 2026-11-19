@@ -1,14 +1,16 @@
 // 図の下に出るインスペクタ（選択中の要素・関係・接続点の情報と操作）。
 
-import { lineOf, type ModelEdge, type ModelNode, type PortDir } from "../core";
-import { flowDetail, flowName } from "./action-flow";
-import { eventName } from "./sequence";
-import { isPseudoState, stateActionLines, stateName } from "./state-machine";
+import { type Entry, lineOf, type ModelEdge, type ModelNode, type PortDir } from "../core";
+import { flowDetail, flowName } from "../render/action-flow";
+import { eventName } from "../render/sequence";
+import { isPseudoState, stateActionLines, stateName } from "../render/state-machine";
 import { annotationsHtml } from "./annotations";
 import { $, closest, esc } from "./dom";
-import { kindLabel } from "./labels";
-import type { Pin } from "./geometry";
-import { centerOn, render, scrollEditorTo } from "./render";
+import { hasShape, resetShape } from "./edge-shape";
+import { openProjectFile, otherFileText } from "./other-file";
+import { attrText, kindLabel } from "../render/labels";
+import type { Pin } from "../render/geometry";
+import { centerOn, placeMinimap, render, scrollEditorTo } from "./render";
 import { OPS, MSGOPS, PHASEOPS, alignSel, deleteSel, selNodes, setPhaseSel, uniqueChild, type AlignMode } from "./ops";
 import { openTab, renderTree, setTab } from "./panels";
 import { DIR_LABEL, PINOPS, selPinInfo } from "./pins";
@@ -16,6 +18,7 @@ import { relOptions, type RelChoice, type RelKind } from "./relations";
 import { activeGapKind, gapGuideHtml, stepGapGuide } from "./gap-guide";
 import { gapGuide, gapRelOptions } from "./trace-gap";
 import { cancelConnect, clearSel, S } from "./state";
+import { commitLayout } from "./sync";
 import { CC, curLayout, edgeById, nodeByKey, phaseLabel } from "./views";
 
 const SELECT_STYLE = 'style="border:1px solid var(--rule);border-radius:6px;padding:6px;background:var(--panel2)"';
@@ -52,16 +55,20 @@ const portName = (pin: string | null | undefined): string => (pin?.startsWith("p
 export function renderInspector(): void {
   const box = $("#insp");
   const html = inspectorHtml();
+  // 説明の編集中に描き直しても、打ちかけの文を残す（F-EDIT-12）
+  const typing = document.querySelector<HTMLTextAreaElement>("#docIn")?.value;
   box.hidden = html === null;
   if (html !== null) box.innerHTML = html;
+  const area = document.querySelector<HTMLTextAreaElement>("#docIn");
+  if (area && typing !== undefined) area.value = typing;
   focusInput();
   renderTree();
-  $("#mini").style.bottom = box.hidden ? "" : box.offsetHeight + 22 + "px";
+  placeMinimap();
 }
 
 /**
- * 入力欄を出したときは、中身を選択してフォーカスし、Enter で確定（名前の変更・メッセージ・ポートの作成）、
- * 名前の変更中は Escape でやめられるようにする。入力欄が無ければ何もしない。
+ * 入力欄を出したときは、中身を選択してフォーカスし、Enter で確定（名前の変更・メッセージ・ポートの作成・属性）、
+ * 名前の変更中と属性の編集中は Escape でやめられるようにする。入力欄が無ければ何もしない。
  */
 function focusInput(): void {
   const inp = document.querySelector<HTMLInputElement>("#insp input");
@@ -70,11 +77,17 @@ function focusInput(): void {
     inp.focus();
     inp.select();
   }, 0);
-  const okAct = inp.id === "renameIn" ? "renameOk" : inp.id === "msgName" ? "msgOk" : "portOk";
-  inp.onkeydown = (ev) => {
-    if (ev.key === "Enter") act(okAct);
-    if (ev.key === "Escape" && inp.id === "renameIn") act("renameCancel");
-  };
+  const attr = inp.id.startsWith("attr");
+  const okAct = inp.id === "renameIn" ? "renameOk" : inp.id === "msgName" ? "msgOk" : attr ? "attrOk" : "portOk";
+  // 属性の欄は 3 つあるので、どの欄でも Enter で保存・Escape でやめる
+  const fields = attr ? [...document.querySelectorAll<HTMLInputElement>("#insp .attrform input")] : [inp];
+  for (const f of fields) {
+    f.onkeydown = (ev) => {
+      if (ev.key === "Enter") act(okAct);
+      if (ev.key === "Escape" && inp.id === "renameIn") act("renameCancel");
+      if (ev.key === "Escape" && attr) act("attrCancel");
+    };
+  }
 }
 
 /**
@@ -170,7 +183,7 @@ function multiHtml(): string {
 }
 
 /**
- * 選んだ接続点の HTML を作る。ポートなら向きのボタンと削除、ポートにする途中なら名前・型・向きの入力欄、
+ * 選んだ接続点の HTML を作る。ポートなら向きのボタンと削除（アクティビティ図のパラメータなら名前と向きだけ）、ポートにする途中なら名前・型・向きの入力欄、
  * 自由な接続点ならつながる線の数と「ポートにする」「接続点を外す」を出す。
  * ポートにする途中で向きが未定（S.portForm が true）なら、縁の向きから推測した向き（右は出力・左は入力・上下は双方向）を S.portForm に入れる。
  *
@@ -182,9 +195,15 @@ function multiHtml(): string {
  * pinHtml(A, a1) // → '<div class="what"><small>接続点（A）・線 1 本・ドラッグで移動</small><b>ここからさらに線を引けます</b></div>…'
  * // ポート p（in）のとき
  * pinHtml(A, p)  // → '<div class="what"><small>ポート（A）・ドラッグで縁に沿って移動</small><b>p</b></div>…（入力のボタンが押された状態）'
+ * // アクティビティ図のアクション boil のパラメータ w（in）のとき
+ * pinHtml(boil, w) // → '<div class="what"><small>パラメータ（boil）・入力</small><b>w : Water</b></div>'
  */
 function pinHtml(n: ModelNode, pin: Pin): string {
   const p = pin.port;
+  // アクティビティ図のパラメータは、向きや宣言をテキストで書き換える（図からは変えない）
+  if (p && n.flow) {
+    return `<div class="what"><small>パラメータ（${esc(n.name)}）・${DIR_LABEL[p.dir]}</small><b>${esc(p.name)}${p.type ? " : " + esc(p.type) : ""}</b></div>`;
+  }
   if (p) {
     return (
       `<div class="what"><small>ポート（${esc(n.name)}）・ドラッグで縁に沿って移動</small><b>${esc(p.name)}${p.type ? " : " + (p.conj ? "~" : "") + esc(p.type) : ""}</b></div><div class="acts">` +
@@ -217,6 +236,23 @@ function pinHtml(n: ModelNode, pin: Pin): string {
 }
 
 /**
+ * ほかのファイルの要素（ADR-0021）のインスペクタの HTML。図からは書き換えられないので、どのファイルにあるかと、そのファイルを開くボタンだけを出す。
+ *
+ * @param n 選んだ要素（`file` を持つ）
+ * @param path 要素のあるファイル（フォルダからのパス）
+ * @returns インスペクタの HTML
+ * @example
+ * otherFileHtml(Car, "parts.sysml") // → '<div class="what"><small>«part def» parts.sysml の要素</small><b>Car</b></div>…そのファイルを開く…'
+ */
+function otherFileHtml(n: ModelNode, path: string): string {
+  return (
+    `<div class="what"><small>«${esc(n.kind)}» ${esc(path)} の要素</small><b>${esc(n.name || "（名前なし）")}</b></div><div class="acts">` +
+    `<button class="primary" data-act="openFile">そのファイルを開く</button></div>` +
+    `<div class="notes"><div class="note"><p>${esc(otherFileText(path))}</p></div></div>`
+  );
+}
+
+/**
  * 選んだ要素の HTML を作る。名前の変更中なら入力欄を、n 項の接続の点なら接続の名前と「接続を削除」を、メモなら注釈する相手・本文と「メモを削除」を、
  * 使用・ライフラインなら型と「型の定義へ」を、
  * 定義なら種類・テキストの行・（フェーズの定義があれば）フェーズの選択欄と、名前の変更・関係の追加・削除のボタンを出す。
@@ -229,13 +265,14 @@ function pinHtml(n: ModelNode, pin: Pin): string {
  * // S.text が "part def A;" で A を選んでいるとき
  * nodeHtml(A) // → '<div class="what"><small>«part def» テキスト 1 行目・縁の＋から線を引けます</small><b>A</b></div><div class="acts">…'
  * // 名前の変更中のとき
- * nodeHtml(A) // → '<div class="what"><small>新しい名前（参照もまとめて変更されます）</small></div><input id="renameIn" value="A" …>…'
+ * nodeHtml(A) // → '<div class="what"><small>新しい名前（日本語も使えます。参照もまとめて変更されます）</small></div><input id="renameIn" value="A" …>…'
  */
 function nodeHtml(n: ModelNode): string {
   if (S.renaming) {
-    return `<div class="what"><small>新しい名前（参照もまとめて変更されます）</small></div><input id="renameIn" value="${esc(n.name)}" aria-label="新しい名前"><div class="acts"><button class="primary" data-act="renameOk">変更する</button><button data-act="renameCancel">やめる</button></div>`;
+    return `<div class="what"><small>新しい名前（日本語も使えます。参照もまとめて変更されます）</small></div><input id="renameIn" value="${esc(n.name)}" aria-label="新しい名前"><div class="acts"><button class="primary" data-act="renameOk">変更する</button><button data-act="renameCancel">やめる</button></div>`;
   }
   const e = n.entry;
+  if (n.file) return otherFileHtml(n, n.file);
   const line = lineOf(S.text, e.start);
   if (n.junction) {
     // n 項の接続の点（8.2.3.13 の n-ary-connection-dot）。削除すると接続ごと消える
@@ -244,6 +281,14 @@ function nodeHtml(n: ModelNode): string {
       `<button data-act="goto">テキストで見る</button>` +
       delBtn("del", "接続を削除") +
       `</div>`
+    );
+  }
+  if (n.note && n.kind === "rep") {
+    // 別の言語での表し方（8.2.3.4 の textual-representation）。持ち主の要素の中に書くので、ここでは消さない
+    return (
+      `<div class="what"><small>別の言語での表し方（rep） テキスト ${line} 行目</small><b>${esc(n.name || "（名前なし）")}</b></div><div class="acts">` +
+      `<button data-act="goto">テキストで見る</button>` +
+      `</div><div class="notes"><div class="note"><small>言語</small><p>${esc(e.type)}</p></div><div class="note"><small>本文</small><pre>${esc(e.body ?? "")}</pre></div></div>`
     );
   }
   if (n.note) {
@@ -281,9 +326,82 @@ function nodeHtml(n: ModelNode): string {
     (guide ? `<button data-act="rename">名前を変更</button>` : `<button data-act="goto">テキストで見る</button><button data-act="rename">名前を変更</button><button data-act="connect">関係を追加</button>`) +
     delBtn("del", "削除") +
     `</div>` +
+    docHtml(n) +
+    // トレースの抜けを案内しているときは、案内と図が狭い画面でも見えるよう、属性の欄を出さない
+    (guide ? "" : attrsHtml(n)) +
     annotationsHtml(e, S.P.entries)
   );
 }
+
+/**
+ * 定義の説明（要求なら「要求の文章」。テキストの `doc /* … *\/`）を見せる欄の HTML を作る（F-EDIT-12）。
+ * 編集中なら入力欄と「保存」「やめる」を、そうでなければ今の文と「編集」のボタンを出す。
+ *
+ * @param n 定義の図の要素
+ * @returns 欄の HTML（文字は esc で逃がす）
+ * @example
+ * // 要求 R（doc /* 3 分で沸かす *\/）を選んでいるとき
+ * docHtml(R) // → '<div class="docbox doc"><div class="note"><small>要求の文章</small><p>3 分で沸かす</p></div><div class="acts"><button data-act="docEdit">要求の文章を編集</button></div></div>'
+ * // 説明の無い部品定義 A を編集しているとき
+ * docHtml(A) // → '<div class="docbox doc"><div class="note"><small>説明</small></div><textarea id="docIn" …></textarea><div class="acts"><button class="primary" data-act="docOk">保存</button>…'
+ */
+function docHtml(n: ModelNode): string {
+  const label = docLabel(n);
+  const doc = n.entry.docText ?? n.entry.doc ?? "";
+  if (S.docEdit) {
+    return (
+      `<div class="docbox doc"><div class="note"><small>${label}（空にすると消えます）</small></div>` +
+      `<textarea id="docIn" rows="4" aria-label="${label}">${esc(doc)}</textarea>` +
+      `<div class="acts"><button class="primary" data-act="docOk">保存</button><button data-act="docCancel">やめる</button></div></div>`
+    );
+  }
+  return (
+    `<div class="docbox doc"><div class="note"><small>${label}</small>${doc ? `<p>${esc(doc)}</p>` : `<p class="muted">まだありません</p>`}</div>` +
+    `<div class="acts"><button data-act="docEdit">${label}を編集</button></div></div>`
+  );
+}
+
+/**
+ * 定義の属性の欄の HTML を作る（F-EDIT-12）。属性を 1 行ずつ「編集」「削除」のボタンと並べ、末尾に「属性を追加」を置く。
+ * 編集中の属性（または追加中）は、名前・型・値の入力欄と「保存」「やめる」にする。
+ *
+ * @param n 定義の図の要素
+ * @returns 欄の HTML（文字は esc で逃がす）
+ * @example
+ * // part def A { attribute mass : Real = 1500; } を選んでいるとき
+ * attrsHtml(A) // → '<div class="docbox attrs"><div class="note"><small>属性</small></div><div class="attr"><span>mass : Real = 1500</span><button data-act="attrEdit" data-attr="mass">編集</button>…'
+ */
+function attrsHtml(n: ModelNode): string {
+  const attrs = n.entry.children.filter((c) => c.kind === "attribute");
+  const form = (a: Entry | null): string =>
+    `<div class="attrform">` +
+    `<input id="attrName" value="${esc(a?.name ?? "")}" placeholder="名前" aria-label="属性の名前">` +
+    `<input id="attrType" value="${esc(a?.type ?? "")}" placeholder="型（例：Real）" aria-label="属性の型">` +
+    `<input id="attrValue" value="${esc(a?.value ?? "")}" placeholder="値（例：1500）" aria-label="属性の値">` +
+    `<div class="acts"><button class="primary" data-act="attrOk">保存</button><button data-act="attrCancel">やめる</button></div></div>`;
+  const rows = attrs.map((a) =>
+    S.attrEdit === a.name
+      ? form(a)
+      : `<div class="attr"><span>${esc(attrText(a))}</span><button data-act="attrEdit" data-attr="${esc(a.name)}">編集</button><button data-act="attrDel" data-attr="${esc(a.name)}">削除</button></div>`,
+  );
+  return (
+    `<div class="docbox attrs"><div class="note"><small>属性</small>${attrs.length ? "" : `<p class="muted">まだありません</p>`}</div>` +
+    rows.join("") +
+    (S.attrEdit === "" ? form(null) : `<div class="acts"><button data-act="attrAdd">属性を追加</button></div>`) +
+    `</div>`
+  );
+}
+
+/**
+ * 説明の欄の呼び方。要求は「要求の文章」、ほかは「説明」と呼ぶ（ADR-0014）。
+ *
+ * @param n 定義の図の要素
+ * @returns 欄の呼び方
+ * @example
+ * docLabel({ fam: "req", … })  // → "要求の文章"
+ * docLabel({ fam: "part", … }) // → "説明"
+ */
+export const docLabel = (n: Pick<ModelNode, "fam">): string => (n.fam === "req" ? "要求の文章" : "説明");
 
 /**
  * アクションの流れの図の要素（8.2.3.17）の HTML を作る。種類の画面の言葉と中身、テキストで見る・名前の変更・順序の線の追加・削除のボタンを出す。
@@ -392,6 +510,8 @@ function edgeHtml(ed: ModelEdge): string {
   return (
     `<div class="what"><small>${esc(EDGE_NAME[ed.kind] ?? ed.kind)}${ed.label && (ed.kind === "comp" || ed.kind === "transition") ? "：" + esc(ed.label) : ""}</small><b>${esc(ed.kind === "annotate" ? `メモ ${nodeByKey(ed.from)?.name ?? ""}`.trim() : endName(ed.from))} → ${esc(endName(ed.to))}</b></div><div class="acts">` +
     `<button data-act="goto">テキストで見る</button>` +
+    // 調整した線の形を、自動の経路に戻す（F-VIEW-16）
+    (hasShape(curLayout(), ed.id) ? `<button data-act="resetShape">線の形を元に戻す</button>` : "") +
     // メモの線だけを削除する操作は無い（メモごと削除する）
     (ed.kind === "annotate" ? "" : delBtn("delEdge", "関係を削除")) +
     `</div>`
@@ -417,7 +537,10 @@ const ALIGN_ACTS: Record<string, AlignMode> = { alLeft: "left", alTop: "top", al
  * inputValue("#renameIn") // → "Motor"
  * inputValue("#none")     // → ""（欄が無い）
  */
-const inputValue = (sel: string): string => document.querySelector<HTMLInputElement | HTMLSelectElement>(sel)?.value ?? "";
+const inputValue = (sel: string): string => document.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(sel)?.value ?? "";
+
+/** 最後に押した属性のボタンの属性の名前（`data-attr`。F-EDIT-12）。 */
+let pickedAttr = "";
 
 /**
  * インスペクタ・右クリックメニューのボタンの操作を行う。整列・接続モード・名前の変更・テキストへの移動・削除（2 回押しで確定）・
@@ -445,6 +568,48 @@ export function act(a: string): void {
       S.renaming = false;
       renderInspector();
       return;
+    case "attrAdd":
+      S.attrEdit = "";
+      renderInspector();
+      return;
+    case "attrEdit":
+      S.attrEdit = pickedAttr;
+      renderInspector();
+      return;
+    case "attrCancel":
+      S.attrEdit = null;
+      renderInspector();
+      return;
+    case "attrOk":
+      if (n && S.attrEdit !== null) {
+        void OPS.setAttribute(n, S.attrEdit || null, inputValue("#attrName"), inputValue("#attrType"), inputValue("#attrValue")).then((ok) => {
+          if (!ok) return;
+          S.attrEdit = null;
+          renderInspector();
+        });
+      }
+      return;
+    case "attrDel":
+      if (n) void OPS.removeAttribute(n, pickedAttr);
+      return;
+    case "docEdit":
+      S.docEdit = true;
+      renderInspector();
+      document.querySelector<HTMLTextAreaElement>("#docIn")?.focus();
+      return;
+    case "docCancel":
+      S.docEdit = false;
+      renderInspector();
+      return;
+    case "docOk":
+      if (n) {
+        void OPS.setDoc(n, inputValue("#docIn")).then((ok) => {
+          if (!ok) return;
+          S.docEdit = false;
+          renderInspector();
+        });
+      }
+      return;
     case "renameOk":
       if (n) {
         void OPS.rename(n, inputValue("#renameIn").trim()).then((ok) => {
@@ -462,6 +627,16 @@ export function act(a: string): void {
       S.wire = null;
       render();
       renderInspector();
+      return;
+    case "resetShape":
+      if (S.selEdge) {
+        resetShape(curLayout(), S.selEdge);
+        commitLayout();
+        renderInspector();
+      }
+      return;
+    case "openFile":
+      if (n?.file) openProjectFile(n.file);
       return;
     case "goto": {
       const ed = edgeById(S.selEdge);
@@ -573,7 +748,8 @@ export function initInspector(): void {
   box.addEventListener("click", (ev) => {
     const b = closest<HTMLButtonElement>(ev, "button");
     if (!b) return;
-    const { rel, dir, fdir, act: a, gap } = b.dataset;
+    const { rel, dir, fdir, act: a, gap, attr } = b.dataset;
+    if (attr !== undefined) pickedAttr = attr;
     if (rel) {
       const from = nodeByKey(S.connectFrom), to = nodeByKey(S.connectTo);
       if (!from || !to) return;

@@ -38,7 +38,8 @@ export class FakeFile implements FileHandleLike {
    */
   async getFile(): Promise<FileLike> {
     const { content, lastModified } = this;
-    return { text: async () => content, lastModified, size: new TextEncoder().encode(content).length };
+    const bytes = new TextEncoder().encode(content);
+    return { text: async () => content, arrayBuffer: async () => bytes.slice().buffer, lastModified, size: bytes.length };
   }
 
   /**
@@ -52,8 +53,8 @@ export class FakeFile implements FileHandleLike {
   async createWritable(): Promise<WritableStreamLike> {
     let buf = "";
     return {
-      write: async (d: string) => {
-        buf += d;
+      write: async (d: string | ArrayBuffer) => {
+        buf += typeof d === "string" ? d : new TextDecoder().decode(d);
       },
       close: async () => {
         this.content = buf;
@@ -71,6 +72,16 @@ export class FakeDir implements DirHandleLike {
   grantOnRequest: PermissionState = "granted";
   /** 他のアプリで消されたことにする（true なら中身を読むと NotFoundError）。 */
   removed = false;
+  /**
+   * このフォルダそのものを消したことにする（中身を空にし、removed にする）。フォルダそのものの削除に対応していないブラウザは、undefined にして試す。
+   *
+   * @example
+   * await dir.remove?.({ recursive: true }) // → dir.removed が true、dir.entries が空
+   */
+  remove?: (opts?: { recursive?: boolean }) => Promise<void> = async () => {
+    this.entries.clear();
+    this.removed = true;
+  };
 
   /**
    * メモリ上の空のフォルダを作る（許可は "granted"）。
@@ -271,28 +282,28 @@ export class FakeFsApi implements FsApi {
 }
 
 export class MemoryHandleStore implements HandleStore {
-  readonly map = new Map<string, DirHandleLike>();
+  readonly map = new Map<string, unknown>();
 
   /**
-   * 覚えたフォルダを引く。
+   * 覚えた値を引く。
    *
    * @param key 覚えたときのキー
-   * @returns フォルダのハンドル。無ければ undefined
+   * @returns 覚えた値。無ければ undefined
    * @example
-   * await store.get("recent") // → FakeDir（set("recent", dir) の後）
-   * await store.get("nope")   // → undefined
+   * await store.get("recent-folder") // → FakeDir（set("recent-folder", dir) の後）
+   * await store.get("nope")          // → undefined
    */
-  async get(key: string): Promise<DirHandleLike | undefined> {
+  async get(key: string): Promise<unknown> {
     return this.map.get(key);
   }
 
   /**
-   * フォルダを覚える（同じキーがあれば置き換える）。
+   * 値を覚える（同じキーがあれば置き換える）。
    *
    * @param key キー
-   * @param value 覚えるフォルダのハンドル
+   * @param value 覚える値
    */
-  async set(key: string, value: DirHandleLike): Promise<void> {
+  async set(key: string, value: unknown): Promise<void> {
     this.map.set(key, value);
   }
 }

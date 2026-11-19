@@ -1,4 +1,4 @@
-//! 内部ブロック図（InterconnectionView）の要素のキーと線の ID。UI の `web/src/app/views.ts` の `ibdContent` と同じ決め方にする
+//! 内部ブロック図（InterconnectionView）の要素のキーと線の ID。UI の `web/src/render/view-content.ts` の `ibdContent` と同じ決め方にする
 //! （UI が描いた線や要素を、操作の意図のキーと ID から探し直すため。ADR-0016）。
 //!
 //! - 部品：対象の直下の部品は `u:a`。その中の部品は `u:a.b`、さらに中は `u:a.b.c`（どの深さでも同じ）。中の部品は、部品の本体に書いたものと、
@@ -170,6 +170,8 @@ fn walk(d: &Doc<'_>, from: usize, key: String, segs: &[&str]) -> (String, usize)
 /// end_key(d, C, 対象, "a.x.p") → Some("u:a.x")
 /// end_key(d, C, 対象, "b.q")   → Some("u:b")
 /// end_key(d, C, 対象, "z.q")   → None
+/// // C が port pwr を持つとき
+/// end_key(d, C, 対象, "pwr")   → Some("b:pwr")
 /// // A の中の x の型 X が part v を持つとき
 /// end_key(d, C, 対象, "a.x.v.p") → Some("u:a.x.v")
 /// // a の本体に書いた関係なら
@@ -183,10 +185,14 @@ fn end_key(d: &Doc<'_>, c: usize, scope: Scope, path: &str) -> Option<String> {
     let segs = crate::project::text::ref_segs(path);
     let first = segs.first().copied().unwrap_or("");
     match scope.part {
-        None => {
-            let u = parts(d, c).into_iter().find(|&i| d.e(i).name == first)?;
-            Some(walk(d, u, format!("u:{first}"), &segs[1..]).0)
-        }
+        None => match parts(d, c).into_iter().find(|&i| d.e(i).name == first) {
+            Some(u) => Some(walk(d, u, format!("u:{first}"), &segs[1..]).0),
+            // 対象そのもののポート（枠の上のポート、8.2.3.13）は `b:名前`
+            None if segs.len() == 1 && boundary_port(d, c, first).is_some() => {
+                Some(format!("b:{first}"))
+            }
+            None => None,
+        },
         Some(u) => {
             let un = &d.e(u).name;
             match walk(d, u, format!("u:{un}"), &segs) {
@@ -446,6 +452,7 @@ pub(super) fn edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
 /// entry_of(d, C, "u:a.x.v") → x の型の中の v の番号（3 段目から先も同じようにたどる）
 /// entry_of(d, C, "j:#1")  → Some(接続の使用の番号)
 /// entry_of(d, C, "u:z")   → None
+/// entry_of(d, C, "b:pwr") → Some(C の port pwr の番号)（枠の上のポート）
 /// ```
 pub(super) fn entry_of(d: &Doc<'_>, c: usize, key: &str) -> Option<usize> {
     if key.starts_with("j:") {
@@ -453,6 +460,9 @@ pub(super) fn entry_of(d: &Doc<'_>, c: usize, key: &str) -> Option<usize> {
             Item::Junction(j, usage) if j == key => Some(usage),
             _ => None,
         });
+    }
+    if let Some(name) = key.strip_prefix("b:") {
+        return boundary_port(d, c, name);
     }
     let path = key.strip_prefix("u:")?;
     let mut segs = path.split('.');
@@ -525,4 +535,31 @@ fn find_path(d: &Doc<'_>, from: usize, target: usize, depth: usize) -> Option<St
         .into_iter()
         .find_map(|p| find_path(d, p, target, depth - 1))
         .map(|rest| format!("{name}.{rest}"))
+}
+
+/// 内部ブロック図の対象そのもののポート（枠の上に描くポート、8.2.3.13）を名前で探す。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `c`：内部ブロック図の対象（部品定義）の番号
+/// - `name`：ポートの名前
+///
+/// # 戻り値
+///
+/// 対象の直下の、その名前のポートの宣言の番号。無ければ None。
+///
+/// # 例
+///
+/// ```text
+/// // C = part def C { port pwr; part a; } のとき
+/// boundary_port(d, C, "pwr") → Some(pwr の番号)
+/// boundary_port(d, C, "a")   → None（部品）
+/// ```
+fn boundary_port(d: &Doc<'_>, c: usize, name: &str) -> Option<usize> {
+    d.e(c)
+        .children
+        .iter()
+        .copied()
+        .find(|&i| d.e(i).kind == "port" && d.e(i).name == name)
 }

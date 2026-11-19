@@ -1,9 +1,11 @@
 //! モデルを読む操作（ADR-0024 の 1。要求 F-AI-1）の wasm の口。Node で動く MCP のサーバが使う。
 //!
 //! 状態を持たない。呼ぶたびに、プロジェクトのファイル（パスとテキスト）を JSON で受け取り、
-//! plugin-sdk の契約の型（`ProjectOutline`・`ElementDetail`）を JSON で返す。中身は `modelith_core::read`。
+//! plugin-sdk の契約の型（`ProjectOutline`・`ElementDetail`・`ProblemReport`）を JSON で返す。中身は `modelith_core::read`。
 
-use modelith_core::read::{self, SourceFile};
+use std::collections::BTreeMap;
+
+use modelith_core::read::{self, Project, SourceFile};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
@@ -60,6 +62,68 @@ pub fn read_outline(files: &str) -> String {
 #[wasm_bindgen(js_name = readElement)]
 pub fn read_element(files: &str, qualified_name: &str) -> String {
     read_element_json(files, qualified_name)
+}
+
+/// プロジェクトを確かめ、問題一覧（設定ファイル・プラグインの読み込み・モデル・チェックルール）を JSON で返す。
+///
+/// 中身は `read_problems_json` に任せる。
+///
+/// # 引数
+///
+/// - `files`：`[{ "path", "text" }]` の JSON
+/// - `project_file`：プロジェクトの設定ファイル（`modelith.json`）のテキスト。無ければ `undefined`
+/// - `plugin_files`：`{ "<プラグインの ID>": { "<プラグインのフォルダからの相対パス>": "<テキスト>" } }` の JSON（無ければ `{}`）
+///
+/// # 戻り値
+///
+/// 契約の `ProblemReport` の並びの JSON。`files`・`plugin_files` が読めないときは `{ "error": "理由" }`。
+///
+/// # 例
+///
+/// ```text
+/// readProblems(r#"[{"path":"a.sysml","text":"package P { part x : Nope; }"}]"#, undefined, "{}")
+///   → r#"[{"file":"a.sysml","diagnostic":{"range":{…},"severity":"error","message":"型「Nope」が見つかりません（x）","source":"modelith"}}]"#
+/// ```
+#[wasm_bindgen(js_name = readProblems)]
+pub fn read_problems(files: &str, project_file: Option<String>, plugin_files: &str) -> String {
+    read_problems_json(files, project_file.as_deref(), plugin_files)
+}
+
+/// `readProblems` の本体。
+///
+/// # 引数
+///
+/// - `files`：`[{ "path", "text" }]` の JSON
+/// - `project_file`：設定ファイルのテキスト（無ければ `None`）
+/// - `plugin_files`：プラグインの ID → 相対パス → テキストの JSON
+///
+/// # 戻り値
+///
+/// `ProblemReport` の並びの JSON。入力が読めないときは `{ "error": "理由" }`。
+///
+/// # 例
+///
+/// ```text
+/// read_problems_json("[]", None, "{}") → "[]"
+/// read_problems_json("[]", None, "x")  → r#"{"error":"プラグインのファイルを読み込めませんでした（…）"}"#
+/// ```
+fn read_problems_json(files: &str, project_file: Option<&str>, plugin_files: &str) -> String {
+    let plugin_files: BTreeMap<String, BTreeMap<String, String>> =
+        match serde_json::from_str(plugin_files) {
+            Ok(p) => p,
+            Err(e) => {
+                return to_json(&serde_json::json!({
+                    "error": format!("プラグインのファイルを読み込めませんでした（{e}）")
+                }));
+            }
+        };
+    with_files(files, |sources| {
+        to_json(&read::check(&Project {
+            files: sources,
+            project_file,
+            plugin_files: &plugin_files,
+        }))
+    })
 }
 
 /// `readOutline` の本体。
@@ -197,6 +261,32 @@ mod tests {
         assert_eq!(missing, "null");
     }
 
+    #[test]
+    fn read_problems_json_returns_reports_in_the_contract_shape() {
+        // Arrange
+        let files = r#"[{"path":"a.sysml","text":"package P { part x : Nope; }"}]"#;
+        // Act
+        let json = read_problems_json(files, None, "{}");
+        // Assert
+        assert_eq!(
+            json,
+            r#"[{"file":"a.sysml","diagnostic":{"range":{"start":{"line":0,"character":12},"end":{"line":0,"character":12}},"severity":"error","message":"型「Nope」が見つかりません（x）","source":"modelith"}}]"#
+        );
+    }
+
+    #[test]
+    fn read_problems_json_reads_the_project_file_and_plugin_files() {
+        // Arrange（有効にしたプラグインのファイルが無い）
+        let project = r#"{ "plugins": { "jp.x": {} } }"#;
+        // Act
+        let json = read_problems_json(FILES, Some(project), "{}");
+        // Assert
+        assert!(
+            json.starts_with(r#"[{"file":".modelith/plugins/jp.x/modelith-plugin.json","diagnostic":{"range":{"start":{"line":0,"character":0}"#),
+            "{json}"
+        );
+    }
+
     // --- 境界値・異常系 ---
 
     #[test]
@@ -214,12 +304,26 @@ mod tests {
         // Act
         let outlines = inputs.map(read_outline_json);
         let element = read_element_json("x", "P::A");
+        let problems = read_problems_json("x", None, "{}");
         // Assert
-        for json in outlines.iter().chain([&element]) {
+        for json in outlines.iter().chain([&element, &problems]) {
             assert!(
                 json.starts_with(r#"{"error":"ファイルの一覧を読み込めませんでした（"#),
                 "{json}"
             );
         }
+    }
+
+    #[test]
+    fn no_files_give_no_problems_and_unreadable_plugin_files_give_an_error() {
+        // Act
+        let none = read_problems_json("[]", None, "{}");
+        let bad = read_problems_json("[]", None, "x");
+        // Assert
+        assert_eq!(none, "[]");
+        assert!(
+            bad.starts_with(r#"{"error":"プラグインのファイルを読み込めませんでした（"#),
+            "{bad}"
+        );
     }
 }

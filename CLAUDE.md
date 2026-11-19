@@ -67,7 +67,8 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
 | 単体テスト絞り込み | `cargo test -p <crate> <name>` |
 | ハーネスのテスト | `tests/harness/node_modules/.bin/bats tests/harness/{unit,integration}` |
 | web のテスト | `npm test --prefix web`（単体・結合。コアのテストは Rust の wasm で動く）、`scripts/e2e.sh`（統合・UI。ブラウザは Docker の公式イメージで動かす。テスト名に要求 ID を書く） |
-| wasm のビルド（web のテスト・アプリの前に必要） | `scripts/build-wasm.sh` |
+| cli（MCP のサーバ）のテスト | `npm test --prefix cli`（単体・結合。コアは Rust の wasm で動く）。手元で動かすのは `node cli/src/main.ts mcp <フォルダ>` |
+| wasm のビルド（web・cli のテスト、アプリの前に必要） | `scripts/build-wasm.sh` |
 | ゴールデン再生成 | `node reference/tools/gen-golden.mjs` |
 | リリースの準備（版の書き換えとノートのひな形） | `scripts/release-prepare.sh <版>`（リリースノートの検査は `node web/tools/release-notes-cli.ts check [<版>]`） |
 | PR タイトル検証 | `scripts/check-pr-title.sh "<title>"` |

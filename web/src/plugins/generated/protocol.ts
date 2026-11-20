@@ -1,5 +1,5 @@
 // plugin-sdk の packages/typescript/src/generated/protocol.ts のコピー。編集しないこと。
-// 取得元: git+https://github.com/modelith/plugin-sdk?rev=c6ecddcd8f0578f6e10fddbd146d865e883c78c5#c6ecddcd8f0578f6e10fddbd146d865e883c78c5
+// 取得元: git+https://github.com/modelith/plugin-sdk?rev=ec82cf626994648ffc4d9564a7ed44b9bd209c2d#ec82cf626994648ffc4d9564a7ed44b9bd209c2d
 // 更新: Cargo.toml の plugin-sdk の rev を変えてから node web/tools/plugin-protocol-cli.ts sync（scripts/check.sh が古さを検出する）
 
 // 生成物。編集しないこと。定義元: crates/modelith-plugin-protocol
@@ -320,8 +320,13 @@ export type RelationDirection = "outgoing" | "incoming";
 
 export type ElementRelation = { 
 /**
- * 関係の種類。[`crate::RelationKind`] にあるものは同じ言葉（`satisfy` など）、
- * それ以外（特化・型付け・接続など）は camelCase の言葉。一覧はコアに合わせて決める。
+ * 関係の種類。今の言葉は次の 13 個（一般の図に出る関係）。
+ * - [`crate::RelationKind`] と同じもの: `satisfy`・`verify`・`frame`・`derivation`・`flow`
+ * - それ以外: `composition`（部品として持つ）・`definedBy`（用法 → その型の定義）・`allocate`・
+ *   `dependency`・`specialize`・`subset`・`redefine`・`reference`
+ *
+ * 送り手が種類を足しても古い受け手が拒まないよう、列挙にせず文字列のままにする。
+ * 受け手は、知らない言葉の関係を「そのほかの関係」として扱う。
  */
 kind: string, direction: RelationDirection, 
 /**
@@ -392,6 +397,56 @@ export type ProblemReport = {
  * 問題のあるファイル。
  */
 file: string, diagnostic: Diagnostic, };
+
+export type EditRequest = { "type": "addElement", 
+/**
+ * 要素の種類（例: `part def`）。[`crate::ElementSummary`] の `kind` と同じ言葉。
+ */
+kind: string, name: string, 
+/**
+ * 入れる先の要素の修飾名（package に限らない。受けない先は、書く側が断る）。
+ */
+parent: string, } | { "type": "addRelation", 
+/**
+ * 関係の種類。[`crate::ElementRelation`] の `kind` と同じ言葉。
+ */
+kind: string, 
+/**
+ * 関係が出る側の要素の修飾名（[`crate::RelationDirection::Outgoing`] の側）。
+ */
+from: string, 
+/**
+ * 関係が入る側の要素の修飾名。
+ */
+to: string, } | { "type": "rename", element: string, name: string, } | { "type": "delete", element: string, } | { "type": "setDoc", element: string, doc: string, } | { "type": "replaceText", 
+/**
+ * プロジェクトのフォルダからのパス（`/` 区切り）。
+ */
+file: string, text: string, };
+
+export type FileChange = { 
+/**
+ * プロジェクトのフォルダからのパス（`/` 区切り）。
+ */
+file: string, 
+/**
+ * `edits` が前提にするテキストの版。中身は決めない文字列で、作った側が書き込むときに今の版と比べる。
+ */
+baseVersion: string, 
+/**
+ * 当てる編集（位置は `baseVersion` のテキストのもの）。
+ */
+edits: Array<TextEdit>, };
+
+export type EditProposal = { 
+/**
+ * ファイルごとの差分。
+ */
+changes: Array<FileChange>, 
+/**
+ * 提案を当てたあとの、プロジェクトの問題の一覧。
+ */
+problems: Array<ProblemReport>, };
 
 export type Count = number;
 

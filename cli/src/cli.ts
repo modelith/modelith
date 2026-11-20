@@ -10,8 +10,9 @@ export const USAGE = [
   "Usage: modelith mcp <project folder>",
   "",
   "Starts an MCP server on standard input and output. AI clients can read and check the SysML v2 model",
-  "in the project folder (list_files, list_elements, get_element, list_diagrams, list_problems).",
-  "Only files inside the project folder are read. Nothing is written.",
+  "in the project folder (list_files, list_elements, get_element, list_diagrams, list_problems), and change it",
+  "in two steps: propose_edit returns the changes without writing, and apply_edit writes a proposal.",
+  "Only files inside the project folder are read, and only its model files are written.",
 ].join("\n");
 
 /**

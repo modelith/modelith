@@ -2,6 +2,7 @@
 //! UI とは LSP と同じ形のメッセージでやり取りする（ADR-0003）。
 
 mod read;
+mod write;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;

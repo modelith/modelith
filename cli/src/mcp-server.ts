@@ -3,7 +3,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { Core, ProjectReader } from "./core.ts";
+import type { Core, ProjectReader, ProjectWriter, ProposalStore } from "./core.ts";
 import { ToolError, type Tool, type ToolParam } from "./tools.ts";
 
 /** サーバが使うもの（外から渡す）。 */
@@ -12,6 +12,10 @@ export interface ServerDeps {
   core: Core;
   /** プロジェクトを読む口。 */
   reader: ProjectReader;
+  /** プロジェクトに書く口。 */
+  writer: ProjectWriter;
+  /** 提案を覚えておく口。 */
+  proposals: ProposalStore;
   /** AI のクライアントに名乗る版。 */
   version: string;
 }
@@ -43,7 +47,7 @@ function inputShape(params: Record<string, ToolParam>): Record<string, z.ZodType
  * 道具を 1 回動かす。呼ぶたびにプロジェクトを読み直し、結果を JSON の文にする。失敗は例外にせず、AI のクライアントに文で返す。
  *
  * @param tool 道具
- * @param deps コアとプロジェクトを読む口
+ * @param deps コア・プロジェクトを読む口・書く口・提案を覚えておく口
  * @param args 道具の引数
  * @returns 結果（JSON の文）。失敗なら isError を立て、理由の文を入れる
  * @example
@@ -51,14 +55,15 @@ function inputShape(params: Record<string, ToolParam>): Record<string, z.ZodType
  * await callTool(getElement, deps, { qualifiedName: "X" }) // → { isError: true, content: [{ type: "text", text: "No element named \"X\" was found. …" }] }
  */
 export async function callTool(
-  tool: Tool, deps: Pick<ServerDeps, "core" | "reader">, args: Record<string, string | undefined>,
+  tool: Tool, deps: Omit<ServerDeps, "version">, args: Record<string, string | undefined>,
 ): Promise<ToolResult> {
   try {
-    const result = tool.run(deps.core, await deps.reader.read(), args);
+    const { core, writer, proposals } = deps;
+    const result = await tool.run({ core, project: await deps.reader.read(), writer, proposals }, args);
     return { content: [{ type: "text", text: JSON.stringify(result) }] };
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
-    const text = e instanceof ToolError ? reason : `The project could not be read (${reason}).`;
+    const text = e instanceof ToolError ? reason : `The project could not be read or written (${reason}).`;
     return { isError: true, content: [{ type: "text", text }] };
   }
 }
@@ -67,7 +72,7 @@ export async function callTool(
  * 道具を登録した MCP のサーバを作る（つなぐ先は、呼ぶ側が connect で決める）。
  *
  * @param tools 出す道具
- * @param deps コア・プロジェクトを読む口・版
+ * @param deps コア・プロジェクトを読む口と書く口・提案を覚えておく口・版
  * @returns MCP のサーバ
  * @example
  * await createServer(TOOLS, { core, reader, version: "0.3.0" }).connect(new StdioServerTransport())
@@ -81,8 +86,10 @@ export function createServer(tools: Tool[], deps: ServerDeps): McpServer {
         title: tool.title,
         description: tool.description,
         inputSchema: inputShape(tool.params),
-        // どの道具も読むだけで、プロジェクトのフォルダの外には触れない
-        annotations: { readOnlyHint: true, openWorldHint: false },
+        // 書く道具は apply_edit だけ。どの道具も、プロジェクトのフォルダの外には触れない
+        annotations: tool.writes
+          ? { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
+          : { readOnlyHint: true, openWorldHint: false },
       },
       (args: Record<string, string | undefined>) => callTool(tool, deps, args),
     );

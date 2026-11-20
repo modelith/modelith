@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::model::{self, Model};
 use crate::project::{self, Entry, ParseResult};
 pub use more::{FlowEnd, qualified_name, sysml_name};
+pub(crate) use ops::missing;
 use text::{Utf16, diff, utf16_of};
 
 /// 図の操作の意図。要素は図の要素のキー、関係は ID で指す。
@@ -26,6 +27,12 @@ use text::{Utf16, diff, utf16_of};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "op", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Intent {
+    /// 名前と入れる先を決めて、要素を追加する（画面の外からの追加。ADR-0024 の 1）。`parent` は入れる先の要素のキー。
+    AddElement {
+        kind: String,
+        name: String,
+        parent: String,
+    },
     /// 定義を追加する。`phase` は絞り込み中のフェーズ、`new_package` は package が無いときに作る package の名前。
     AddNode {
         kind: String,

@@ -2583,3 +2583,91 @@ fn deleting_an_element_that_another_file_only_types_or_exposes_with_its_package_
         );
     }
 }
+
+// ---- 修飾名で要素を指す（`q:`。ADR-0024 の 1、F-AI-2） ----
+
+const QUALIFIED: &str = "package Shop {\n    requirement def Fast;\n    part def Cart {\n        attribute n : Integer;\n    }\n    part def '電気 ケトル';\n    package Inner {\n        part def Cart;\n    }\n}\n";
+
+#[test]
+fn qualified_name_key_renames_the_element_it_names() {
+    // Arrange（同じ名前の Cart が 2 つある。修飾名で外側と内側を指し分ける）
+    let outer = r#"{"op":"rename","key":"q:Shop::Cart","name":"Basket"}"#;
+    let inner = r#"{"op":"rename","key":"q:Shop::Inner::Cart","name":"Basket"}"#;
+    // Act
+    let (a, _) = run(QUALIFIED, outer);
+    let (b, _) = run(QUALIFIED, inner);
+    // Assert
+    assert!(
+        a.contains("    part def Basket {\n") && a.contains("        part def Cart;\n"),
+        "{a}"
+    );
+    assert!(
+        b.contains("    part def Cart {\n") && b.contains("        part def Basket;\n"),
+        "{b}"
+    );
+}
+
+#[test]
+fn qualified_name_key_reaches_nested_members_and_quoted_names() {
+    // Arrange（図に描かない入れ子の属性と、引用名）
+    let member = r#"{"op":"rename","key":"q:Shop::Cart::n","name":"count"}"#;
+    let quoted = r#"{"op":"rename","key":"q:Shop::'電気 ケトル'","name":"Kettle"}"#;
+    // Act
+    let (a, _) = run(QUALIFIED, member);
+    let (b, _) = run(QUALIFIED, quoted);
+    // Assert
+    assert!(a.contains("        attribute count : Integer;\n"), "{a}");
+    assert!(b.contains("    part def Kettle;\n"), "{b}");
+}
+
+#[test]
+fn qualified_name_key_works_for_doc_delete_and_relations() {
+    // Arrange
+    let doc = r#"{"op":"setDoc","key":"q:Shop::Cart","text":"かご"}"#;
+    let delete = r#"{"op":"delete","keys":["q:Shop::Inner::Cart"]}"#;
+    let connect = r#"{"op":"connect","rel":"satisfy","from":"q:Shop::Cart","to":"q:Shop::Fast"}"#;
+    // Act
+    let (a, _) = run(QUALIFIED, doc);
+    let (b, _) = run(QUALIFIED, delete);
+    let (c, _) = run(QUALIFIED, connect);
+    // Assert
+    assert!(a.contains("doc /* かご */"), "{a}");
+    assert!(
+        !b.contains("        part def Cart;") && b.contains("    part def Cart {"),
+        "{b}"
+    );
+    assert!(c.contains("satisfy Fast by Cart;"), "{c}");
+}
+
+#[test]
+fn qualified_name_key_that_names_nothing_is_refused_with_the_name() {
+    // Arrange（異常系：無い要素・修飾の足りない名前・空）
+    let cases = ["q:Shop::Nope", "q:Cart", "q:"];
+    // Act
+    let got = cases.map(|key| {
+        refused(
+            QUALIFIED,
+            &format!(r#"{{"op":"rename","key":"{key}","name":"X"}}"#),
+        )
+    });
+    // Assert
+    assert_eq!(
+        got,
+        [
+            "操作する要素「Shop::Nope」が見つかりません。テキストが先に変わった可能性があります",
+            "操作する要素「Cart」が見つかりません。テキストが先に変わった可能性があります",
+            "操作する要素「」が見つかりません。テキストが先に変わった可能性があります",
+        ]
+    );
+}
+
+#[test]
+fn qualified_name_key_of_another_file_is_not_rewritten() {
+    // Arrange（異常系：ほかのファイルの要素。画面のキーと同じく、そのファイルを開くよう断る）
+    let text = "package App {\n    part def Local;\n}\n";
+    let json = r#"{"op":"rename","key":"q:Fleet::Car","name":"Bus"}"#;
+    // Act
+    let got = run_in(text, json).expect_err(json);
+    // Assert
+    assert_eq!((got.reason.as_str(), got.file), (IN_OTHER_FILE, Some(1)));
+}

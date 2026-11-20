@@ -3,17 +3,17 @@
 // 手順は「図の中身を選ぶ（view-content）→ 座標の無い要素を置く（geometry）→ 文字列にする（diagram-export）」で、
 // 画面の「エクスポート…」も最後の文字列にする段で同じ関数（svgDocument・drawioDocument）を使う。
 
-import type { Model } from "../core";
-import { drawioDocument, svgDocument, type DiagramImage } from "./diagram-export";
-import { placeView } from "./geometry";
-import { emptyView, type Layout, type ViewLayout } from "./layout";
-import type { EdgeStyle } from "./svg";
-import { contentOf, layoutKey, resolveTarget, viewDef, type ViewContent, type ViewTarget } from "./view-content";
+import type { Model } from "../core/types.ts";
+import { drawioDocument, svgDocument, type DiagramImage } from "./diagram-export.ts";
+import { placeView } from "./geometry.ts";
+import { emptyView, type Layout, type ViewLayout } from "./layout.ts";
+import type { EdgeStyle } from "./svg.ts";
+import { contentOf, layoutKey, resolveTarget, viewDef, type ViewContent, type ViewTarget } from "./view-content.ts";
 
-export type { DiagramImage } from "./diagram-export";
-export type { Layout } from "./layout";
-export type { EdgeStyle } from "./svg";
-export type { ViewTarget } from "./view-content";
+export type { DiagramImage } from "./diagram-export.ts";
+export type { Layout } from "./layout.ts";
+export type { EdgeStyle } from "./svg.ts";
+export type { ViewTarget } from "./view-content.ts";
 
 /** 図の描き方（画面の設定に当たるもの）。 */
 export interface DiagramOptions {

@@ -1,7 +1,7 @@
 // 内部ブロック図（InterconnectionView）の中身を、モデルから作る。
 // 要素のキーと線の ID は、Rust のコアの図の操作（crates/modelith-core/src/edit/ibd.rs）と同じ決め方にする（ADR-0016）。
 
-import type { Entry, Model, ModelEdge, ModelNode, Port, PortDir } from "../core";
+import type { Entry, Model, ModelEdge, ModelNode, Port, PortDir } from "../core/types.ts";
 
 /** 内部ブロック図に描く要素と線。 */
 export interface IbdContent {

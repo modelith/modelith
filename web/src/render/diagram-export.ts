@@ -1,15 +1,15 @@
 // 図のエクスポートの中身（draw.io の XML・SVG）。画面の状態（S）にも DOM にも触れず、図の内容と配置と描き方を引数で受け取る。
 // 画面の「エクスポート…」（app/export.ts）と、画面の外（Node）の図の書き出し（render/index.ts）で共用する（ADR-0024）。
 
-import type { ModelNode, ModelSequenceEvent } from "../core";
-import { flowDetail, flowShape } from "./action-flow";
-import { esc } from "./escape";
-import { boundaryBoxes, boxesOf, computeRoutes, keywordOf, laneRects, linesOf, pinPoint, pinsOf, regionSeparators, stateTitle, type Box, type NodeBox } from "./geometry";
-import type { ViewLayout } from "./layout";
-import { shownEdgeLabel, shownName } from "./labels";
-import { isPseudoState } from "./state-machine";
-import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, seqRowY, svgMarkup, type ColorFn, type EdgeStyle } from "./svg";
-import { viewDef, type ViewContent } from "./view-content";
+import type { ModelNode, ModelSequenceEvent } from "../core/types.ts";
+import { flowDetail, flowShape } from "./action-flow.ts";
+import { esc } from "./escape.ts";
+import { boundaryBoxes, boxesOf, computeRoutes, keywordOf, laneRects, linesOf, pinPoint, pinsOf, regionSeparators, stateTitle, type Box, type NodeBox } from "./geometry.ts";
+import type { ViewLayout } from "./layout.ts";
+import { shownEdgeLabel, shownName } from "./labels.ts";
+import { isPseudoState } from "./state-machine.ts";
+import { DEFS, packageBoxes, SEQ, seqGeom, seqMarkup, seqRowY, svgMarkup, type ColorFn, type EdgeStyle } from "./svg.ts";
+import { viewDef, type ViewContent } from "./view-content.ts";
 
 /** エクスポート用の明るい配色（CSS 変数を使えない環境向け）。 */
 const LIGHT: Record<string, string> = {

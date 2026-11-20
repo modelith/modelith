@@ -4,7 +4,7 @@
 import { diffRange } from "../core";
 import { $ } from "./dom";
 import { flushEdit } from "./editor";
-import { parseLayoutFile } from "./layout-file";
+import { parseLayoutFile } from "../render/layout-file";
 import { scrollEditorTo } from "./render";
 import { pushVersion } from "./history-list";
 import { S } from "./state";

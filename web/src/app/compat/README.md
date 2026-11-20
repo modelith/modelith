@@ -2,7 +2,7 @@
 
 ADR-0023 §6 の見本。新しい版の Modelith が書く配置ファイル（`model.layout.json`）を置き、
 この版が読み込んで保存し直しても、知らない項目を消さないこと・`requires` と形式の番号を守って保存しないことを、
-`web/src/app/layout-file.test.ts` で確かめる。配置ファイルに新しい項目を足すときは、同じ PR で見本も足す。
+`web/src/render/layout-file.test.ts` で確かめる。配置ファイルに新しい項目を足すときは、同じ PR で見本も足す。
 
 | 見本 | 中身 |
 | --- | --- |

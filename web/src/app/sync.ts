@@ -7,7 +7,7 @@ import { placeView } from "../render/geometry";
 import { scheduleRecord } from "./history";
 import { renderInspector } from "./inspector";
 import { emptyView, type Layout } from "../render/layout";
-import { serializeLayout } from "./layout-file";
+import { serializeLayout } from "../render/layout-file";
 import { MAX_PROBLEM_ROWS, problemRows } from "./problem-rows";
 import { renderPalette, renderSub, renderTabs, renderTree } from "./panels";
 import { droppedDiagnosticsNote, MAX_DIAGNOSTICS } from "../plugins/limits";

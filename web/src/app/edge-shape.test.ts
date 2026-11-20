@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { build, parse } from "../core/rust";
 import { bendPoints, boxesOf, computeRoutes, longestLabel, segmentMids, type NodeBox } from "../render/geometry";
 import { emptyView, layoutFromJson, layoutToJson } from "../render/layout";
-import { serializeLayout } from "./layout-file";
+import { serializeLayout } from "../render/layout-file";
 import { hasShape, insertBend, moveBend, pruneShapes, removeBend, renameEdgeKeys, resetShape, setAnchor } from "./edge-shape";
 
 /** A を (0, 0)、B を (400, 0) に置いた一般の図の箱と線。 */

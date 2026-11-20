@@ -3,7 +3,7 @@
 // 画面が使う行の位置・差分の範囲・古い形式の配置コメント（ADR-0005）の読み書きだけを扱う。
 // 位置はすべて UTF-16。
 
-import type { ParseError } from "./types";
+import type { ParseError } from "./types.ts";
 
 /** 配置情報を埋め込むコメント（ADR-0005 の移行期の形式）。 */
 const LAYOUT_RE = /\/\*\s*@layout\s*([\s\S]*?)\*\//;

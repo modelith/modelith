@@ -2,7 +2,7 @@
 // ライフライン・イベントのキーと線の ID は Rust のコア（crates/modelith-core/src/model/sequences.rs）が決めたもの。
 // 図の操作（edit）も同じものを探す（ADR-0016）。
 
-import type { Model, ModelEdge, ModelNode, ModelSequenceEvent } from "../core";
+import type { Model, ModelEdge, ModelNode, ModelSequenceEvent } from "../core/types.ts";
 
 /** シーケンス図に描くライフライン・線（メッセージと、イベントの間の順序）・イベントと、段の数。 */
 export interface SequenceContent {

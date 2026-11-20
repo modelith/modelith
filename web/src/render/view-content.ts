@@ -1,13 +1,13 @@
 // ビュー（図の種類）ごとに、モデルのどの要素・関係を表示するかを決める。画面の状態（S）には触れず、どの図かは ViewTarget で受け取る。
 // 画面（app/views.ts）と、画面の外（Node）の図の書き出し（render/index.ts）で共用する（ADR-0024）。
 
-import type { EdgeKind, Entry, Model, ModelEdge, ModelLane, ModelNode, ModelSequenceEvent, ModelView, ViewKind } from "../core";
-import { defaultFlowContext, flowContentOf, flowContexts, flowLayers } from "./action-flow";
-import { ibdContentOf } from "./ibd";
-import { seqContentOf } from "./sequence";
-import { defaultStateContext, stateContentOf, stateContexts } from "./state-machine";
-import type { Layout, Pos } from "./layout";
-import { withNotes } from "./notes";
+import type { EdgeKind, Entry, Model, ModelEdge, ModelLane, ModelNode, ModelSequenceEvent, ModelView, ViewKind } from "../core/types.ts";
+import { defaultFlowContext, flowContentOf, flowContexts, flowLayers } from "./action-flow.ts";
+import { ibdContentOf } from "./ibd.ts";
+import { seqContentOf } from "./sequence.ts";
+import { defaultStateContext, stateContentOf, stateContexts } from "./state-machine.ts";
+import type { Layout, Pos } from "./layout.ts";
+import { withNotes } from "./notes.ts";
 
 export interface ViewDef {
   id: string;

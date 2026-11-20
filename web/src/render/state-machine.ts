@@ -1,8 +1,8 @@
 // 状態遷移の図（StateTransitionView、8.2.3.18）の中身を、モデルの状態遷移の図から作る。
 // 要素のキーと線の ID は Rust のコア（crates/modelith-core/src/model/states.rs）が決めたもの。図の操作（edit/states.rs）も同じものを探す（ADR-0016）。
 
-import type { Entry, Model, ModelEdge, ModelNode } from "../core";
-import { kindLabel } from "./labels";
+import type { Entry, Model, ModelEdge, ModelNode } from "../core/types.ts";
+import { kindLabel } from "./labels.ts";
 
 /** 状態遷移の図に描く要素と線。`regions` は、中の要素を破線で区切った領域に描く並行の状態のキー（状態定義そのものが並行なら ""）。 */
 export interface StateContent {

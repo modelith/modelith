@@ -1,8 +1,8 @@
 // アクションの流れの図（ActionFlowView、8.2.3.17）の中身を、モデルのアクションの流れから作る。
 // 要素のキーと線の ID は Rust のコア（crates/modelith-core/src/model/flows.rs）が決めたもの。図の操作（edit/flow.rs）も同じものを探す（ADR-0016）。
 
-import type { Entry, Model, ModelEdge, ModelLane, ModelNode } from "../core";
-import { kindLabel } from "./labels";
+import type { Entry, Model, ModelEdge, ModelLane, ModelNode } from "../core/types.ts";
+import { kindLabel } from "./labels.ts";
 
 /** アクションの流れの図に描く要素と線。 */
 export interface FlowContent {

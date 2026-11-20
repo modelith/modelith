@@ -5,8 +5,18 @@
   "description": "Modelith for the command line and AI clients (MCP)",
   "license": "AGPL-3.0-only",
   "type": "module",
+  "bin": {
+    "modelith": "dist/cli/src/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "mcp": "node src/main.ts mcp",
+    "build": "../scripts/build-cli.sh",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

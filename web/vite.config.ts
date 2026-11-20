@@ -1,11 +1,10 @@
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { defineConfig } from "vitest/config";
 import type { Plugin } from "vite";
 import { cspPlugin } from "./tools/csp";
-import { appLicense, chooseLicenses, LICENSE_FILES, licenseDirs, thirdPartyNotices, viteCoreLicense, wasmRuntimeCrates, type BundledPart, type CargoMetadata } from "./tools/licenses";
+import { appLicense, thirdPartyNotices, viteCoreLicense, type BundledPart } from "./tools/licenses";
+import { COPYRIGHT, rustCrateParts } from "./tools/licenses-io";
 
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string };
 
@@ -17,32 +16,6 @@ function commitSha(): string {
   } catch {
     return "";
   }
-}
-
-/** 著作権表示。画面（index.html）と LICENSE.txt に出す。 */
-const COPYRIGHT = "Copyright (C) 2026 The Modelith Authors";
-
-/** Rust のコア（wasm）に組み込まれる第三者のクレートと、そのライセンス文（ADR-0015）。 */
-function rustCrateParts(): BundledPart[] {
-  const json = execSync("cargo metadata --format-version 1 --filter-platform wasm32-unknown-unknown", {
-    cwd: new URL("..", import.meta.url),
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  return wasmRuntimeCrates(JSON.parse(json) as CargoMetadata, "modelith-wasm").map((p) => {
-    const licenses = chooseLicenses(p.license ?? "");
-    const texts = licenses.map((l) => {
-      // 配布物にライセンス文の無いクレートは、そのリポジトリから写しておいたもの（tools/third-party-licenses/<名前>/）を使う。
-      // 今は該当なし（写したら、どこから写したかをここに書く）
-      const copied = fileURLToPath(new URL(`./tools/third-party-licenses/${p.name}`, import.meta.url));
-      const file = [...licenseDirs(p.manifest_path.replace(/\\/g, "/"), p.source), copied]
-        .flatMap((dir) => (LICENSE_FILES[l] ?? []).map((f) => join(dir, f)))
-        .find((f) => existsSync(f));
-      if (!file) throw new Error(`${p.name} ${p.version} の ${l} のライセンス文が見つかりません`);
-      return readFileSync(file, "utf8");
-    });
-    return { name: `${p.name} ${p.version}`, license: licenses.join(" AND "), usage: "Rust のコア（wasm）の部品", text: texts.join("\n\n") };
-  });
 }
 
 /**

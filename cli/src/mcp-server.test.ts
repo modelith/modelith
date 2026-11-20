@@ -1,4 +1,4 @@
-// MCP のサーバの結合テスト（F-AI-1・F-AI-2）。公式ライブラリのクライアントをメモリ上でつなぎ、本物のコア（wasm）と一時フォルダのプロジェクトで、
+// MCP のサーバの結合テスト（F-AI-1・F-AI-2・F-AI-3）。公式ライブラリのクライアントをメモリ上でつなぎ、本物のコア（wasm）と一時フォルダのプロジェクトで、
 // AI のクライアントから見える形（道具の一覧・結果・失敗）を確かめる。
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,8 +12,10 @@ import { callTool, createServer } from "./mcp-server.ts";
 import { memoryProposals } from "./proposals.ts";
 import { TOOLS } from "./tools.ts";
 import { loadWasmCore, parseResult } from "./wasm-core.ts";
+import { loadWebRenderer } from "./web-render.ts";
 
 const core = loadWasmCore();
+const renderer = loadWebRenderer();
 let folder: string;
 let client: Client;
 
@@ -42,7 +44,7 @@ beforeEach(async () => {
   write("req.sysml", "package Req {\n    requirement def <'R1'> Safe { doc /* 安全であること */ }\n}\n");
   write("app/brake.sysml", "package App {\n    part def Brake { port cmd : Cmd; }\n    port def Cmd;\n    satisfy Req::Safe by Brake;\n    view overview : GeneralView { expose App::Brake; }\n    part x : Nope;\n}\n");
   const server = createServer(TOOLS, {
-    core, reader: fsProjectReader(folder), writer: fsProjectWriter(folder), proposals: memoryProposals(), version: "0.0.0-test",
+    core, reader: fsProjectReader(folder), writer: fsProjectWriter(folder), proposals: memoryProposals(), renderer, version: "0.0.0-test",
   });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   client = new Client({ name: "test", version: "0" });
@@ -60,7 +62,7 @@ describe("MCP のサーバ", () => {
     const { tools } = await client.listTools();
     // Assert
     expect(tools.map((t) => t.name)).toEqual([
-      "list_files", "list_elements", "get_element", "list_diagrams", "list_problems", "propose_edit", "apply_edit",
+      "list_files", "list_elements", "get_element", "list_diagrams", "list_problems", "export_diagram", "propose_edit", "apply_edit",
     ]);
     expect(tools.every((t) => t.description)).toBe(true);
     expect(tools.filter((t) => t.annotations?.readOnlyHint !== true).map((t) => [t.name, t.annotations?.destructiveHint])).toEqual([["apply_edit", true]]);
@@ -233,6 +235,64 @@ describe("MCP のサーバ：書く（2 段階）", () => {
   });
 });
 
+describe("MCP のサーバ：図を書き出す", () => {
+  it("F-AI-3: テキストに書いた図を、名前を指定して SVG と draw.io で書き出せる。図に出した要素だけが入る（正常系）", async () => {
+    // Act（overview は App::Brake だけを出している）
+    const svg = await json<{ format: string; file: string; content: string }>("export_diagram", { format: "svg", diagram: "App::overview" });
+    const drawio = await json<{ content: string }>("export_diagram", { format: "drawio", diagram: "App::overview" });
+    // Assert
+    expect([svg.format, svg.file]).toEqual(["svg", "app/brake.sysml"]);
+    expect(svg.content).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+    expect(svg.content).toContain("Brake");
+    expect(svg.content).not.toContain("Cmd<");
+    expect(drawio.content).toMatch(/^<mxfile /);
+    expect(drawio.content).toContain("Brake");
+  });
+
+  it("F-AI-3: 保存した配置があれば、画面と同じくその位置に描く（正常系）", async () => {
+    // Arrange（自動の図「すべて」で、Brake を (700, 300) に置いた配置ファイル）
+    const auto = await json<{ content: string }>("export_diagram", { format: "svg", file: "app/brake.sysml" });
+    write("app/brake.layout.json", JSON.stringify({ modelith: "layout", format: 1, views: { all: { Brake: [700, 300] } } }));
+    // Act
+    const placed = await json<{ content: string; layoutProblem?: string }>("export_diagram", { format: "svg", file: "app/brake.sysml" });
+    // Assert
+    expect(auto.content).not.toContain("translate(700,300)");
+    expect(placed.content).toContain("translate(700,300)");
+    expect(placed.layoutProblem).toBeUndefined();
+  });
+
+  it("配置ファイルが読めないときは、自動に並べて書き出し、理由を添える（異常系）", async () => {
+    // Arrange
+    write("app/brake.layout.json", "{ not json");
+    // Act
+    const got = await json<{ content: string; layoutProblem?: string }>("export_diagram", { format: "svg", file: "app/brake.sysml" });
+    // Assert
+    expect(got.content).toContain("Brake");
+    expect(got.layoutProblem).toBeTruthy();
+  });
+
+  it("ほかのファイルの要素との関係も、画面と同じく描く（正常系）", async () => {
+    // Act（Brake は、ほかのファイルの Req::Safe を満たす）
+    const got = await json<{ content: string }>("export_diagram", { format: "svg", file: "app/brake.sysml" });
+    // Assert
+    expect(got.content).toContain("Safe");
+    expect(got.content).toContain("satisfy");
+  });
+
+  it("無い図・無いファイル・知らない自動の図・扱わない形式は、理由つきの失敗の文を返す（異常系）", async () => {
+    // Act
+    const noDiagram = await call("export_diagram", { format: "svg", diagram: "App::gone" });
+    const noFile = await call("export_diagram", { format: "svg", file: "nope.sysml" });
+    const noView = await call("export_diagram", { format: "svg", file: "req.sysml", view: "ibd" });
+    const png = await call("export_diagram", { format: "png", file: "req.sysml" });
+    // Assert
+    expect(noDiagram).toEqual({ isError: true, text: 'No diagram named "App::gone" was found. Use list_diagrams to see the qualified names.' });
+    expect(noFile).toEqual({ isError: true, text: "The file nope.sysml was not found." });
+    expect(noView).toEqual({ isError: true, text: 'Unknown view "ibd". Use one of: all, structure, trace, control, behavior.' });
+    expect(png).toEqual({ isError: true, text: 'Unknown format "png". Use svg or drawio.' });
+  });
+});
+
 describe("callTool・parseResult", () => {
   it("コアが入力を読めなかったときの理由を、例外にして伝える（異常系）", () => {
     // Act
@@ -252,7 +312,7 @@ describe("callTool・parseResult", () => {
     // Arrange
     const reader = { read: () => Promise.reject(new Error("permission denied")) };
     // Act
-    const got = await callTool(TOOLS[0]!, { core, reader, writer: fsProjectWriter(folder), proposals: memoryProposals() }, {});
+    const got = await callTool(TOOLS[0]!, { core, reader, writer: fsProjectWriter(folder), proposals: memoryProposals(), renderer }, {});
     // Assert
     expect(got).toEqual({ isError: true, content: [{ type: "text", text: "The project could not be read or written (permission denied)." }] });
   });

@@ -29,6 +29,21 @@ export function parseResult<T>(json: string): T {
   return value as T;
 }
 
+let loaded = false;
+
+/**
+ * コアの wasm を読み込む（1 回だけ。コアの口と、図を書き出す口が同じものを使う）。
+ *
+ * @returns なし。wasm のファイルが無ければ例外を投げる（先に scripts/build-wasm.sh が要る）
+ * @example
+ * initWasm(); initWasm(); // 2 回目は何もしない
+ */
+export function initWasm(): void {
+  if (loaded) return;
+  initSync({ module: readFileSync(WASM) });
+  loaded = true;
+}
+
 /**
  * wasm を読み込み、コアの口を作る。
  *
@@ -37,7 +52,7 @@ export function parseResult<T>(json: string): T {
  * loadWasmCore().outline([{ path: "a.sysml", text: "part def A;" }]).elements[0]?.qualifiedName // → "A"
  */
 export function loadWasmCore(): Core {
-  initSync({ module: readFileSync(WASM) });
+  initWasm();
   return {
     outline: (files) => parseResult<ProjectOutline>(readOutline(JSON.stringify(files))),
     element: (files, qualifiedName) => parseResult<ElementDetail | null>(readElement(JSON.stringify(files), qualifiedName)),

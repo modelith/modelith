@@ -3,6 +3,7 @@
 /** 読んだコマンド。 */
 export type Command =
   | { kind: "mcp"; folder: string }
+  | { kind: "export"; folder: string; args: Record<string, string>; out?: string }
   | { kind: "usage"; error?: string };
 
 /** 使い方（標準エラーに出す）。 */
@@ -13,24 +14,62 @@ export const USAGE = [
   "in the project folder (list_files, list_elements, get_element, list_diagrams, list_problems), and change it",
   "in two steps: propose_edit returns the changes without writing, and apply_edit writes a proposal.",
   "Only files inside the project folder are read, and only its model files are written.",
+  "",
+  "Usage: modelith export <project folder> --format <svg|drawio> (--diagram <qualified name> | --file <model file> [--view <view>]) [--out <file>]",
+  "",
+  "Draws a diagram the same way as the Modelith app and prints it, or writes it to the file given with --out.",
+  "--diagram names a diagram written in the model (for example Shop::overview). --file gives an automatic diagram of a model file",
+  "(--view all, structure, trace, control or behavior; default all).",
 ].join("\n");
 
 /**
  * コマンドラインの引数を読む。
  *
  * @param args 引数（node とスクリプトの名前を除いたもの）
- * @returns `mcp <フォルダ>` ならそのコマンド。ほかは使い方（誤りなら理由つき）
+ * @returns `mcp <フォルダ>`・`export <フォルダ> --名前 値 …` ならそのコマンド。ほかは使い方（誤りなら理由つき）
  * @example
  * parseArgs(["mcp", "./kettle"]) // → { kind: "mcp", folder: "./kettle" }
  * parseArgs(["--help"])          // → { kind: "usage" }
+ * parseArgs(["export", "./kettle", "--format", "svg", "--file", "a.sysml", "--out", "a.svg"])
+ * // → { kind: "export", folder: "./kettle", args: { format: "svg", file: "a.sysml" }, out: "a.svg" }
  * parseArgs(["mcp"])             // → { kind: "usage", error: "The project folder is missing." }
  * parseArgs(["check", "x"])      // → { kind: "usage", error: "Unknown command \"check\"." }
  */
 export function parseArgs(args: string[]): Command {
   const [command, folder, ...rest] = args;
   if (command === undefined || command === "--help" || command === "-h") return { kind: "usage" };
-  if (command !== "mcp") return { kind: "usage", error: `Unknown command "${command}".` };
-  if (folder === undefined) return { kind: "usage", error: "The project folder is missing." };
-  if (rest.length) return { kind: "usage", error: "Too many arguments." };
-  return { kind: "mcp", folder };
+  if (command !== "mcp" && command !== "export") return { kind: "usage", error: `Unknown command "${command}".` };
+  if (folder === undefined || folder.startsWith("--")) return { kind: "usage", error: "The project folder is missing." };
+  if (command === "mcp") return rest.length ? { kind: "usage", error: "Too many arguments." } : { kind: "mcp", folder };
+  const options = exportOptions(rest);
+  if (typeof options === "string") return { kind: "usage", error: options };
+  const { out, ...toolArgs } = options;
+  return out === undefined ? { kind: "export", folder, args: toolArgs } : { kind: "export", folder, args: toolArgs, out };
+}
+
+/** export のオプションの名前。 */
+const EXPORT_OPTIONS = ["format", "diagram", "file", "view", "out"];
+
+/**
+ * export のオプション（`--名前 値` の並び）を読む。
+ *
+ * @param rest フォルダのあとの引数
+ * @returns 名前 → 値。知らない名前・値の無いオプション・同じ名前が 2 回あるときは、理由の文
+ * @example
+ * exportOptions(["--format", "svg", "--file", "a.sysml"]) // → { format: "svg", file: "a.sysml" }
+ * exportOptions(["--format"])                             // → "--format needs a value."
+ * exportOptions(["--colour", "red"])                      // → "Unknown option \"--colour\"."
+ */
+export function exportOptions(rest: string[]): Record<string, string> | string {
+  const options: Record<string, string> = {};
+  for (let i = 0; i < rest.length; i += 2) {
+    const flag = rest[i] ?? "";
+    const name = flag.slice(2);
+    if (!flag.startsWith("--") || !EXPORT_OPTIONS.includes(name)) return `Unknown option "${flag}".`;
+    const value = rest[i + 1];
+    if (value === undefined) return `${flag} needs a value.`;
+    if (Object.hasOwn(options, name)) return `${flag} is given twice.`;
+    options[name] = value;
+  }
+  return options;
 }

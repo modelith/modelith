@@ -1,10 +1,11 @@
-// AI のクライアントに出す道具（要求 F-AI-1：読む・確かめる、F-AI-2：書く）。
+// AI のクライアントに出す道具（要求 F-AI-1：読む・確かめる、F-AI-2：書く、F-AI-3：図を書き出す）。
 // 書くのは 2 段階（メンテナの判断、2026-11-20）：propose_edit は何も書かずに差分を返し、apply_edit がその提案を書き込む。
 // ここは判断だけを持つ（I/O・MCP のライブラリ・wasm に頼らない）。コア・プロジェクト・書く口・提案を覚える口は引数で受け取る。
 // 説明の文は AI のクライアントが読むので、英語で書く（ADR-0027：元の言語は英語）。
 
 import {
-  Refused, type Core, type EditRequest, type ProblemReport, type ProjectInput, type ProjectWriter, type ProposalStore,
+  Refused, type Core, type DiagramRequest, type EditRequest, type ProblemReport, type ProjectInput, type ProjectWriter, type ProposalStore,
+  type Renderer,
 } from "./core.ts";
 import { applyEdits, versionOf } from "./edits.ts";
 
@@ -42,6 +43,8 @@ export interface ToolContext {
   writer: ProjectWriter;
   /** 提案を覚えておく口。 */
   proposals: ProposalStore;
+  /** 図を書き出す口。 */
+  renderer: Renderer;
 }
 
 /** 道具が、AI のクライアントに文で伝える失敗（引数の誤り・見つからない要素）。 */
@@ -153,6 +156,29 @@ export const TOOLS: Tool[] = [
       [...unreadableReports(project), ...core.problems(project)].filter((p) => matches(p.file, args.file)),
   },
   {
+    name: "export_diagram",
+    title: "Export a diagram",
+    description:
+      "Draw a diagram of the model and return it as SVG or as a draw.io (diagrams.net) file, laid out the same way as in the Modelith app (saved positions are used). " +
+      "Either name a diagram written in the model with diagram (a qualified name from list_diagrams), or name a model file with file to get an automatic diagram of it " +
+      "(view: all, structure, trace, control or behavior; default all). Nothing is written; the result has the diagram text in content.",
+    params: {
+      format: { description: "svg or drawio.", required: true },
+      diagram: { description: "The qualified name of a diagram from list_diagrams, for example \"Shop::overview\"." },
+      file: { description: "A model file from list_files, for an automatic diagram of that file. Not used with diagram." },
+      view: { description: "The automatic diagram: all (everything), structure (block definition), trace (requirement traceability), control or behavior. Default all. Only with file." },
+    },
+    run: ({ core, project, renderer }, args) => {
+      const request = diagramRequest(core, project, args);
+      try {
+        return { format: request.format, file: request.file, ...renderer.render(project, request) };
+      } catch (e) {
+        if (e instanceof Refused) throw new ToolError(e.message);
+        throw e;
+      }
+    },
+  },
+  {
     name: "propose_edit",
     title: "Propose an edit",
     description:
@@ -211,6 +237,31 @@ export const TOOLS: Tool[] = [
     },
   },
 ];
+
+/**
+ * 道具の引数から、書き出す図の指定を作る。テキストに書いた図は、修飾名からファイルと名前を引く。
+ *
+ * @param core コアの操作（図の一覧を引く）
+ * @param project 今読んだプロジェクト
+ * @param args export_diagram の引数
+ * @returns 図の指定。形式が違う、diagram と file の両方がある・どちらも無い、その図が無いときは、理由を書いた ToolError を投げる
+ * @example
+ * diagramRequest(core, project, { format: "svg", diagram: "Shop::overview" }) // → { file: "shop.sysml", view: "overview", format: "svg" }
+ * diagramRequest(core, project, { format: "drawio", file: "shop.sysml" })     // → { file: "shop.sysml", auto: "all", format: "drawio" }
+ * diagramRequest(core, project, { format: "png", file: "shop.sysml" })        // → ToolError("Unknown format \"png\". Use svg or drawio.") を投げる
+ */
+export function diagramRequest(core: Core, project: ProjectInput, args: Record<string, string | undefined>): DiagramRequest {
+  const { format, diagram, file, view } = args;
+  if (format !== "svg" && format !== "drawio") throw new ToolError(`Unknown format "${format ?? ""}". Use svg or drawio.`);
+  if ((diagram === undefined) === (file === undefined)) throw new ToolError("Give either diagram or file, not both.");
+  if (diagram !== undefined) {
+    if (view !== undefined) throw new ToolError("view is only used with file.");
+    const found = core.outline(project.files).diagrams.find((d) => d.qualifiedName === diagram);
+    if (!found) throw new ToolError(`No diagram named "${diagram}" was found. Use list_diagrams to see the qualified names.`);
+    return { file: found.file, view: found.name, format };
+  }
+  return { file: file ?? "", auto: view ?? "all", format };
+}
 
 /** 編集の意図の種類ごとの、要る引数。 */
 const REQUEST_FIELDS: Record<EditRequest["type"], string[]> = {

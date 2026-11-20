@@ -33,6 +33,34 @@ export interface ProjectInput {
   projectFile?: string;
   /** プラグインのファイル（プラグインの ID → プラグインのフォルダからの相対パス → テキスト）。 */
   pluginFiles: Record<string, Record<string, string>>;
+  /** 図の配置のファイル（モデルのファイルのパス → 隣の配置ファイルのテキスト）。無いファイルは入らない。省いたら、配置は無いものとする。 */
+  layouts?: Record<string, string>;
+}
+
+/** 書き出す図の指定。 */
+export interface DiagramRequest {
+  /** 図のあるモデルのファイル（プロジェクトのフォルダからのパス）。 */
+  file: string;
+  /** テキストに書いた図（view）の名前。省いたら、auto の自動の図。 */
+  view?: string;
+  /** 自動の図の ID（all・structure・trace・control・behavior）。view を省いたときに使う。 */
+  auto?: string;
+  /** 書き出す形式。 */
+  format: "svg" | "drawio";
+}
+
+/** 書き出した図。 */
+export interface DiagramOutput {
+  /** 図の中身（SVG、または draw.io の XML）。 */
+  content: string;
+  /** 配置ファイルが読めなかったときの理由（そのときは、配置なしで自動に並べている）。 */
+  layoutProblem?: string;
+}
+
+/** 図を書き出す口（ADR-0024 の 3：画面と同じ配置と描画を使う）。ファイルには触れない。 */
+export interface Renderer {
+  /** 図を書き出す。その図が無いときは Refused を投げる。 */
+  render(project: ProjectInput, request: DiagramRequest): DiagramOutput;
 }
 
 /** コアが、編集の意図を当てられないと断ったこと（理由は message。指す要素が無い・名前が使えないなど）。 */

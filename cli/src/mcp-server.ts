@@ -3,7 +3,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { Core, ProjectReader, ProjectWriter, ProposalStore } from "./core.ts";
+import type { Core, ProjectReader, ProjectWriter, ProposalStore, Renderer } from "./core.ts";
 import { ToolError, type Tool, type ToolParam } from "./tools.ts";
 
 /** サーバが使うもの（外から渡す）。 */
@@ -16,6 +16,8 @@ export interface ServerDeps {
   writer: ProjectWriter;
   /** 提案を覚えておく口。 */
   proposals: ProposalStore;
+  /** 図を書き出す口。 */
+  renderer: Renderer;
   /** AI のクライアントに名乗る版。 */
   version: string;
 }
@@ -47,7 +49,7 @@ function inputShape(params: Record<string, ToolParam>): Record<string, z.ZodType
  * 道具を 1 回動かす。呼ぶたびにプロジェクトを読み直し、結果を JSON の文にする。失敗は例外にせず、AI のクライアントに文で返す。
  *
  * @param tool 道具
- * @param deps コア・プロジェクトを読む口・書く口・提案を覚えておく口
+ * @param deps コア・プロジェクトを読む口・書く口・提案を覚えておく口・図を書き出す口
  * @param args 道具の引数
  * @returns 結果（JSON の文）。失敗なら isError を立て、理由の文を入れる
  * @example
@@ -58,8 +60,8 @@ export async function callTool(
   tool: Tool, deps: Omit<ServerDeps, "version">, args: Record<string, string | undefined>,
 ): Promise<ToolResult> {
   try {
-    const { core, writer, proposals } = deps;
-    const result = await tool.run({ core, project: await deps.reader.read(), writer, proposals }, args);
+    const { core, writer, proposals, renderer } = deps;
+    const result = await tool.run({ core, project: await deps.reader.read(), writer, proposals, renderer }, args);
     return { content: [{ type: "text", text: JSON.stringify(result) }] };
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
@@ -72,7 +74,7 @@ export async function callTool(
  * 道具を登録した MCP のサーバを作る（つなぐ先は、呼ぶ側が connect で決める）。
  *
  * @param tools 出す道具
- * @param deps コア・プロジェクトを読む口と書く口・提案を覚えておく口・版
+ * @param deps コア・プロジェクトを読む口と書く口・提案を覚えておく口・図を書き出す口・版
  * @returns MCP のサーバ
  * @example
  * await createServer(TOOLS, { core, reader, version: "0.3.0" }).connect(new StdioServerTransport())

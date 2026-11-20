@@ -219,7 +219,7 @@ fn with_files(files: &str, f: impl FnOnce(&[SourceFile<'_>]) -> String) -> Strin
 /// to_json(&Some(1))      → "1"
 /// to_json(&None::<u8>)   → "null"
 /// ```
-fn to_json(value: &impl serde::Serialize) -> String {
+pub(crate) fn to_json(value: &impl serde::Serialize) -> String {
     serde_json::to_string(value)
         .unwrap_or_else(|_| r#"{"error":"結果を JSON にできませんでした"}"#.to_owned())
 }

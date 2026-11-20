@@ -1,7 +1,9 @@
-// 道具の単体テスト（F-AI-1）。コアは偽物に差し替え、道具の判断（絞り込み・失敗の伝え方・読めないファイル）だけを確かめる。
+// 道具の単体テスト（F-AI-1・F-AI-2）。コア・書く口は偽物に差し替え、道具の判断（絞り込み・失敗の伝え方・読めないファイル・提案と書き込みの 2 段階）だけを確かめる。
 import { describe, expect, it } from "vitest";
-import type { Core, ElementSummary, ProblemReport, ProjectInput } from "./core.ts";
-import { TOOLS, ToolError, unreadableReports, type Tool } from "./tools.ts";
+import { Refused, type Core, type EditProposal, type EditRequest, type ElementSummary, type ProblemReport, type ProjectInput } from "./core.ts";
+import { versionOf } from "./edits.ts";
+import { memoryProposals } from "./proposals.ts";
+import { editRequest, TOOLS, ToolError, unreadableReports, type Tool, type ToolContext } from "./tools.ts";
 
 const RANGE = { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } };
 
@@ -30,13 +32,37 @@ const core: Core = {
   }),
   element: (_files, name) => (name === "Shop::Cart" ? { ...ELEMENTS[1]!, members: [], ports: [], relations: [] } : null),
   problems: () => [problem("shop.sysml", "a"), problem("parts.sysml", "b")],
+  // 名前の変更だけを知っている：shop.sysml の先頭の 1 文字を新しい名前に置き換える提案を返す。「Nope」を指したら断る
+  propose: (input, request): EditProposal => {
+    if (request.type !== "rename" || request.element === "Nope") throw new Refused("見つかりません");
+    const shop = input.files.find((f) => f.path === "shop.sysml");
+    return {
+      changes: request.name === "same" ? [] : [{
+        file: "shop.sysml",
+        baseVersion: versionOf(shop?.text ?? ""),
+        edits: [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, newText: request.name }],
+      }],
+      problems: [problem("shop.sysml", "after")],
+    };
+  },
 };
 
 const project: ProjectInput = {
-  files: [{ path: "parts.sysml", text: "" }, { path: "shop.sysml", text: "" }],
+  files: [{ path: "parts.sysml", text: "" }, { path: "shop.sysml", text: "abc" }],
   unreadable: [],
   pluginFiles: {},
 };
+
+/** 書いた中身を覚えるだけの、偽の書く口。 */
+function recorder(): { written: [string, string][]; writer: ToolContext["writer"] } {
+  const written: [string, string][] = [];
+  return { written, writer: { write: (path, text) => Promise.resolve(void written.push([path, text])) } };
+}
+
+/** 道具に渡すもの（読むだけの道具は、書く口と提案を覚える口を使わない）。 */
+function ctx(input: ProjectInput = project, more: Partial<ToolContext> = {}): ToolContext {
+  return { core, project: input, writer: recorder().writer, proposals: memoryProposals(), ...more };
+}
 
 /** 名前で道具を引く。 */
 function tool(name: string): Tool {
@@ -46,13 +72,15 @@ function tool(name: string): Tool {
 }
 
 describe("道具の一覧", () => {
-  it("F-AI-1: 読む・確かめるための 5 つの道具を、説明と引数つきで出す（正常系）", () => {
+  it("F-AI-1・F-AI-2: 読む・確かめる 5 つの道具と、提案・書き込みの 2 つの道具を、説明と引数つきで出す（正常系）", () => {
     // Act
     const names = TOOLS.map((t) => t.name);
     const required = TOOLS.flatMap((t) => Object.entries(t.params).filter(([, p]) => p.required).map(([n]) => `${t.name}.${n}`));
     // Assert
-    expect(names).toEqual(["list_files", "list_elements", "get_element", "list_diagrams", "list_problems"]);
-    expect(required).toEqual(["get_element.qualifiedName"]);
+    expect(names).toEqual(["list_files", "list_elements", "get_element", "list_diagrams", "list_problems", "propose_edit", "apply_edit"]);
+    expect(required).toEqual(["get_element.qualifiedName", "propose_edit.type", "apply_edit.proposalId"]);
+    // 書くのは apply_edit だけ
+    expect(TOOLS.filter((t) => t.writes).map((t) => t.name)).toEqual(["apply_edit"]);
     expect(TOOLS.every((t) => t.title && t.description)).toBe(true);
   });
 });
@@ -60,8 +88,8 @@ describe("道具の一覧", () => {
 describe("list_files・list_diagrams", () => {
   it("コアの概要から、ファイルと図をそのまま返す（正常系）", () => {
     // Act
-    const files = tool("list_files").run(core, project, {});
-    const diagrams = tool("list_diagrams").run(core, project, {});
+    const files = tool("list_files").run(ctx(), {});
+    const diagrams = tool("list_diagrams").run(ctx(), {});
     // Assert
     expect(files).toEqual([{ path: "parts.sysml" }, { path: "shop.sysml" }]);
     expect(diagrams).toEqual([{ name: "v", qualifiedName: "Shop::v", kind: "GeneralView", file: "shop.sysml", range: RANGE }]);
@@ -72,7 +100,7 @@ describe("list_elements", () => {
   it("条件を省くとすべて、ファイル・種類を渡すと合うものだけを返す（同値分割）", () => {
     // Arrange
     const run = (args: Record<string, string>) =>
-      (tool("list_elements").run(core, project, args) as ElementSummary[]).map((e) => e.qualifiedName);
+      (tool("list_elements").run(ctx(), args) as ElementSummary[]).map((e) => e.qualifiedName);
     // Act
     const all = run({});
     const byFile = run({ file: "shop.sysml" });
@@ -87,8 +115,8 @@ describe("list_elements", () => {
 
   it("合うものが無い条件・種類の一部だけの条件では、空を返す（境界値）", () => {
     // Act
-    const noFile = tool("list_elements").run(core, project, { file: "nope.sysml" });
-    const partial = tool("list_elements").run(core, project, { kind: "part" });
+    const noFile = tool("list_elements").run(ctx(), { file: "nope.sysml" });
+    const partial = tool("list_elements").run(ctx(), { kind: "part" });
     // Assert
     expect([noFile, partial]).toEqual([[], []]);
   });
@@ -97,15 +125,15 @@ describe("list_elements", () => {
 describe("get_element", () => {
   it("修飾名の要素の詳細を返す（正常系）", () => {
     // Act
-    const found = tool("get_element").run(core, project, { qualifiedName: "Shop::Cart" });
+    const found = tool("get_element").run(ctx(), { qualifiedName: "Shop::Cart" });
     // Assert
     expect(found).toMatchObject({ qualifiedName: "Shop::Cart", kind: "part def" });
   });
 
   it("要素が無い・名前を渡さないときは、一覧の道具を案内する文で失敗を伝える（異常系）", () => {
     // Act
-    const missing = () => tool("get_element").run(core, project, { qualifiedName: "Shop::Nope" });
-    const empty = () => tool("get_element").run(core, project, {});
+    const missing = () => tool("get_element").run(ctx(), { qualifiedName: "Shop::Nope" });
+    const empty = () => tool("get_element").run(ctx(), {});
     // Assert
     expect(missing).toThrow(new ToolError('No element named "Shop::Nope" was found. Use list_elements to see the qualified names.'));
     expect(empty).toThrow(ToolError);
@@ -116,7 +144,7 @@ describe("list_problems", () => {
   it("コアの問題一覧を返し、ファイルを渡すとそのファイルの問題だけにする（正常系）", () => {
     // Arrange
     const run = (args: Record<string, string>) =>
-      (tool("list_problems").run(core, project, args) as ProblemReport[]).map((p) => `${p.file}:${p.diagnostic.message}`);
+      (tool("list_problems").run(ctx(), args) as ProblemReport[]).map((p) => `${p.file}:${p.diagnostic.message}`);
     // Act
     const all = run({});
     const one = run({ file: "parts.sysml" });
@@ -129,7 +157,7 @@ describe("list_problems", () => {
     // Arrange
     const withUnreadable: ProjectInput = { ...project, unreadable: [{ path: "bad.sysml", reason: "not UTF-8 text" }] };
     // Act
-    const got = tool("list_problems").run(core, withUnreadable, {}) as ProblemReport[];
+    const got = tool("list_problems").run(ctx(withUnreadable), {}) as ProblemReport[];
     // Assert
     expect(got).toHaveLength(3);
     expect(got[0]).toEqual({
@@ -148,5 +176,118 @@ describe("list_problems", () => {
     const got = unreadableReports(project);
     // Assert
     expect(got).toEqual([]);
+  });
+});
+
+describe("editRequest", () => {
+  it("種類ごとに、要る引数だけを取り出して編集の意図にする（同値分割）", () => {
+    // Arrange（余分な引数は捨てる）
+    const cases: Record<string, string>[] = [
+      { type: "addElement", kind: "part def", name: "B", parent: "P", doc: "ignored" },
+      { type: "addRelation", kind: "satisfy", from: "P::A", to: "P::R" },
+      { type: "rename", element: "P::A", name: "B" },
+      { type: "delete", element: "P::A" },
+      { type: "setDoc", element: "P::A", doc: "" },
+      { type: "replaceText", file: "a.sysml", text: "package P;" },
+    ];
+    // Act
+    const got = cases.map(editRequest);
+    // Assert
+    expect(got).toEqual<EditRequest[]>([
+      { type: "addElement", kind: "part def", name: "B", parent: "P" },
+      { type: "addRelation", kind: "satisfy", from: "P::A", to: "P::R" },
+      { type: "rename", element: "P::A", name: "B" },
+      { type: "delete", element: "P::A" },
+      { type: "setDoc", element: "P::A", doc: "" },
+      { type: "replaceText", file: "a.sysml", text: "package P;" },
+    ]);
+  });
+
+  it("知らない種類・種類なし・足りない引数は、何が要るかを書いた文で失敗を伝える（異常系）", () => {
+    // Act
+    const unknown = () => editRequest({ type: "explode" });
+    const none = () => editRequest({});
+    const one = () => editRequest({ type: "rename", element: "P::A" });
+    const two = () => editRequest({ type: "addElement", kind: "part def" });
+    const inherited = () => editRequest({ type: "toString" });
+    // Assert
+    expect(unknown).toThrow(new ToolError('Unknown type "explode". Use one of: addElement, addRelation, rename, delete, setDoc, replaceText.'));
+    expect(none).toThrow(ToolError);
+    expect(one).toThrow(new ToolError("rename needs name."));
+    expect(two).toThrow(new ToolError("addElement needs name and parent."));
+    expect(inherited).toThrow(ToolError);
+  });
+});
+
+describe("propose_edit・apply_edit", () => {
+  it("F-AI-2: 提案は何も書かずに、ID・差分・当てたあとの問題一覧を返す（正常系）", () => {
+    // Arrange
+    const { written, writer } = recorder();
+    // Act
+    const got = tool("propose_edit").run(ctx(project, { writer }), { type: "rename", element: "Shop::Cart", name: "X" }) as EditProposal & { proposalId: string };
+    // Assert
+    expect(got.proposalId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(got.changes.map((c) => [c.file, c.baseVersion])).toEqual([["shop.sysml", versionOf("abc")]]);
+    expect(got.problems.map((p) => p.diagnostic.message)).toEqual(["after"]);
+    expect(written).toEqual([]);
+  });
+
+  it("F-AI-2: 書き込みは、提案したときの中身を書き、書いたファイルと問題一覧を返す。同じ提案は 2 回書けない（正常系）", async () => {
+    // Arrange
+    const { written, writer } = recorder();
+    const proposals = memoryProposals();
+    const { proposalId } = tool("propose_edit").run(ctx(project, { proposals }), { type: "rename", element: "Shop::Cart", name: "X" }) as { proposalId: string };
+    // Act
+    const got = await tool("apply_edit").run(ctx(project, { writer, proposals }), { proposalId });
+    const again = async () => tool("apply_edit").run(ctx(project, { writer, proposals }), { proposalId });
+    // Assert
+    expect(written).toEqual([["shop.sysml", "Xbc"]]);
+    expect(got).toMatchObject({ written: ["shop.sysml"] });
+    await expect(again()).rejects.toThrow(new ToolError("This proposal was not found. It may have been applied already. Call propose_edit again."));
+    expect(written).toHaveLength(1);
+  });
+
+  it("F-AI-2: 提案のあとにファイルが変わっていたら、黙って上書きせず、何も書かずに断る（異常系）", async () => {
+    // Arrange（提案のあとで、ほかのアプリが shop.sysml を書き換えた）
+    const { written, writer } = recorder();
+    const proposals = memoryProposals();
+    const { proposalId } = tool("propose_edit").run(ctx(project, { proposals }), { type: "rename", element: "Shop::Cart", name: "X" }) as { proposalId: string };
+    const changed: ProjectInput = { ...project, files: [{ path: "parts.sysml", text: "" }, { path: "shop.sysml", text: "abcd" }] };
+    // Act
+    const apply = async () => tool("apply_edit").run(ctx(changed, { writer, proposals }), { proposalId });
+    // Assert
+    await expect(apply()).rejects.toThrow(new ToolError("Nothing was written, because shop.sysml changed after the proposal. Call propose_edit again."));
+    expect(written).toEqual([]);
+  });
+
+  it("提案のあとにファイルが消えていたら、書かずに断る（異常系）", async () => {
+    // Arrange
+    const { written, writer } = recorder();
+    const proposals = memoryProposals();
+    const { proposalId } = tool("propose_edit").run(ctx(project, { proposals }), { type: "rename", element: "Shop::Cart", name: "X" }) as { proposalId: string };
+    const removed: ProjectInput = { ...project, files: [{ path: "parts.sysml", text: "" }] };
+    // Act
+    const apply = async () => tool("apply_edit").run(ctx(removed, { writer, proposals }), { proposalId });
+    // Assert
+    await expect(apply()).rejects.toThrow(ToolError);
+    expect(written).toEqual([]);
+  });
+
+  it("何も変わらない提案は、ID を付けず、覚えない（境界値）", () => {
+    // Act
+    const got = tool("propose_edit").run(ctx(), { type: "rename", element: "Shop::Cart", name: "same" });
+    // Assert
+    expect(got).toEqual({ changes: [], problems: [problem("shop.sysml", "after")] });
+  });
+
+  it("コアが断った理由を、失敗の文として伝える。知らない ID・ID なしの書き込みも断る（異常系）", async () => {
+    // Act
+    const refused = () => tool("propose_edit").run(ctx(), { type: "rename", element: "Nope", name: "X" });
+    const unknownId = async () => tool("apply_edit").run(ctx(), { proposalId: "nope" });
+    const noId = async () => tool("apply_edit").run(ctx(), {});
+    // Assert
+    expect(refused).toThrow(new ToolError("The edit was refused: 見つかりません"));
+    await expect(unknownId()).rejects.toThrow(ToolError);
+    await expect(noId()).rejects.toThrow(ToolError);
   });
 });

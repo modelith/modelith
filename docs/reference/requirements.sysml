@@ -451,8 +451,10 @@ package ModelithRequirements {
                    読むのは指定したフォルダの中だけで、モデルを書き換えない。道具を呼ぶたびにフォルダを読み直す。読めないファイルは黙って飛ばさず、問題一覧で知らせる */
         }
         requirement def <'F-AI-2'> McpWriteReq {
-            doc /* 予定：0.3.0。AI のクライアントが MCP で、画面と同じ編集の意図（要素や関係の追加・名前の変更・削除・説明）を、要素を修飾名で指して渡せる。
-                   書き換えは TextEdit としてテキストに入り（ADR-0001）、既定では差分を見せて利用者が受け入れてから書く。確かめずに書くかは設定で選ぶ */
+            doc /* AI のクライアントが MCP で、画面と同じ編集の意図（要素や関係の追加・名前の変更・削除・説明）を、要素を修飾名で指して渡せる。ファイルのテキストを丸ごと書き換えることもできる。
+                   書き換えは TextEdit としてテキストに入る（ADR-0001）。書くのは 2 段階：提案は何も書かずに、差分と、当てたあとの問題一覧を返す。書き込みは、その提案の中身を書く。
+                   提案のあとにファイルが変わっていたら、黙って上書きせずに断り、何も書かない。同じ提案は 2 回書けない。書けるのは、指定したフォルダの中のモデルのファイルだけ。
+                   予定：確かめずに書く設定、ほかのファイルの参照も直す名前の変更（ADR-0021） */
         }
         requirement def <'F-AI-3'> HeadlessExportReq {
             doc /* 予定：0.3.0。画面を開かずに、CLI と MCP から、.sysml と図の名前を指定して SVG・PNG・draw.io を書き出せる。画面と同じ図が出る */
@@ -752,7 +754,7 @@ package ModelithRequirements {
             doc /* 起動・メニュー・ヘッダー・配信の設定（web/src/main.ts・vite.config.ts・Pages） */
         }
         part def McpServer {
-            doc /* AI のクライアントとやり取りする MCP のサーバ（cli/。Node で動き、コアは wasm を使う。読む操作は 0.3.0 から。ADR-0024） */
+            doc /* AI のクライアントとやり取りする MCP のサーバ（cli/。Node で動き、コアは wasm を使う。読む・書く操作は 0.3.0 から。ADR-0024） */
         }
         part def Server {
             doc /* 自分で動かせる共同編集のサーバ（予定：0.5.0。modelith-server。ADR-0025） */
@@ -1557,6 +1559,16 @@ package ModelithRequirements {
                    crates/modelith-core/src/read：概要（修飾名・引用名・UTF-16 の列・閉じていない括弧）、要素の詳細（同じ修飾名が 2 つ・ほかのファイルとの関係）、問題一覧（既定の重さ・選んだ重さ・設定ファイルとプラグインの問題）。crates/modelith-wasm/src/read.rs：契約の形の JSON と、読めない入力 */
             objective {
                 verify McpReadReq;
+            }
+        }
+        verification def McpWriteTest {
+            doc /* cli/src/mcp-server.test.ts：MCP のクライアントをメモリ上でつなぎ、本物のコア（wasm）と一時フォルダのプロジェクトで、提案が何も書かないこと、書き込むと提案の中身がファイルに入ること、
+                   修飾名で指した名前の変更・説明・関係の追加・削除・ファイルの書き換え、提案のあとにファイルが変わっていたら断って何も書かないこと、当てられない意図・足りない引数・知らない ID の伝え方を確かめる。
+                   cli/src/tools.test.ts：引数から意図を作る（種類ごとの同値分割、足りない引数）、提案と書き込みの判断（同じ提案を 2 回書かない・変わったファイル・消えたファイル・何も変わらない提案）。
+                   cli/src/edits.test.ts：版と、編集の当て方（複数・行またぎ・UTF-16・末尾・範囲の外）。cli/src/proposals.test.ts：提案を覚える数の境界。cli/src/fs-project.test.ts：書けるのはモデルのファイルだけ（フォルダの外・設定ファイル・プラグイン・シンボリックリンクに書かない）。
+                   crates/modelith-core/src/write.rs：提案（差分・前提の版・当てたあとの問題一覧・関係の言葉・断る理由）。crates/modelith-core/src/edit/tests.rs：修飾名のキー（q:）と、名前と入れる先を決めた追加（addElement）。crates/modelith-wasm/src/write.rs：契約の形の JSON と、読めない入力 */
+            objective {
+                verify McpWriteReq;
             }
         }
         verification def CliCheckTest {

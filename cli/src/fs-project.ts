@@ -1,11 +1,12 @@
 // プロジェクトを読む口（core.ts の ProjectReader）を、手元のフォルダで満たす。ファイルに触れるのはこのファイルだけ。
-// 読むのは、渡したフォルダの中だけ（ADR-0024 の 5）。シンボリックリンクはたどらない（フォルダの外を読まないため）。
+// 読むのも書くのも、渡したフォルダの中だけ（ADR-0024 の 5）。シンボリックリンクはたどらない（フォルダの外を読み書きしないため）。
+// 書けるのは、読むときと同じ決まりで見つかるモデルのファイルだけ（新しいファイルは作らない）。
 // どのファイルをモデルとして読むかは、`modelith check`（crates/modelith-cli/src/check.rs）と同じ：
 // .sysml・.kerml を、隠しフォルダ（. で始まる）・target・node_modules を除いて、名前の順にたどる。
 
-import { lstat, readdir, readFile } from "node:fs/promises";
+import { lstat, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ProjectInput, ProjectReader, SourceFile, UnreadableFile } from "./core.ts";
+import type { ProjectInput, ProjectReader, ProjectWriter, SourceFile, UnreadableFile } from "./core.ts";
 
 /** プロジェクトの設定ファイル。 */
 const PROJECT_FILE = "modelith.json";
@@ -181,4 +182,37 @@ async function readProject(folder: string): Promise<ProjectInput> {
  */
 export function fsProjectReader(folder: string): ProjectReader {
   return { read: () => readProject(folder) };
+}
+
+/**
+ * モデルのファイルを書き換える。書けるのは、フォルダをたどって見つかるモデルのファイルだけ
+ * （パスをそのまま信じない。フォルダの外・設定ファイル・プラグイン・シンボリックリンクには書かない）。
+ *
+ * @param folder プロジェクトのフォルダ
+ * @param path プロジェクトのフォルダからのパス（`/` 区切り）
+ * @param text 書き込むテキスト
+ * @returns 書き終えたら解決する。書けるファイルでなければ、理由を書いた Error で拒否する
+ * @example
+ * await writeModelFile("/p", "a.sysml", "package P;")        // → /p/a.sysml を書き換える
+ * await writeModelFile("/p", "../x.sysml", "package P;")     // → Error("\"../x.sysml\" is not a model file of the project") で拒否する
+ */
+async function writeModelFile(folder: string, path: string, text: string): Promise<void> {
+  if (!(await walk(folder, "", isModelFile, isSkippedDir)).includes(path)) {
+    throw new Error(`"${path}" is not a model file of the project`);
+  }
+  const full = join(folder, path);
+  if ((await lstat(full)).isSymbolicLink()) throw new Error("symbolic links are not written");
+  await writeFile(full, text, "utf8");
+}
+
+/**
+ * 手元のフォルダに書く口を作る。
+ *
+ * @param folder プロジェクトのフォルダ
+ * @returns プロジェクトに書く口（モデルのファイルだけを書き換える）
+ * @example
+ * await fsProjectWriter("/p").write("a.sysml", "package P;") // → writeModelFile("/p", "a.sysml", "package P;") と同じ
+ */
+export function fsProjectWriter(folder: string): ProjectWriter {
+  return { write: (path, text) => writeModelFile(folder, path, text) };
 }

@@ -6,8 +6,9 @@ import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { parseArgs, USAGE } from "./cli.ts";
-import { fsProjectReader } from "./fs-project.ts";
+import { fsProjectReader, fsProjectWriter } from "./fs-project.ts";
 import { createServer } from "./mcp-server.ts";
+import { memoryProposals } from "./proposals.ts";
 import { TOOLS } from "./tools.ts";
 import { loadWasmCore } from "./wasm-core.ts";
 
@@ -25,6 +26,12 @@ if (!(await stat(folder).then((s) => s.isDirectory(), () => false))) {
 }
 
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string };
-const server = createServer(TOOLS, { core: loadWasmCore(), reader: fsProjectReader(folder), version });
+const server = createServer(TOOLS, {
+  core: loadWasmCore(),
+  reader: fsProjectReader(folder),
+  writer: fsProjectWriter(folder),
+  proposals: memoryProposals(),
+  version,
+});
 await server.connect(new StdioServerTransport());
 console.error(`Modelith MCP server ${version} is reading "${folder}".`);

@@ -1,0 +1,56 @@
+name: Release CLI
+
+# リリースを公開すると、そのタグの中身から CLI と MCP のサーバのパッケージ（modelith-cli。npm pack の .tgz）を組み立て、
+# そのリリースに添付する（docs/development/releasing.md、ADR-0024 の 6、ADR-0028）。
+# npm のレジストリへの公開は、まだ行わない（公開のしかたを決めてから、ここに足す。ADR-0028 の 3）。
+#
+# 添付するだけで、secret は使わない。タグのコミットの定義で動く（このファイルが無い古いタグでは、何も起きない）。
+on:
+  release:
+    types: [published]
+  # 添付し直すとき（組み立てに失敗した・添付を消したとき）に、タグを渡して手で動かす
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "リリースのタグ（例: v0.3.0-alpha.1）"
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: release-cli-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # リリースに .tgz を添付する
+    env:
+      # タグの名前は、式でシェルの文に埋め込まず、環境変数で渡す
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+      - name: Update rustup itself
+        run: |
+          rustup self update
+          scripts/check-rustup.sh
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable (2026-10)
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          check-latest: true  # 毎回その時点の、.nvmrc の版の最新（26.x）を使う（セキュリティリリースをすぐ取り込む）
+      - run: npm ci --prefix web --ignore-scripts --no-audit --no-fund
+      - run: npm ci --prefix cli --ignore-scripts --no-audit --no-fund
+      - name: Build the package and check that it runs
+        run: scripts/build-cli.sh --smoke
+      - name: Attach the package to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/release-cli.sh "$TAG"

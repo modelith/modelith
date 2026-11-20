@@ -15,7 +15,7 @@ use modelith_plugin_protocol::{
     Range, RelationDirection,
 };
 
-use crate::edit::sysml_name;
+use crate::edit::qualified_name as qualified;
 use crate::model::{self, Model};
 use crate::plugin_host::{Positions, port};
 use crate::project::merge::{merge, parse_file};
@@ -166,36 +166,6 @@ fn parsed<'a>(files: &[SourceFile<'a>]) -> Vec<Parsed<'a>> {
         .iter()
         .filter_map(|&file| parse_file(file.text).map(|parse| Parsed { file, parse }))
         .collect()
-}
-
-/// 宣言の修飾名を作る。親をたどり、名前のある宣言だけを、テキストに書ける形（必要なら引用名）で `::` でつなぐ。
-///
-/// # 引数
-///
-/// - `entries`：1 つのファイル（またはつないだ結果）の宣言
-/// - `i`：宣言の番号
-///
-/// # 戻り値
-///
-/// 修飾名。番号が範囲の外なら空文字。
-///
-/// # 例
-///
-/// ```text
-/// // 「package P { part def '電気 ケトル' { attribute n; } }」
-/// qualified(entries, n の番号) → "P::'電気 ケトル'::n"
-/// ```
-fn qualified(entries: &[Entry], i: usize) -> String {
-    let mut names = Vec::new();
-    let mut at = Some(i);
-    while let Some(e) = at.and_then(|x| entries.get(x)) {
-        if !e.name.is_empty() {
-            names.push(sysml_name(&e.name));
-        }
-        at = e.pe;
-    }
-    names.reverse();
-    names.join("::")
 }
 
 /// 宣言の概要を作る。

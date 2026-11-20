@@ -3,7 +3,7 @@
 use super::ops::{Found, append_package, keyword_problem, messages, tokens};
 use super::text::{Splice, indent_at, insert_into, insert_splice, remove_range};
 use super::{Change, Doc, Refusal};
-use crate::project::{Expose, RelKind, Scope, text::is_basic_name};
+use crate::project::{Entry, Expose, RelKind, Scope, text::is_basic_name};
 use crate::syntax::{SyntaxKind, is_keyword};
 
 // ---- メッセージ（シーケンス図） ----
@@ -746,6 +746,37 @@ pub fn sysml_name(name: &str) -> String {
         return name.to_owned();
     }
     format!("'{}'", name.replace('\\', "\\\\").replace('\'', "\\'"))
+}
+
+/// 宣言の修飾名を作る。親をたどり、名前のある宣言だけを、テキストに書ける形（必要なら引用名）で `::` でつなぐ。
+/// 画面の外（AI のクライアントなど）が要素を指す名前で、読む操作（`read`）が返す `qualifiedName` と、編集の意図の `q:` のキーが同じものを使う（ADR-0024 の 1）。
+///
+/// # 引数
+///
+/// - `entries`：1 つのファイル（またはつないだ結果）の宣言
+/// - `i`：宣言の番号
+///
+/// # 戻り値
+///
+/// 修飾名。番号が範囲の外なら空文字。
+///
+/// # 例
+///
+/// ```text
+/// // 「package P { part def '電気 ケトル' { attribute n; } }」
+/// qualified_name(entries, n の番号) → "P::'電気 ケトル'::n"
+/// ```
+pub fn qualified_name(entries: &[Entry], i: usize) -> String {
+    let mut names = Vec::new();
+    let mut at = Some(i);
+    while let Some(e) = at.and_then(|x| entries.get(x)) {
+        if !e.name.is_empty() {
+            names.push(sysml_name(&e.name));
+        }
+        at = e.pe;
+    }
+    names.reverse();
+    names.join("::")
 }
 
 impl Doc<'_> {

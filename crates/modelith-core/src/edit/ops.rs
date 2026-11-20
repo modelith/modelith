@@ -305,7 +305,7 @@ impl Doc<'_> {
     ///
     /// # 引数
     ///
-    /// - `key`：要素のキー（`A`・`A@Q`・`u:e`・`l:x`・`note:#1` など）
+    /// - `key`：要素のキー（`A`・`A@Q`・`u:e`・`l:x`・`note:#1`・修飾名の `q:P::A` など）
     /// - `ctx`：`u:`・`l:` のキーのときの図の対象のキー（部品定義・シナリオ）。None なら空のキーとして探す
     ///
     /// # 戻り値
@@ -324,9 +324,20 @@ impl Doc<'_> {
     /// find("a:start", Some("A")) → Err("開始と終了の記号は、順序の線から決まります。…")
     /// find("s:on.low", Some("S")) → Ok(Found { entry: S の中の on の中の low の番号 })   // state def S { state on { state low; } } のとき
     /// find("u:e", None)       → Err("操作する要素「」が見つかりません。…")   // 対象が無い
+    /// find("q:P::C::e", None) → Ok(Found { entry: C の中の e の番号 })   // 修飾名（図の対象は要らない）
+    /// find("q:P::Gone", None) → Err("操作する要素「P::Gone」が見つかりません。…")
     /// find("Gone", None)      → Err("操作する要素「Gone」が見つかりません。…")
     /// ```
     pub(super) fn find(&self, key: &str, ctx: Option<&str>) -> Result<Found, Refusal> {
+        // 修飾名（`q:P::A`）は、画面の外から要素を指す形（ADR-0024 の 1）。表示中のファイルの宣言を先に探す（つないだ宣言の並びは、表示中のファイルが先）
+        if let Some(name) = key.strip_prefix("q:") {
+            return (0..self.p.entries.len())
+                .find(|&i| {
+                    !self.e(i).name.is_empty() && super::qualified_name(&self.p.entries, i) == name
+                })
+                .map(|entry| Found { entry })
+                .ok_or_else(|| missing(name));
+        }
         // 入れ子の部品（`u:a.b`）と n 項の接続の点（`j:…`）は、内部ブロック図と同じ決め方で探す
         if key.starts_with("j:") || key.strip_prefix("u:").is_some_and(|k| k.contains('.')) {
             let c = self.context(ctx.unwrap_or_default())?;

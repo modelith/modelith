@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{self, Model};
 use crate::project::{self, Entry, ParseResult};
-pub use more::{FlowEnd, sysml_name};
+pub use more::{FlowEnd, qualified_name, sysml_name};
 use text::{Utf16, diff, utf16_of};
 
 /// 図の操作の意図。要素は図の要素のキー、関係は ID で指す。

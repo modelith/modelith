@@ -18,6 +18,8 @@ build() {
   (cd cli && node_modules/.bin/tsc -p tsconfig.build.json)
   mkdir -p "cli/dist/$wasm_dir"
   cp "$wasm_dir/modelith_core.js" "$wasm_dir/modelith_core_bg.wasm" "cli/dist/$wasm_dir/"
+  # 本体のライセンス（AGPL-3.0 とプラグイン例外）と、wasm に組み込まれる第三者のクレートのライセンスを添える（AGPL §5・MIT など）
+  node web/tools/licenses-cli.ts cli/dist
   chmod +x cli/dist/cli/src/main.js
 }
 
@@ -34,7 +36,8 @@ smoke() {
   [[ $out == '<mxfile '* ]] || { echo "ERROR: 組み立てた cli が draw.io を書き出しませんでした" >&2; exit 1; }
   files=$(cd cli && npm pack --dry-run --json --ignore-scripts 2>/dev/null | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>console.log(JSON.parse(s)[0].files.map((f)=>f.path).join("\n")))')
   local need
-  for need in dist/cli/src/main.js dist/web/src/render/index.js "dist/$wasm_dir/modelith_core_bg.wasm" package.json; do
+  for need in dist/cli/src/main.js dist/web/src/render/index.js "dist/$wasm_dir/modelith_core_bg.wasm" \
+    dist/LICENSE.txt dist/licenses.txt README.md package.json; do
     grep -qxF "$need" <<<"$files" || { echo "ERROR: パッケージに $need が入っていません" >&2; exit 1; }
   done
   if grep -E '(^|/)src/[^/]+\.ts$|\.test\.|node_modules/' <<<"$files" | grep -v '^dist/' >/dev/null; then

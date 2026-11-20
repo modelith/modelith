@@ -31,7 +31,15 @@ scripts/build-cli.sh           # cli/dist/ に組み立てる（束ねる道具�
 node cli/dist/cli/src/main.js mcp <プロジェクトのフォルダ>
 ```
 
-`scripts/check.sh` は、組み立てたものが動くことと、パッケージに入るファイル（テストやソースが入っていないこと）を確かめる。
+`scripts/check.sh` は、組み立てたものが動くことと、パッケージに入るファイル（テストやソースが入っていないこと、ライセンス文が入っていること）を確かめる。
+リリースを公開すると、同じ手順で組み立てたパッケージ（`modelith-cli-<版>.tgz`）が、そのリリースに添付される（[リリース手順](../development/releasing.md)）。
+添付されたものは、リポジトリを取ってこなくても入れられる。
+
+```bash
+npm install -g https://github.com/modelith/modelith/releases/download/v<版>/modelith-cli-<版>.tgz
+modelith mcp <プロジェクトのフォルダ>
+```
+
 npm への公開（要求 F-AI-4）はまだで、公開の手順を決めてから行う。パッケージの名前は `modelith-cli`（[ADR-0028](../adr/0028-npm-package-names.md)）で、公開したあとは `npx modelith-cli mcp <フォルダ>` で使える。
 
 ## 道具（読む・確かめる）

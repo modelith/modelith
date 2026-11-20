@@ -462,7 +462,9 @@ package ModelithRequirements {
                    予定：PNG（ブラウザの無い所で画面と同じ見た目が出るかを確かめてから）、対象を取る自動の図（内部ブロック図・状態遷移図・シーケンス図・アクティビティ図） */
         }
         requirement def <'F-AI-4'> CliDistributionReq {
-            doc /* 予定：0.3.0。CLI と MCP を、npm のパッケージ・リリースに付けた実行ファイル（macOS・Windows・Linux）・cargo install のどれでも入れられる。版は本体と同じ */
+            doc /* CLI と MCP のサーバを、npm のパッケージ（modelith-cli。ADR-0028）として入れられる。版は本体と同じ。パッケージは、リリースを公開すると組み立てて、そのリリースに .tgz で添付する。
+                   本体のライセンス（AGPL-3.0 とプラグイン例外）と、組み込んだ第三者の部品のライセンスを同梱する。
+                   予定：npm のレジストリへの公開（npx modelith-cli で使えるようにする）、リリースに付けた実行ファイル（macOS・Windows・Linux）、cargo install */
         }
 
         // ---- サーバ（ADR-0025。0.5.0 から） ----------------------------
@@ -1580,6 +1582,15 @@ package ModelithRequirements {
                    web/src/render/index.test.ts・boundary.test.ts：画面を介さない書き出しの入口と、描画の層が画面に頼らないこと */
             objective {
                 verify HeadlessExportReq;
+            }
+        }
+        verification def CliPackageTest {
+            doc /* scripts/build-cli.sh --smoke（scripts/check.sh の結合の段）：cli を配る形に組み立て、組み立てたものでサンプルのモデルの図を SVG と draw.io で書き出せること、
+                   パッケージに要るファイル（入口・描画・コアの wasm・ライセンス文・README）が入り、ソースやテストが入らないことを確かめる。
+                   tests/harness/unit/release-cli.bats：リリースに添付するときの判断（タグの版とパッケージの版が同じこと、.tgz の名前）。
+                   web/tools/licenses.test.ts：同梱する第三者の部品のライセンスの選び方と書式 */
+            objective {
+                verify CliDistributionReq;
             }
         }
         verification def CliCheckTest {

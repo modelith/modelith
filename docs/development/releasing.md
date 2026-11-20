@@ -73,6 +73,17 @@
 - 公開し直すとき（添付の作り直しを含む）も、Actions の「Pages」を `dev` から手動で起動する。作り直したい版は、その添付を消してから起動する。
 - 正式版や候補を取り下げるときは、そのリリースを下書きに戻してから、「Pages」を起動する。選び直しで 1 つ前の版に戻る。
 
+## CLI と MCP のサーバのパッケージ
+
+リリースを公開すると、`.github/workflows/release-cli.yml` が、そのタグの中身から npm のパッケージ `modelith-cli`（[ADR-0028](../adr/0028-npm-package-names.md)）を組み立て、
+動くことを確かめてから（`scripts/build-cli.sh --smoke`）、リリースに `modelith-cli-<版>.tgz` を添付する（`scripts/release-cli.sh`）。
+
+- 版は、本体と同じ（`scripts/release-prepare.sh` が `cli/package.json` も書き換える）。タグの版と違うときは、添付しない。
+- 添付し直すとき（組み立てに失敗した・添付を消したとき）は、Actions の「Release CLI」を、タグを渡して手で動かす。
+- 添付した `.tgz` は、npm のレジストリを使わずに入れられる：`npm install -g https://github.com/modelith/modelith/releases/download/v<版>/modelith-cli-<版>.tgz`。
+- npm のレジストリへの公開は、まだ行わない。公開のしかた（npm の Trusted Publishing か、トークンか）を決めてから、同じワークフローに足す（ADR-0028 の 3）。
+  そのときは、`cli/package.json` の `private` を外す。
+
 ## GitHub Pages の初期設定（一度だけ）
 
 - Settings → Pages → Build and deployment の Source を **GitHub Actions** にする。

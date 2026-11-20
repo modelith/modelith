@@ -4,6 +4,13 @@
   "version": "0.2.0-rc.2",
   "description": "Modelith for the command line and AI clients (MCP)",
   "license": "AGPL-3.0-only",
+  "homepage": "https://github.com/modelith/modelith/tree/dev/cli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/modelith/modelith.git",
+    "directory": "cli"
+  },
+  "bugs": "https://github.com/modelith/modelith/issues",
   "type": "module",
   "bin": {
     "modelith": "dist/cli/src/main.js"

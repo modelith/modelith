@@ -1,5 +1,5 @@
 {
-  "name": "@modelith/cli",
+  "name": "modelith-cli",
   "private": true,
   "version": "0.2.0-rc.2",
   "description": "Modelith for the command line and AI clients (MCP)",

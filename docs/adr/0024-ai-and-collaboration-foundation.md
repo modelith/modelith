@@ -85,7 +85,7 @@ AI（MCP）、開いているアプリ、サーバのどこから使っても、
 
 | 方式 | 内容 | 長所 | 短所 |
 | --- | --- | --- | --- |
-| a. npm のパッケージ | `npx @modelith/cli mcp` のように使う。wasm のコアと、Web アプリの配置・描画の TypeScript を同梱する | Claude Code・Codex の MCP の設定でよく使う形。3 の B と合う | Node が要る |
+| a. npm のパッケージ | `npx @modelith/cli mcp` のように使う（名前は、[ADR-0028](0028-npm-package-names.md) で `modelith-cli` に決めた）。wasm のコアと、Web アプリの配置・描画の TypeScript を同梱する | Claude Code・Codex の MCP の設定でよく使う形。3 の B と合う | Node が要る |
 | b. リリースに実行ファイルを付ける | Rust の `modelith` を OS ごとに作り、GitHub のリリースに付ける | Node が要らない | 図の書き出しは 3 の A が要る。OS ごとの組み立てと署名の手間 |
 | c. `cargo install` | crates.io に出す | 手間が少ない | Rust の開発環境が要る。AI を使う一般の利用者向けではない |
 

@@ -32,7 +32,7 @@ node cli/dist/cli/src/main.js mcp <プロジェクトのフォルダ>
 ```
 
 `scripts/check.sh` は、組み立てたものが動くことと、パッケージに入るファイル（テストやソースが入っていないこと）を確かめる。
-npm への公開（要求 F-AI-4）はまだで、パッケージの名前と公開の手順を決めてから行う。
+npm への公開（要求 F-AI-4）はまだで、公開の手順を決めてから行う。パッケージの名前は `modelith-cli`（[ADR-0028](../adr/0028-npm-package-names.md)）で、公開したあとは `npx modelith-cli mcp <フォルダ>` で使える。
 
 ## 道具（読む・確かめる）
 

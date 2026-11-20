@@ -68,6 +68,8 @@ export class Refused extends Error {}
 
 /** コアの操作（ADR-0024 の 1）。どれもファイルに触れない。 */
 export interface Core {
+  /** コアの版（本体の版と同じ。AI のクライアントに名乗る）。 */
+  version(): string;
   /** プロジェクトの概要（ファイル・要素・図）。 */
   outline(files: SourceFile[]): ProjectOutline;
   /** 修飾名で指した要素の詳細。無ければ null。 */

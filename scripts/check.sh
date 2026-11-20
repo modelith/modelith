@@ -59,6 +59,8 @@ stage_unit() {
 stage_integration() {
   step "[integration] harness"
   "$BATS" tests/harness/integration
+  step "[integration] cli（配る形に組み立て、動くことと、パッケージの中身を確かめる）"
+  scripts/build-cli.sh --smoke
   step "[integration] rust（crates/*/tests）"
   if compgen -G 'crates/*/tests/*.rs' >/dev/null; then cargo test --workspace --test '*' --quiet; else echo "なし"; fi
 }

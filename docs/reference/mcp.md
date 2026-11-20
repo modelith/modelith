@@ -22,6 +22,18 @@ AI のクライアントには、上の最後の行をコマンドとして登�
 claude mcp add modelith -- node /path/to/modelith/cli/src/main.ts mcp /path/to/project
 ```
 
+### 配る形に組み立てる
+
+npm で入れたパッケージの中では、Node が TypeScript を読まないので、JavaScript にして配る。
+
+```bash
+scripts/build-cli.sh           # cli/dist/ に組み立てる（束ねる道具は使わず、TypeScript のコンパイラだけで作る）
+node cli/dist/cli/src/main.js mcp <プロジェクトのフォルダ>
+```
+
+`scripts/check.sh` は、組み立てたものが動くことと、パッケージに入るファイル（テストやソースが入っていないこと）を確かめる。
+npm への公開（要求 F-AI-4）はまだで、パッケージの名前と公開の手順を決めてから行う。
+
 ## 道具（読む・確かめる）
 
 この 5 つは読むだけで、モデルを書き換えない。結果は JSON で、形は plugin-sdk の契約（`ProjectOutline`・`ElementDetail`・`ProblemReport`）。

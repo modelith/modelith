@@ -14,6 +14,7 @@ pub mod read;
 mod read_error;
 pub mod rules;
 pub mod syntax;
+pub mod write;
 
 pub use line_index::{LineCol, LineIndex};
 

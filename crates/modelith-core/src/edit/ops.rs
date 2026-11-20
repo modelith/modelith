@@ -163,6 +163,9 @@ pub(super) fn run(d: &Doc<'_>, intent: &Intent) -> Result<Change, Refusal> {
             phase,
             new_package,
         } => add_node(d, kind, phase.as_deref(), new_package.as_deref()),
+        Intent::AddElement { kind, name, parent } => {
+            add_element(d, kind, name, &d.find(parent, None)?)
+        }
         Intent::AddUsage { ctx, ty } => add_usage(d, ctx, ty),
         Intent::Rename { key, name, ctx } => rename(d, &d.find(key, ctx.as_deref())?, name),
         Intent::Delete { keys, ctx } => delete(d, keys, ctx.as_deref()),
@@ -292,7 +295,7 @@ pub(super) struct Found {
 /// missing("Gone") → "操作する要素「Gone」が見つかりません。テキストが先に変わった可能性があります"
 /// missing("")     → "操作する要素「」が見つかりません。テキストが先に変わった可能性があります"
 /// ```
-pub(super) fn missing(key: &str) -> Refusal {
+pub(crate) fn missing(key: &str) -> Refusal {
     format!("操作する要素「{key}」が見つかりません。テキストが先に変わった可能性があります")
 }
 
@@ -623,6 +626,57 @@ fn add_node(
     Ok(Change {
         text,
         select: Some(name),
+        flash: Some((a, b)),
+    })
+}
+
+/// 名前と入れる先を決めて、要素を追加する（画面の外からの追加。ADR-0024 の 1、F-AI-2）。入れる先の中身の最後に `種類 名前;` を足す。
+///
+/// # 引数
+///
+/// - `d`：操作の対象のテキスト
+/// - `kind`：追加する要素の種類（`part def`・`attribute`・`package` など、テキストに書ける宣言の種類）
+/// - `name`：付ける名前（前後の空白は除く。必要なら引用名にして書く）
+/// - `parent`：入れる先の要素
+///
+/// # 戻り値
+///
+/// 追加後のテキストと、選ぶ名前・光らせる範囲（足した宣言）。名前が空・使えない文字を含む・入れる先に同じ名前がある、
+/// 種類が宣言の種類でないときは理由の文（`Err`）。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = "package P {\n    part def A;\n}\n" のとき
+/// add_element(d, "part def", "B", P)      → Ok(text = "package P {\n    part def A;\n    part def B;\n}\n")
+/// add_element(d, "attribute", "mass", A)  → Ok(text = "package P {\n    part def A {\n        attribute mass;\n    }\n}\n")
+/// add_element(d, "part def", "A", P)      → Err("「A」は既に使われています")
+/// add_element(d, "widget", "B", P)        → Err("「widget」は、追加できる要素の種類ではありません")
+/// ```
+fn add_element(d: &Doc<'_>, kind: &str, name: &str, parent: &Found) -> Result<Change, Refusal> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("名前を入力してください".to_owned());
+    }
+    if let Some(why) = bad_name_reason(name) {
+        return Err(why.to_owned());
+    }
+    if !crate::project::DECL_KINDS.contains(&kind) {
+        return Err(format!("「{kind}」は、追加できる要素の種類ではありません"));
+    }
+    let taken = d
+        .e(parent.entry)
+        .children
+        .iter()
+        .any(|&c| d.e(c).name == name);
+    if taken {
+        return Err(format!("「{name}」は既に使われています"));
+    }
+    let snippet = format!("{kind} {};", super::sysml_name(name));
+    let (text, a, b) = insert_into(d.text, d.target(parent.entry), &snippet);
+    Ok(Change {
+        text,
+        select: Some(name.to_owned()),
         flash: Some((a, b)),
     })
 }

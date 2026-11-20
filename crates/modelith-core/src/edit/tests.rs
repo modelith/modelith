@@ -2671,3 +2671,86 @@ fn qualified_name_key_of_another_file_is_not_rewritten() {
     // Assert
     assert_eq!((got.reason.as_str(), got.file), (IN_OTHER_FILE, Some(1)));
 }
+
+// ---- 名前と入れる先を決めて要素を足す（`addElement`。ADR-0024 の 1、F-AI-2） ----
+
+#[test]
+fn add_element_writes_the_named_element_at_the_end_of_the_parent() {
+    // Arrange
+    let text = "package P {\n    part def A;\n}\n";
+    // Act
+    let (in_package, out) = run(
+        text,
+        r#"{"op":"addElement","kind":"part def","name":"B","parent":"q:P"}"#,
+    );
+    let (in_definition, _) = run(
+        text,
+        r#"{"op":"addElement","kind":"attribute","name":"mass","parent":"q:P::A"}"#,
+    );
+    // Assert
+    assert_eq!(
+        in_package,
+        "package P {\n    part def A;\n    part def B;\n}\n"
+    );
+    assert_eq!(out.select.as_deref(), Some("B"));
+    assert_eq!(flashed(&in_package, &out), "    part def B;\n");
+    assert_eq!(
+        in_definition,
+        "package P {\n    part def A {\n        attribute mass;\n    }\n}\n"
+    );
+}
+
+#[test]
+fn add_element_quotes_the_name_when_needed_and_trims_it() {
+    // Arrange（境界値：空白を含む名前、予約語、前後の空白）
+    let text = "package P {\n}\n";
+    // Act
+    let (spaced, _) = run(
+        text,
+        r#"{"op":"addElement","kind":"part def","name":"電気 ケトル","parent":"q:P"}"#,
+    );
+    let (keyword, _) = run(
+        text,
+        r#"{"op":"addElement","kind":"part def","name":" part ","parent":"q:P"}"#,
+    );
+    // Assert
+    assert!(spaced.contains("    part def '電気 ケトル';\n"), "{spaced}");
+    assert!(keyword.contains("    part def 'part';\n"), "{keyword}");
+}
+
+#[test]
+fn add_element_refuses_bad_names_kinds_parents_and_duplicates() {
+    // Arrange（異常系）
+    let text = "package P {\n    part def A;\n}\n";
+    let cases = [
+        r#"{"op":"addElement","kind":"part def","name":"  ","parent":"q:P"}"#,
+        r#"{"op":"addElement","kind":"part def","name":"a::b","parent":"q:P"}"#,
+        r#"{"op":"addElement","kind":"widget","name":"B","parent":"q:P"}"#,
+        r#"{"op":"addElement","kind":"part def","name":"A","parent":"q:P"}"#,
+        r#"{"op":"addElement","kind":"part def","name":"B","parent":"q:Nope"}"#,
+    ];
+    // Act
+    let got = cases.map(|json| refused(text, json));
+    // Assert
+    assert_eq!(
+        got,
+        [
+            "名前を入力してください",
+            super::ops::BAD_NAME_SEPARATOR,
+            "「widget」は、追加できる要素の種類ではありません",
+            "「A」は既に使われています",
+            "操作する要素「Nope」が見つかりません。テキストが先に変わった可能性があります",
+        ]
+    );
+}
+
+#[test]
+fn add_element_into_an_element_of_another_file_is_refused() {
+    // Arrange（異常系：入れる先がほかのファイルにある）
+    let text = "package App {\n}\n";
+    let json = r#"{"op":"addElement","kind":"part def","name":"Bus","parent":"q:Fleet"}"#;
+    // Act
+    let got = run_in(text, json).expect_err(json);
+    // Assert
+    assert_eq!((got.reason.as_str(), got.file), (IN_OTHER_FILE, Some(1)));
+}

@@ -15,10 +15,11 @@ export const USAGE = [
   "in two steps: propose_edit returns the changes without writing, and apply_edit writes a proposal.",
   "Only files inside the project folder are read, and only its model files are written.",
   "",
-  "Usage: modelith export <project folder> --format <svg|drawio> (--diagram <qualified name> | --file <model file> [--view <view>]) [--out <file>]",
+  "Usage: modelith export <project folder> --format <svg|drawio> (--diagram <qualified name> | --subject <qualified name> | --file <model file> [--view <view>]) [--out <file>]",
   "",
   "Draws a diagram the same way as the Modelith app and prints it, or writes it to the file given with --out.",
-  "--diagram names a diagram written in the model (for example Shop::overview). --file gives an automatic diagram of a model file",
+  "--diagram names a diagram written in the model (for example Shop::overview). --subject names a part def, state def, action def or",
+  "occurrence def, and draws its internal block, state machine, activity or sequence diagram. --file gives an automatic diagram of a model file",
   "(--view all, structure, trace, control or behavior; default all).",
 ].join("\n");
 
@@ -48,7 +49,7 @@ export function parseArgs(args: string[]): Command {
 }
 
 /** export のオプションの名前。 */
-const EXPORT_OPTIONS = ["format", "diagram", "file", "view", "out"];
+const EXPORT_OPTIONS = ["format", "diagram", "subject", "file", "view", "out"];
 
 /**
  * export のオプション（`--名前 値` の並び）を読む。

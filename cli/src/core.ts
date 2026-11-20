@@ -43,8 +43,17 @@ export interface DiagramRequest {
   file: string;
   /** テキストに書いた図（view）の名前。省いたら、auto の自動の図。 */
   view?: string;
-  /** 自動の図の ID（all・structure・trace・control・behavior）。view を省いたときに使う。 */
+  /** 自動の図の ID（all・structure・trace・control・behavior）。view と subject を省いたときに使う。 */
   auto?: string;
+  /** 対象を取る自動の図（内部ブロック図・状態遷移図・アクティビティ図・シーケンス図）の、対象の要素。 */
+  subject?: {
+    /** 対象の修飾名（失敗の文に使う）。 */
+    qualifiedName: string;
+    /** 図の ID（ibd・stm・afv・seq）。 */
+    view: SubjectView;
+    /** 対象の宣言の始まり（0 始まりの行と、UTF-16 の列。file の中の位置）。 */
+    start: { line: number; character: number };
+  };
   /** 書き出す形式。 */
   format: "svg" | "drawio";
 }
@@ -104,3 +113,6 @@ export interface ProposalStore {
   /** ID の提案を取り出して忘れる（同じ提案を 2 回書き込まない）。無ければ undefined。 */
   take(id: string): PendingProposal | undefined;
 }
+
+/** 対象を取る自動の図の ID（内部ブロック図・状態遷移図・アクティビティ図・シーケンス図）。 */
+export type SubjectView = "ibd" | "stm" | "afv" | "seq";

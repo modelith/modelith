@@ -6,12 +6,21 @@ import { clearProjectFiles, setFocusFile, setProjectFile } from "../../web/src/c
 import { build, parse } from "../../web/src/core/rust.ts";
 import { diagramDrawio, diagramSvg, type ViewTarget } from "../../web/src/render/index.ts";
 import { parseLayoutFile } from "../../web/src/render/layout-file.ts";
-import { baseViewOf } from "../../web/src/render/view-content.ts";
-import { Refused, type DiagramOutput, type DiagramRequest, type ProjectInput, type Renderer } from "./core.ts";
+import { baseViewOf, resolveTarget } from "../../web/src/render/view-content.ts";
+import { Refused, type DiagramOutput, type DiagramRequest, type ProjectInput, type Renderer, type SubjectView } from "./core.ts";
+import { offsetAt } from "./edits.ts";
 import { initWasm } from "./wasm-core.ts";
 
 /** 対象（部品定義など）を取らない自動の図の ID。 */
 export const AUTO_DIAGRAMS = ["all", "structure", "trace", "control", "behavior"];
+
+/** 対象を取る自動の図ごとの、対象を入れる項目と、対象にできないときの理由。 */
+const SUBJECT: Record<SubjectView, { field: "ibdCtx" | "stateCtx" | "flowCtx" | "seqCtx"; unfit: string }> = {
+  ibd: { field: "ibdCtx", unfit: "it has no parts, so there is no internal block diagram to draw" },
+  stm: { field: "stateCtx", unfit: "it cannot be drawn as a state machine diagram" },
+  afv: { field: "flowCtx", unfit: "it cannot be drawn as an activity diagram" },
+  seq: { field: "seqCtx", unfit: "it cannot be drawn as a sequence diagram" },
+};
 
 /** 対象・工程の指定の無い図の対象。 */
 const NO_CONTEXT = { modelView: null, ibdCtx: null, seqCtx: null, flowCtx: null, stateCtx: null, phase: "" };
@@ -25,6 +34,8 @@ const NO_CONTEXT = { modelView: null, ibdCtx: null, seqCtx: null, flowCtx: null,
  *   ファイル・図が無い、自動の図の ID が違うときは Refused を投げる
  * @example
  * renderDiagram(project, { file: "kettle.sysml", auto: "all", format: "svg" }).content.startsWith("<svg") // → true
+ * renderDiagram(project, { file: "kettle.sysml", subject: { qualifiedName: "K::Kettle", view: "ibd", start: { line: 3, character: 4 } }, format: "svg" })
+ * // → Kettle の内部ブロック図
  * renderDiagram(project, { file: "kettle.sysml", view: "nope", format: "svg" }) // → Refused を投げる
  */
 function renderDiagram(project: ProjectInput, request: DiagramRequest): DiagramOutput {
@@ -39,6 +50,17 @@ function renderDiagram(project: ProjectInput, request: DiagramRequest): DiagramO
     const view = model.views.find((v) => v.name === request.view);
     if (!view) throw new Refused(`The diagram "${request.view}" was not found in ${request.file}.`);
     target = { ...NO_CONTEXT, view: baseViewOf(view), modelView: view.name };
+  } else if (request.subject) {
+    const { qualifiedName, view, start } = request.subject;
+    const { field, unfit } = SUBJECT[view];
+    // 宣言の始まりの位置で、モデルの要素を引く（同じ名前の要素があっても取り違えない）
+    const offset = offsetAt(file.text, start);
+    const node = model.nodes.find((n) => !n.file && n.entry.start === offset);
+    target = { ...NO_CONTEXT, view, [field]: node?.key ?? null };
+    // 対象にできない要素（部品の無い部品定義など）を渡すと、描画は既定の対象を選び直す。別の要素の図を黙って返さない
+    if (!node || resolveTarget(model, target)[field] !== node.key) {
+      throw new Refused(`"${qualifiedName}" cannot be the subject of this diagram: ${unfit}.`);
+    }
   } else {
     const auto = request.auto ?? "all";
     if (!AUTO_DIAGRAMS.includes(auto)) {

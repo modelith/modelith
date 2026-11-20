@@ -44,6 +44,7 @@ changed after the proposal.
 
 ```bash
 npx modelith-cli export /path/to/project --format svg --diagram Shop::overview > overview.svg
+npx modelith-cli export /path/to/project --format svg --subject Shop::Cart > cart.svg
 npx modelith-cli export /path/to/project --format drawio --file shop.sysml --view structure --out shop.drawio
 ```
 

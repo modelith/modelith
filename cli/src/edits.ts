@@ -18,6 +18,34 @@ export function versionOf(text: string): string {
 }
 
 /**
+ * テキストの各行の始まりの位置を集める（行は \n で区切る。コアの数え方と同じ）。
+ *
+ * @param text テキスト全体
+ * @returns 各行の始まりの位置（空のテキストも 1 行）
+ * @example
+ * lineStartsOf("a\nbc") // → [0, 2]
+ * lineStartsOf("")      // → [0]
+ */
+function lineStartsOf(text: string): number[] {
+  const starts = [0];
+  for (let i = text.indexOf("\n"); i !== -1; i = text.indexOf("\n", i + 1)) starts.push(i + 1);
+  return starts;
+}
+
+/**
+ * 行・列の位置を、文字列の中の位置にする。
+ *
+ * @param text テキスト全体
+ * @param at 0 始まりの行と列（列は UTF-16）
+ * @returns 文字列の中の位置。テキストの外を指すときは Error を投げる
+ * @example
+ * offsetAt("a\nbc", { line: 1, character: 1 }) // → 3
+ */
+export function offsetAt(text: string, at: { line: number; character: number }): number {
+  return offsetOf(lineStartsOf(text), text, at);
+}
+
+/**
  * 行・列の位置を、文字列の中の位置にする（行は \n で区切り、列は UTF-16。コアの数え方と同じ）。
  *
  * @param lineStarts 各行の始まりの位置
@@ -50,8 +78,7 @@ function offsetOf(lineStarts: number[], text: string, at: { line: number; charac
  * applyEdits("abc", []) // → "abc"
  */
 export function applyEdits(text: string, edits: TextEdit[]): string {
-  const lineStarts = [0];
-  for (let i = text.indexOf("\n"); i !== -1; i = text.indexOf("\n", i + 1)) lineStarts.push(i + 1);
+  const lineStarts = lineStartsOf(text);
   const spans = edits
     .map((e) => ({ start: offsetOf(lineStarts, text, e.range.start), end: offsetOf(lineStarts, text, e.range.end), newText: e.newText }))
     .sort((a, b) => b.start - a.start);

@@ -279,6 +279,50 @@ describe("MCP のサーバ：図を書き出す", () => {
     expect(got.content).toContain("satisfy");
   });
 
+  it("F-AI-3: 要素を対象に指すと、テキストに図を書いていなくても、内部ブロック図・状態遷移図・アクティビティ図・シーケンス図を書き出せる（正常系）", async () => {
+    // Arrange（図を 1 つも書いていないモデル。同じ種類の定義を 2 つずつ置き、後ろのほうを指す）
+    write("car.sysml", [
+      "package Car {",
+      "    part def Engine;",
+      "    part def Wheel;",
+      "    part def Trailer { part hitch : Engine; }",
+      "    part def Vehicle { part motor : Engine; part tyre : Wheel; }",
+      "    state def Parking { state locked; }",
+      "    state def Driving { entry; then stopped; state stopped; state cruising; transition go first stopped then cruising; }",
+      "    action def Stop { action brake; }",
+      "    action def Start { action checkFuel; action ignite; first checkFuel then ignite; }",
+      "    occurrence def Greeting { part a : Engine; part b : Wheel; message hello from a to b; }",
+      "    occurrence def Handshake { part driver : Engine; part key : Wheel; message unlock from driver to key; }",
+      "}",
+      "",
+    ].join("\n"));
+    const svg = async (subject: string): Promise<string> => (await json<{ content: string }>("export_diagram", { format: "svg", subject })).content;
+    // Act
+    const [ibd, stm, afv, seq] = [await svg("Car::Vehicle"), await svg("Car::Driving"), await svg("Car::Start"), await svg("Car::Handshake")];
+    const drawio = await json<{ file: string; content: string }>("export_diagram", { format: "drawio", subject: "Car::Vehicle" });
+    // Assert（指した要素の中身が入り、同じ種類の隣の要素の中身は入らない）
+    expect([ibd.includes("motor"), ibd.includes("tyre"), ibd.includes("hitch")]).toEqual([true, true, false]);
+    expect([stm.includes("stopped"), stm.includes("cruising"), stm.includes("locked")]).toEqual([true, true, false]);
+    expect([afv.includes("checkFuel"), afv.includes("ignite"), afv.includes("brake")]).toEqual([true, true, false]);
+    expect([seq.includes("driver"), seq.includes("unlock"), seq.includes("hello")]).toEqual([true, true, false]);
+    expect(drawio.file).toBe("car.sysml");
+    expect(drawio.content).toMatch(/^<mxfile /);
+    expect(drawio.content).toContain("motor");
+  });
+
+  it("対象にできない要素（部品の無い部品定義・図にできない種類・無い要素）は、別の要素の図を返さずに、理由つきの失敗の文を返す（異常系・境界値）", async () => {
+    // Act（Brake には部品が無い。Cmd はポートの定義）
+    const noParts = await call("export_diagram", { format: "svg", subject: "App::Brake" });
+    const wrongKind = await call("export_diagram", { format: "svg", subject: "App::Cmd" });
+    const gone = await call("export_diagram", { format: "svg", subject: "App::Gone" });
+    const both = await call("export_diagram", { format: "svg", subject: "App::Brake", file: "app/brake.sysml" });
+    // Assert
+    expect(noParts).toEqual({ isError: true, text: '"App::Brake" cannot be the subject of this diagram: it has no parts, so there is no internal block diagram to draw.' });
+    expect(wrongKind).toEqual({ isError: true, text: '"App::Cmd" is a port def. A subject must be one of: part def, state def, action def, occurrence def.' });
+    expect(gone).toEqual({ isError: true, text: 'No element named "App::Gone" was found. Use list_elements to see the qualified names.' });
+    expect(both).toEqual({ isError: true, text: "Give exactly one of diagram, subject or file." });
+  });
+
   it("無い図・無いファイル・知らない自動の図・扱わない形式は、理由つきの失敗の文を返す（異常系）", async () => {
     // Act
     const noDiagram = await call("export_diagram", { format: "svg", diagram: "App::gone" });

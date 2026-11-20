@@ -320,14 +320,43 @@ describe("export_diagram", () => {
     expect(chosen).toEqual({ file: "shop.sysml", auto: "structure", format: "svg" });
   });
 
+  it("F-AI-3: 要素を対象に渡すと、種類に合う図（部品定義は内部ブロック図、状態定義は状態遷移図、アクション定義はアクティビティ図、出来事の定義はシーケンス図）を、宣言の位置つきで指定する（同値分割）", () => {
+    // Arrange（どの修飾名にも、名前の最後を種類として返すコア）
+    const start = { line: 3, character: 4 };
+    const kinds: Core = { ...core, element: (_files, name) => ({ ...summary(name, name.split("::").at(-1) ?? "", "parts.sysml"), range: { start, end: start }, members: [], ports: [], relations: [] }) };
+    // Act
+    const got = ["part def", "state def", "action def", "occurrence def"].map((kind) => diagramRequest(kinds, project, { format: "svg", subject: `P::${kind}` }));
+    // Assert
+    expect(got.map((r) => [r.file, r.format, r.subject?.view, r.subject?.qualifiedName])).toEqual([
+      ["parts.sysml", "svg", "ibd", "P::part def"],
+      ["parts.sysml", "svg", "stm", "P::state def"],
+      ["parts.sysml", "svg", "afv", "P::action def"],
+      ["parts.sysml", "svg", "seq", "P::occurrence def"],
+    ]);
+    expect(got.map((r) => r.subject?.start)).toEqual([start, start, start, start]);
+  });
+
+  it("対象が無い要素・図にできない種類・ほかの指定との組み合わせは、理由つきで失敗を伝える（異常系）", () => {
+    // Arrange（Shop は package）
+    const withPackage: Core = { ...core, element: (_files, name) => (name === "Shop" ? { ...ELEMENTS[0]!, members: [], ports: [], relations: [] } : null) };
+    // Act
+    const run = (args: Record<string, string>) => () => diagramRequest(withPackage, project, args);
+    // Assert
+    expect(run({ format: "svg", subject: "Shop::Gone" })).toThrow(new ToolError('No element named "Shop::Gone" was found. Use list_elements to see the qualified names.'));
+    expect(run({ format: "svg", subject: "Shop" })).toThrow(new ToolError('"Shop" is a package. A subject must be one of: part def, state def, action def, occurrence def.'));
+    expect(run({ format: "svg", subject: "Shop", diagram: "Shop::v" })).toThrow(new ToolError("Give exactly one of diagram, subject or file."));
+    expect(run({ format: "svg", subject: "Shop", file: "shop.sysml" })).toThrow(new ToolError("Give exactly one of diagram, subject or file."));
+    expect(run({ format: "svg", subject: "Shop", view: "all" })).toThrow(new ToolError("view is only used with file."));
+  });
+
   it("形式が違う・形式なし・diagram と file の両方・どちらも無し・diagram に view・無い図は、理由つきで失敗を伝える（異常系）", () => {
     // Act
     const run = (args: Record<string, string>) => () => diagramRequest(core, project, args);
     // Assert
     expect(run({ format: "png", file: "shop.sysml" })).toThrow(new ToolError('Unknown format "png". Use svg or drawio.'));
     expect(run({ file: "shop.sysml" })).toThrow(new ToolError('Unknown format "". Use svg or drawio.'));
-    expect(run({ format: "svg", diagram: "Shop::v", file: "shop.sysml" })).toThrow(new ToolError("Give either diagram or file, not both."));
-    expect(run({ format: "svg" })).toThrow(new ToolError("Give either diagram or file, not both."));
+    expect(run({ format: "svg", diagram: "Shop::v", file: "shop.sysml" })).toThrow(new ToolError("Give exactly one of diagram, subject or file."));
+    expect(run({ format: "svg" })).toThrow(new ToolError("Give exactly one of diagram, subject or file."));
     expect(run({ format: "svg", diagram: "Shop::v", view: "all" })).toThrow(new ToolError("view is only used with file."));
     expect(run({ format: "svg", diagram: "Shop::gone" })).toThrow(new ToolError('No diagram named "Shop::gone" was found. Use list_diagrams to see the qualified names.'));
   });

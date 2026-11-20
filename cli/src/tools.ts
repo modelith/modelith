@@ -5,7 +5,7 @@
 
 import {
   Refused, type Core, type DiagramRequest, type EditRequest, type ProblemReport, type ProjectInput, type ProjectWriter, type ProposalStore,
-  type Renderer,
+  type Renderer, type SubjectView,
 } from "./core.ts";
 import { applyEdits, versionOf } from "./edits.ts";
 
@@ -160,12 +160,14 @@ export const TOOLS: Tool[] = [
     title: "Export a diagram",
     description:
       "Draw a diagram of the model and return it as SVG or as a draw.io (diagrams.net) file, laid out the same way as in the Modelith app (saved positions are used). " +
-      "Either name a diagram written in the model with diagram (a qualified name from list_diagrams), or name a model file with file to get an automatic diagram of it " +
-      "(view: all, structure, trace, control or behavior; default all). Nothing is written; the result has the diagram text in content.",
+      "Give exactly one of: diagram (a diagram written in the model, by its qualified name from list_diagrams), " +
+      "subject (an element, by its qualified name: a part def gives its internal block diagram, a state def its state machine diagram, an action def its activity diagram, an occurrence def its sequence diagram), " +
+      "or file (a model file, for an automatic diagram of it; view: all, structure, trace, control or behavior; default all). Nothing is written; the result has the diagram text in content.",
     params: {
       format: { description: "svg or drawio.", required: true },
       diagram: { description: "The qualified name of a diagram from list_diagrams, for example \"Shop::overview\"." },
-      file: { description: "A model file from list_files, for an automatic diagram of that file. Not used with diagram." },
+      subject: { description: "The qualified name of a part def, state def, action def or occurrence def (from list_elements), to draw the diagram of that element." },
+      file: { description: "A model file from list_files, for an automatic diagram of that file." },
       view: { description: "The automatic diagram: all (everything), structure (block definition), trace (requirement traceability), control or behavior. Default all. Only with file." },
     },
     run: ({ core, project, renderer }, args) => {
@@ -238,24 +240,42 @@ export const TOOLS: Tool[] = [
   },
 ];
 
+/** 対象にできる要素の種類と、その図の ID。 */
+const SUBJECT_VIEWS: Record<string, SubjectView> = {
+  "part def": "ibd",
+  "state def": "stm",
+  "action def": "afv",
+  "occurrence def": "seq",
+};
+
 /**
  * 道具の引数から、書き出す図の指定を作る。テキストに書いた図は、修飾名からファイルと名前を引く。
  *
  * @param core コアの操作（図の一覧を引く）
  * @param project 今読んだプロジェクト
  * @param args export_diagram の引数
- * @returns 図の指定。形式が違う、diagram と file の両方がある・どちらも無い、その図が無いときは、理由を書いた ToolError を投げる
+ * @returns 図の指定。形式が違う、diagram・subject・file のうち 1 つだけでない、その図や要素が無い、図にできない種類の要素のときは、理由を書いた ToolError を投げる
  * @example
  * diagramRequest(core, project, { format: "svg", diagram: "Shop::overview" }) // → { file: "shop.sysml", view: "overview", format: "svg" }
  * diagramRequest(core, project, { format: "drawio", file: "shop.sysml" })     // → { file: "shop.sysml", auto: "all", format: "drawio" }
+ * diagramRequest(core, project, { format: "svg", subject: "Shop::Cart" })     // → { file: "shop.sysml", subject: { qualifiedName: "Shop::Cart", view: "ibd", start: … }, format: "svg" }
  * diagramRequest(core, project, { format: "png", file: "shop.sysml" })        // → ToolError("Unknown format \"png\". Use svg or drawio.") を投げる
  */
 export function diagramRequest(core: Core, project: ProjectInput, args: Record<string, string | undefined>): DiagramRequest {
-  const { format, diagram, file, view } = args;
+  const { format, diagram, subject, file, view } = args;
   if (format !== "svg" && format !== "drawio") throw new ToolError(`Unknown format "${format ?? ""}". Use svg or drawio.`);
-  if ((diagram === undefined) === (file === undefined)) throw new ToolError("Give either diagram or file, not both.");
+  if ([diagram, subject, file].filter((x) => x !== undefined).length !== 1) throw new ToolError("Give exactly one of diagram, subject or file.");
+  if (view !== undefined && file === undefined) throw new ToolError("view is only used with file.");
+  if (subject !== undefined) {
+    const found = core.element(project.files, subject);
+    if (!found) throw new ToolError(`No element named "${subject}" was found. Use list_elements to see the qualified names.`);
+    const subjectView = SUBJECT_VIEWS[found.kind];
+    if (!subjectView) {
+      throw new ToolError(`"${subject}" is a ${found.kind}. A subject must be one of: ${Object.keys(SUBJECT_VIEWS).join(", ")}.`);
+    }
+    return { file: found.file, subject: { qualifiedName: subject, view: subjectView, start: found.range.start }, format };
+  }
   if (diagram !== undefined) {
-    if (view !== undefined) throw new ToolError("view is only used with file.");
     const found = core.outline(project.files).diagrams.find((d) => d.qualifiedName === diagram);
     if (!found) throw new ToolError(`No diagram named "${diagram}" was found. Use list_diagrams to see the qualified names.`);
     return { file: found.file, view: found.name, format };

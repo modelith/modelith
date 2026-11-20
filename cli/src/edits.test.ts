@@ -1,7 +1,7 @@
 // テキストの版と、編集の当て方の単体テスト。
 import { describe, expect, it } from "vitest";
 import type { TextEdit } from "./core.ts";
-import { applyEdits, versionOf } from "./edits.ts";
+import { applyEdits, offsetAt, versionOf } from "./edits.ts";
 
 /** 編集 1 つを作る。 */
 function edit(startLine: number, startCol: number, endLine: number, endCol: number, newText: string): TextEdit {
@@ -16,6 +16,24 @@ describe("versionOf", () => {
     expect(a).toBe(again);
     expect(a).not.toBe(other);
     expect(empty).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe("offsetAt", () => {
+  it("行と列を、文字列の中の位置にする（先頭・行の途中・最後の行の終わり。境界値）", () => {
+    // Act
+    const at = (line: number, character: number): number => offsetAt("a\nbc", { line, character });
+    // Assert
+    expect([at(0, 0), at(0, 1), at(1, 0), at(1, 2)]).toEqual([0, 1, 2, 4]);
+  });
+
+  it("テキストの外の行・列は、Error を投げる（異常系）", () => {
+    // Act
+    const beyondLine = () => offsetAt("a\nbc", { line: 2, character: 0 });
+    const beyondColumn = () => offsetAt("a\nbc", { line: 0, character: 2 });
+    // Assert
+    expect(beyondLine).toThrow(Error);
+    expect(beyondColumn).toThrow(Error);
   });
 });
 

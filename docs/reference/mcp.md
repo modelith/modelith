@@ -61,18 +61,21 @@ npm への公開（要求 F-AI-4）はまだで、公開の手順を決めてか
 
 | 道具 | 引数 | 返すもの |
 | --- | --- | --- |
-| `export_diagram` | `format`（`svg`・`drawio`）と、`diagram`、または `file`（と `view`） | 図の中身（`content`）。何も書かない |
+| `export_diagram` | `format`（`svg`・`drawio`）と、`diagram`・`subject`・`file`（と `view`）のどれか 1 つ | 図の中身（`content`）。何も書かない |
 
 - `diagram`：テキストに書いた図の修飾名（`list_diagrams` が返す `qualifiedName`）。
+- `subject`：図にしたい要素の修飾名（`list_elements` が返す `qualifiedName`）。テキストに図を書いていなくても、その要素の図を書き出す。
+  部品定義（`part def`）は内部ブロック図、状態定義（`state def`）は状態遷移図、アクション定義（`action def`）はアクティビティ図、出来事の定義（`occurrence def`）はシーケンス図になる。
+  図にできない要素（部品を持たない部品定義など）を指したときは、別の要素の図を返さずに、理由を返す。
 - `file`：モデルのファイル。そのファイルの自動の図を書き出す。`view` は `all`（すべて。既定）・`structure`（ブロック定義図）・`trace`（トレーサビリティ）・`control`（制御ループ）・`behavior`（振る舞い）。
 - アプリと同じ配置と描画を使う（ADR-0024 の 3）。モデルのファイルの隣に配置ファイル（`名前.layout.json`）があれば、その位置に描く。
   配置ファイルが読めないときは、自動に並べて書き出し、理由を `layoutProblem` に入れる。
-- 対象を取る自動の図（内部ブロック図・状態遷移図・シーケンス図・アクティビティ図）は、テキストに `view` として書いたものを `diagram` で指す。対象を直接指す形は、まだ無い。
 
 同じ書き出しを、コマンドラインからも使える。
 
 ```bash
 node cli/src/main.ts export <フォルダ> --format svg --diagram Shop::overview > overview.svg
+node cli/src/main.ts export <フォルダ> --format svg --subject Shop::Cart > cart.svg
 node cli/src/main.ts export <フォルダ> --format drawio --file shop.sysml --view structure --out shop.drawio
 ```
 

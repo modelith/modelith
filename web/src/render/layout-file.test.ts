@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { isEmptyLayout, keepExtras, layoutExtras, layoutNotSavedNote, NO_EXTRAS, parseLayoutFile, serializeLayout, usedFeatures, writeLock } from "./layout-file";
-import type { Layout } from "../render/layout";
+import type { Layout } from "./layout";
 
 const L: Layout = {
   trace: { pos: { B: [10, 20], A: [0, 0] }, pins: { A: { a2: ["r", 0.5], a1: ["l", 0.3] } }, ends: { "e|A|B": ["a1", null] } },
@@ -91,7 +91,7 @@ describe("isEmptyLayout", () => {
  * @param name 見本のファイル名
  * @returns 見本の中身
  */
-const sample = (name: string): string => readFileSync(new URL(`./compat/${name}`, import.meta.url), "utf8");
+const sample = (name: string): string => readFileSync(new URL(`../app/compat/${name}`, import.meta.url), "utf8");
 
 describe("serializeLayout の知らない項目（ADR-0023）", () => {
   it("外側の知らない項目は views の後に、ビューの知らない項目はそのビューに書き戻す", () => {

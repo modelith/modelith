@@ -457,7 +457,9 @@ package ModelithRequirements {
                    予定：確かめずに書く設定、ほかのファイルの参照も直す名前の変更（ADR-0021） */
         }
         requirement def <'F-AI-3'> HeadlessExportReq {
-            doc /* 予定：0.3.0。画面を開かずに、CLI と MCP から、.sysml と図の名前を指定して SVG・PNG・draw.io を書き出せる。画面と同じ図が出る */
+            doc /* 画面を開かずに、CLI（modelith export）と MCP（export_diagram）から、テキストに書いた図の名前、またはモデルのファイルと自動の図の種類を指定して、SVG・draw.io を書き出せる。
+                   画面と同じ配置と描画を使い、保存した配置があればその位置に描く。配置ファイルが読めないときは、自動に並べて書き出し、理由を添える。
+                   予定：PNG（ブラウザの無い所で画面と同じ見た目が出るかを確かめてから）、対象を取る自動の図（内部ブロック図・状態遷移図・シーケンス図・アクティビティ図） */
         }
         requirement def <'F-AI-4'> CliDistributionReq {
             doc /* 予定：0.3.0。CLI と MCP を、npm のパッケージ・リリースに付けた実行ファイル（macOS・Windows・Linux）・cargo install のどれでも入れられる。版は本体と同じ */
@@ -1357,7 +1359,7 @@ package ModelithRequirements {
             }
         }
         verification def CrossVersionFileTest {
-            doc /* web/src/app/layout-file.test.ts：新しい版が書く配置ファイルの見本（web/src/app/compat/）を使い、知らない項目を取り出して書き戻す・往復しても変わらない・知っている項目（0.2 の線の調整）はファイルの古い形で上書きしない・線の調整を使うと requires に edge-shapes を書き、使わなくなったら外す・知らない機能の名前は残す・
+            doc /* web/src/render/layout-file.test.ts：新しい版が書く配置ファイルの見本（web/src/app/compat/）を使い、知らない項目を取り出して書き戻す・往復しても変わらない・知っている項目（0.2 の線の調整）はファイルの古い形で上書きしない・線の調整を使うと requires に edge-shapes を書き、使わなくなったら外す・知らない機能の名前は残す・
                    保存しない理由（読めない・形式の番号が大きい・知らない requires）と、保存してよい場合（空・{}・空の requires）。
                    web/e2e/files.spec.ts：新しい版の知らない項目を含む配置ファイルで要素を動かして保存しても知らない項目が残る、知らない機能を含む配置ファイルは開いたときに知らせ、保存しても書き換えない（OPFS で）。
                    開いた後に他のアプリが書き換えた配置ファイルに「上書きする」を選んでも、知らない機能を含めば書き換えず、知らない項目は残す。
@@ -1368,7 +1370,7 @@ package ModelithRequirements {
             }
         }
         verification def LayoutTest {
-            doc /* web/src/render/layout.test.ts・web/src/app/layout-file.test.ts：配置情報の読み書きと、配置ファイルの書式（キー順の固定・要素ごとに 1 行・壊れたファイル） */
+            doc /* web/src/render/layout.test.ts・web/src/render/layout-file.test.ts：配置情報の読み書きと、配置ファイルの書式（キー順の固定・要素ごとに 1 行・壊れたファイル） */
             objective {
                 verify LayoutReq;
             }
@@ -1569,6 +1571,15 @@ package ModelithRequirements {
                    crates/modelith-core/src/write.rs：提案（差分・前提の版・当てたあとの問題一覧・関係の言葉・断る理由）。crates/modelith-core/src/edit/tests.rs：修飾名のキー（q:）と、名前と入れる先を決めた追加（addElement）。crates/modelith-wasm/src/write.rs：契約の形の JSON と、読めない入力 */
             objective {
                 verify McpWriteReq;
+            }
+        }
+        verification def HeadlessExportTest {
+            doc /* cli/src/mcp-server.test.ts：MCP のクライアントをメモリ上でつなぎ、本物のコア（wasm）・アプリと同じ描画（web/src/render）・一時フォルダのプロジェクトで、テキストに書いた図を名前で指定した SVG と draw.io、
+                   保存した配置の位置に描くこと、読めない配置ファイル、ほかのファイルの要素との関係、無い図・無いファイル・知らない自動の図・扱わない形式の伝え方を確かめる。
+                   cli/src/tools.test.ts：図の指定の作り方（修飾名からファイルと名前を引く・自動の図の既定・引数の組み合わせの誤り）。cli/src/cli.test.ts：modelith export の引数の読み方。cli/src/fs-project.test.ts：隣の配置ファイルの読み方。
+                   web/src/render/index.test.ts・boundary.test.ts：画面を介さない書き出しの入口と、描画の層が画面に頼らないこと */
+            objective {
+                verify HeadlessExportReq;
             }
         }
         verification def CliCheckTest {

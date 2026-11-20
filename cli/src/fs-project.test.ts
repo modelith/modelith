@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { fsProjectReader, fsProjectWriter, isModelFile, isSkippedDir } from "./fs-project.ts";
+import { fsProjectReader, fsProjectWriter, isModelFile, isSkippedDir, layoutPathFor } from "./fs-project.ts";
 
 let root: string;
 let folder: string;
@@ -62,6 +62,22 @@ describe("fsProjectReader", () => {
     expect(project.unreadable).toEqual([]);
     expect(project.projectFile).toBeUndefined();
     expect(project.pluginFiles).toEqual({});
+    expect(project.layouts).toEqual({});
+  });
+
+  it("モデルのファイルの隣の配置ファイルを読む。無いファイルの分は入れない（正常系）", async () => {
+    // Arrange
+    write("a.sysml", "package A;");
+    write("a.layout.json", '{"modelith":"layout"}');
+    write("parts/B.KERML", "package B;");
+    write("parts/B.layout.json", "{}");
+    write("c.sysml", "package C;");
+    // Act
+    const project = await fsProjectReader(folder).read();
+    const names = ["parts/kettle.sysml", "a.KERML", "notes.txt"].map(layoutPathFor);
+    // Assert
+    expect(project.layouts).toEqual({ "a.sysml": '{"modelith":"layout"}' });
+    expect(names).toEqual(["parts/kettle.layout.json", "a.layout.json", "notes.txt.layout.json"]);
   });
 
   it("設定ファイルと、プラグインのマニフェスト・ルールを読む（正常系）", async () => {
@@ -81,7 +97,7 @@ describe("fsProjectReader", () => {
     // Act
     const project = await fsProjectReader(folder).read();
     // Assert
-    expect(project).toEqual({ files: [], unreadable: [], projectFile: undefined, pluginFiles: {} });
+    expect(project).toEqual({ files: [], unreadable: [], projectFile: undefined, pluginFiles: {}, layouts: {} });
   });
 
   it("UTF-8 でないファイルは、読めなかったファイルとして理由つきで返す（異常系）", async () => {

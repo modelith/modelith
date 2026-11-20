@@ -12,6 +12,18 @@ import type { ProjectInput, ProjectReader, ProjectWriter, SourceFile, Unreadable
 const PROJECT_FILE = "modelith.json";
 /** プラグインを置くフォルダ（プロジェクトのフォルダから）。 */
 const PLUGINS_DIR = ".modelith/plugins";
+/**
+ * モデルのファイルの、隣の配置ファイルの名前（アプリの layoutNameFor と同じ：拡張子を .layout.json に替える）。
+ *
+ * @param path モデルのファイルのパス
+ * @returns 配置ファイルのパス
+ * @example
+ * layoutPathFor("parts/kettle.sysml") // → "parts/kettle.layout.json"
+ */
+export function layoutPathFor(path: string): string {
+  return `${path.replace(/\.(sysml|kerml)$/i, "")}.layout.json`;
+}
+
 /** プラグインのファイルとして読む拡張子（マニフェストとルール）。 */
 const PLUGIN_FILE = /\.(json|ya?ml)$/;
 
@@ -145,13 +157,13 @@ async function readPluginFiles(folder: string): Promise<Record<string, Record<st
 }
 
 /**
- * フォルダからプロジェクトを読む（モデルのファイル・設定ファイル・プラグインのファイル）。
+ * フォルダからプロジェクトを読む（モデルのファイル・設定ファイル・プラグインのファイル・図の配置のファイル）。
  *
  * @param folder プロジェクトのフォルダ
  * @returns 読み込んだプロジェクト。読めなかったモデルのファイルと設定ファイルは unreadable に入れる。フォルダが無い・読めないときは例外で拒否する
  * @example
  * await readProject("/p")
- * // → { files: [{ path: "a.sysml", text: "…" }], unreadable: [], projectFile: "{…}", pluginFiles: {} }
+ * // → { files: [{ path: "a.sysml", text: "…" }], unreadable: [], projectFile: "{…}", pluginFiles: {}, layouts: { "a.sysml": "{…}" } }
  */
 async function readProject(folder: string): Promise<ProjectInput> {
   const files: SourceFile[] = [];
@@ -169,7 +181,16 @@ async function readProject(folder: string): Promise<ProjectInput> {
   } catch (e) {
     if (!isNotFound(e)) unreadable.push({ path: PROJECT_FILE, reason: reasonOf(e) });
   }
-  return { files, unreadable, projectFile, pluginFiles: await readPluginFiles(folder) };
+  // 配置ファイルは、あれば読む。無い・読めないときは、図を自動に並べるだけなので、問題にしない
+  const layouts: Record<string, string> = {};
+  for (const { path } of files) {
+    try {
+      layouts[path] = await readText(join(folder, layoutPathFor(path)));
+    } catch {
+      // 配置ファイルが無い
+    }
+  }
+  return { files, unreadable, projectFile, pluginFiles: await readPluginFiles(folder), layouts };
 }
 
 /**

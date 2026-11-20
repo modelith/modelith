@@ -1,9 +1,9 @@
-# MCP のサーバ（AI のクライアントからモデルを読む・書く）
+# MCP のサーバ（AI のクライアントからモデルを読む・書く・図を書き出す）
 
-Claude Code や Codex などの AI のクライアントが、手元のフォルダにある SysML v2 のモデルを読み、確かめ、書き換えるための口（[ADR-0024](../adr/0024-ai-and-collaboration-foundation.md)、要求 F-AI-1・F-AI-2）。
+Claude Code や Codex などの AI のクライアントが、手元のフォルダにある SysML v2 のモデルを読み、確かめ、書き換え、図を書き出すための口（[ADR-0024](../adr/0024-ai-and-collaboration-foundation.md)、要求 F-AI-1〜F-AI-3）。
 [MCP](https://modelcontextprotocol.io/) のサーバとして、標準入出力で動く。
 
-いまできるのは **読む・確かめる・書く** で、図を書き出す道具（F-AI-3）は、このあと足す。
+いまできるのは **読む・確かめる・書く・図を書き出す（SVG・draw.io）** で、PNG の書き出しは、このあと足す。
 npm などで入れられる形（F-AI-4）もこれからで、いまはリポジトリから動かす。
 
 ## 動かし方
@@ -37,6 +37,25 @@ claude mcp add modelith -- node /path/to/modelith/cli/src/main.ts mcp /path/to/p
 
 関係の種類は `satisfy`・`verify`・`frame`・`derivation`・`flow`・`composition`・`definedBy`・`allocate`・`dependency`・`specialize`・`subset`・`redefine`・`reference`。
 
+## 道具（図を書き出す）
+
+| 道具 | 引数 | 返すもの |
+| --- | --- | --- |
+| `export_diagram` | `format`（`svg`・`drawio`）と、`diagram`、または `file`（と `view`） | 図の中身（`content`）。何も書かない |
+
+- `diagram`：テキストに書いた図の修飾名（`list_diagrams` が返す `qualifiedName`）。
+- `file`：モデルのファイル。そのファイルの自動の図を書き出す。`view` は `all`（すべて。既定）・`structure`（ブロック定義図）・`trace`（トレーサビリティ）・`control`（制御ループ）・`behavior`（振る舞い）。
+- アプリと同じ配置と描画を使う（ADR-0024 の 3）。モデルのファイルの隣に配置ファイル（`名前.layout.json`）があれば、その位置に描く。
+  配置ファイルが読めないときは、自動に並べて書き出し、理由を `layoutProblem` に入れる。
+- 対象を取る自動の図（内部ブロック図・状態遷移図・シーケンス図・アクティビティ図）は、テキストに `view` として書いたものを `diagram` で指す。対象を直接指す形は、まだ無い。
+
+同じ書き出しを、コマンドラインからも使える。
+
+```bash
+node cli/src/main.ts export <フォルダ> --format svg --diagram Shop::overview > overview.svg
+node cli/src/main.ts export <フォルダ> --format drawio --file shop.sysml --view structure --out shop.drawio
+```
+
 ## 道具（書く）
 
 書くのは 2 段階で行う（メンテナの判断、2026-11-20）。利用者が差分を見てから、書き込むかを決められるようにするため。
@@ -68,7 +87,7 @@ claude mcp add modelith -- node /path/to/modelith/cli/src/main.ts mcp /path/to/p
 - 読むのは、起動のときに渡したフォルダの中だけ。読む道具はパスを引数に取らない（`file` は結果をしぼるだけ）。シンボリックリンクはたどらない。
 - 書けるのは、そのフォルダの中の、既にあるモデルのファイル（`.sysml`・`.kerml`）だけ。`replaceText` の `file` も、読むときと同じ決まりで見つかるファイルに限る。フォルダの外・`modelith.json`・プラグイン・シンボリックリンクには書かない。新しいファイルは作らない。
 - 読むファイルは `modelith check` と同じ：`.sysml`・`.kerml` を、隠しフォルダ（`.` で始まる）・`target`・`node_modules` を除いてたどる。
-  ほかに、`modelith.json` と、`.modelith/plugins/` の下のマニフェストとルール（`.json`・`.yaml`・`.yml`）を読む。
+  ほかに、`modelith.json`、`.modelith/plugins/` の下のマニフェストとルール（`.json`・`.yaml`・`.yml`）、モデルのファイルの隣の配置ファイル（`名前.layout.json`）を読む。
 - 道具を呼ぶたびにフォルダを読み直すので、ほかのアプリで変えた中身がその場で見える。
 - 読めないファイル（UTF-8 でないなど）は黙って飛ばさず、`list_problems` で知らせる。
 - Modelith 自身は、モデルをどこにも送らない。モデルの中身を受け取るのは、利用者がつないだ AI のクライアントだけ（ADR-0024 の 5）。
@@ -79,12 +98,13 @@ claude mcp add modelith -- node /path/to/modelith/cli/src/main.ts mcp /path/to/p
 
 | ファイル | 役割 | 頼るもの |
 | --- | --- | --- |
-| `core.ts` | コアと、プロジェクトを読む口・書く口・提案を覚える口の形（ポート） | 契約の型だけ |
+| `core.ts` | コアと、プロジェクトを読む口・書く口・提案を覚える口・図を書き出す口の形（ポート） | 契約の型だけ |
 | `tools.ts` | 道具の定義と判断（絞り込み・失敗の伝え方・提案と書き込みの 2 段階） | `core.ts`・`edits.ts` |
 | `edits.ts` | テキストの版と、編集の当て方 | `node:crypto` |
 | `proposals.ts` | 提案を、書き込むまでメモリに覚える | `node:crypto` |
 | `cli.ts` | コマンドラインの引数の読み方 | なし |
 | `wasm-core.ts` | コアの口を、Rust のコアの wasm で満たす | wasm |
 | `fs-project.ts` | プロジェクトを読む口・書く口を、手元のフォルダで満たす | `node:fs` |
+| `web-render.ts` | 図を書き出す口を、アプリと同じ配置と描画で満たす | `web/src/render`・`web/src/core/rust.ts`・wasm |
 | `mcp-server.ts` | 道具を MCP のサーバとして出す | MCP の公式ライブラリ |
 | `main.ts` | 部品をつなぐ | 上のすべて |

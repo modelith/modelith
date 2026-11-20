@@ -1,16 +1,16 @@
 // 図の SVG マークアップを作る。画面表示と SVG 書き出しで共用し、色は関数 C で差し替える。
 
-import type { Family } from "../core";
-import { flowDetail, flowShape } from "./action-flow";
-import { esc } from "./escape";
-import { shownEdgeLabel, shownName } from "./labels";
+import type { Family } from "../core/types.ts";
+import { flowDetail, flowShape } from "./action-flow.ts";
+import { esc } from "./escape.ts";
+import { shownEdgeLabel, shownName } from "./labels.ts";
 import {
   boundaryBoxes, BOUNDARY, boxesOf, LANE_HEAD, laneRects, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, regionSeparators, segmentMids, STATE_HEAD, stateSize, stateTitle,
   textWidth, type Box, type NodeBox, type Route,
-} from "./geometry";
-import { isPseudoState } from "./state-machine";
-import type { ViewLayout } from "./layout";
-import { phaseLabel, type ViewContent } from "./view-content";
+} from "./geometry.ts";
+import { isPseudoState } from "./state-machine.ts";
+import type { ViewLayout } from "./layout.ts";
+import { phaseLabel, type ViewContent } from "./view-content.ts";
 
 /** 色の名前（CSS 変数名から `--` を除いたもの）を値にする。 */
 export type ColorFn = (name: string) => string;

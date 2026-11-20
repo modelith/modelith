@@ -1,11 +1,11 @@
 // 図の幾何計算（ノードの大きさ・接続点・線の経路・自動配置）。DOM に依存しない純粋関数。
 
-import type { Entry, Expr, ModelEdge, ModelLane, ModelNode, Port, PortDir } from "../core";
-import { flowBodyLines, flowDetail, flowShape } from "./action-flow";
-import { isPseudoState, stateActionLines } from "./state-machine";
-import { shownName } from "./labels";
-import type { Pos, Side, ViewLayout } from "./layout";
-import type { ViewContent, ViewDef } from "./view-content";
+import type { Entry, Expr, ModelEdge, ModelLane, ModelNode, Port, PortDir } from "../core/types.ts";
+import { flowBodyLines, flowDetail, flowShape } from "./action-flow.ts";
+import { isPseudoState, stateActionLines } from "./state-machine.ts";
+import { shownName } from "./labels.ts";
+import type { Pos, Side, ViewLayout } from "./layout.ts";
+import type { ViewContent, ViewDef } from "./view-content.ts";
 
 export const W = 224;
 export const HEAD = 44;

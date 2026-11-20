@@ -25,6 +25,7 @@ const ELEMENTS = [
 
 /** 決まった結果を返す偽のコア。 */
 const core: Core = {
+  version: () => "0.0.0-test",
   outline: (files) => ({
     files: files.map((f) => ({ path: f.path })),
     elements: ELEMENTS,

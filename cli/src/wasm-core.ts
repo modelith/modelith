@@ -2,7 +2,7 @@
 // wasm は scripts/build-wasm.sh が web/src/core/wasm/ に書き出したものを使う（アプリと同じもの）。
 
 import { readFileSync } from "node:fs";
-import { initSync, proposeEdit, readElement, readOutline, readProblems } from "../../web/src/core/wasm/modelith_core.js";
+import { initSync, proposeEdit, readElement, readOutline, readProblems, version } from "../../web/src/core/wasm/modelith_core.js";
 import { Refused, type Core, type EditProposal, type ElementDetail, type ProblemReport, type ProjectOutline } from "./core.ts";
 import { versionOf } from "./edits.ts";
 
@@ -54,6 +54,7 @@ export function initWasm(): void {
 export function loadWasmCore(): Core {
   initWasm();
   return {
+    version,
     outline: (files) => parseResult<ProjectOutline>(readOutline(JSON.stringify(files))),
     element: (files, qualifiedName) => parseResult<ElementDetail | null>(readElement(JSON.stringify(files), qualifiedName)),
     problems: (project) =>

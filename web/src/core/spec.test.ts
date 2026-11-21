@@ -1196,6 +1196,28 @@ describe("関係の本体の注釈（RelationshipBody 8.2.2.2、Dependency 8.2.2
     expect(edges(text)).toEqual(["dependency|A|B"]);
     expect(problems(text)).toEqual([]);
   });
+
+  it("satisfy R by x { doc /* … */ @M; } の説明とメタデータを、外側の package のものにしない（注釈は、それを持つ要素を注釈する。AnnotatingMember 8.2.2.4、SatisfyRequirementUsage 8.2.2.21）", () => {
+    // Arrange
+    const text = "package P { part x; requirement def R; satisfy R by x { doc /* why */ @Mark; } }";
+    // Act
+    const p = entry(text, "P");
+    // Assert
+    expect(p?.doc).toBeUndefined();
+    expect(p?.meta).toBeUndefined();
+    expect(edges(text)).toEqual(["satisfy|x|R"]);
+    expect(problems(text)).toEqual([]);
+  });
+
+  it("流れ・順序・遷移の本体の説明も、外側の定義の説明にしない（FlowUsage 8.2.2.16、SuccessionAsUsage 8.2.2.13、TransitionUsage 8.2.2.18）", () => {
+    // Arrange
+    const text = "package P { part def A { doc /* about A */ part a; part b; flow from a to b { doc /* f */ } first a then b { doc /* s */ } } state def S { state p; state q; transition first p then q { doc /* t */ } } }";
+    // Act
+    const [a, s] = [entry(text, "A"), entry(text, "S")];
+    // Assert
+    expect(a?.doc).toBe("about A");
+    expect(s?.doc).toBeUndefined();
+  });
 });
 
 describe("メタデータの本体の再定義の形（MetadataBodyUsage、8.2.2.27）", () => {

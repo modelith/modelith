@@ -7,7 +7,7 @@ import { $, closest, esc, isFormField, store } from "./dom";
 import { W } from "../render/geometry";
 import { nextTabIndex, rovingStop } from "./keyboard";
 import { act, renderInspector } from "./inspector";
-import { kindLabel, savedViewHint, shownName, tabTitle, v2ViewNote, viewHint } from "../render/labels";
+import { kindLabel, savedViewHint, shownName, tabTitle, typeText, v2ViewNote, viewHint } from "../render/labels";
 import { addToView, canAddToView, editableView } from "./view-ops";
 import { deleteSel, OPS, PHASEOPS } from "./ops";
 import { PINOPS, selPinInfo } from "./pins";
@@ -1004,7 +1004,7 @@ export function renderTree(): void {
     rows.push(
       `<div class="ti${sel ? " sel" : ""}" role="treeitem" tabindex="-1" aria-level="${d + 1}"${expandable ? ` aria-expanded="${open}"` : ""} aria-selected="${sel}" data-idx="${e.idx}" style="--d:${d}" title="${esc(e.kind + (phase ? "（" + phaseLabel(phase) + "）" : ""))}">` +
         `<span class="car" data-toggle="${esc(p)}">${expandable ? (open ? "▾" : "▸") : ""}</span>${kindIcon(e.kind)}` +
-        `<span class="nm">${e.short ? `&lt;'${esc(e.short)}'&gt; ` : ""}${esc(shownName(e.name))}</span>${e.type ? `<span class="ty">: ${esc(shownName(e.type))}</span>` : ""}` +
+        `<span class="nm">${e.short ? `&lt;'${esc(e.short)}'&gt; ` : ""}${esc(shownName(e.name))}</span>${e.type ? `<span class="ty">: ${esc(typeText(e))}</span>` : ""}` +
         `<span class="acts">${addable ? `<button data-add="${e.idx}" title="${canAddToView(e) ? "この図に入れる" : `この図に${S.view === "ibd" ? "部品" : "ライフライン"}として追加`}">追加</button>` : ""}${ot ? `<button data-open="${e.idx}" title="${ot.label}">開く</button>` : ""}<button class="nar" data-totext="${e.idx}" title="テキストで見る">文</button></span></div>`,
     );
     if (!open) return;

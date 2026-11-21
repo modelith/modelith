@@ -136,6 +136,21 @@ export const shownName = (name: string): string => name.replace(/\\(['"\\])/g, "
 export const shownEdgeLabel = (e: { kind: string; label: string }): string => (e.kind === "comp" ? shownName(e.label) : e.label);
 
 /**
+ * 宣言の型を、図やツリーに出す文にする。型が複数あれば、書いた順にカンマでつなぐ。
+ *
+ * @param e 宣言（型と、2 つめ以降の型）
+ * @returns 表示する文。型が無ければ空文字列
+ * @example
+ * typeText({ type: "A" })                                  // → "A"
+ * typeText({ type: "A", moreTypes: [{ name: "B" }] })      // → "A, B"
+ * typeText({ type: "a\\'b" })                             // → "a'b"（引用名のエスケープを戻す）
+ * typeText({ type: "" })                                   // → ""
+ */
+export function typeText(e: Pick<Entry, "type" | "moreTypes">): string {
+  return [e.type, ...(e.moreTypes ?? []).map((t) => t.name)].filter((t) => t !== "").map(shownName).join(", ");
+}
+
+/**
  * 属性 1 つを `名前 : 型 = 値` の形の文にする（値の書き方 `:=`・`default` はそのまま）。
  *
  * @param a 属性（解析結果の項目）

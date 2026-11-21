@@ -52,7 +52,9 @@ rm -rf "$failed_results"
     echo "$channel（$tag）のテストが落ちたため公開しません。結果は pages-test-results/$channel/ にあります" >&2
     exit 1
   fi
-  MODELITH_BASE=$base MODELITH_CHANNEL=$channel npm run build --prefix web
+  # 画面に出すコミットと「ソースコード」のリンク（AGPL 第 13 条）は、その版のタグのコミットにする。
+  # ワークフローの GITHUB_SHA は、公開の手順を動かした dev のコミットで、版の中身のコミットではない
+  GITHUB_SHA=$(git rev-parse HEAD) MODELITH_BASE=$base MODELITH_CHANNEL=$channel npm run build --prefix web
   cp -r web/reports web/dist/reports
   # reports/e2e/ の画面は Playwright（Apache-2.0）の配布物なので、LICENSE と NOTICE を添える（C-5）
   cp web/node_modules/playwright-core/{LICENSE,NOTICE,ThirdPartyNotices.txt} web/dist/reports/e2e/

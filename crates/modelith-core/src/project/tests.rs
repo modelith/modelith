@@ -661,16 +661,16 @@ fn result_parameter_is_not_a_reference_usage() {
 }
 
 #[test]
-fn value_in_an_enumeration_body_is_not_a_reference_usage() {
-    // Arrange（境界値：列挙の定義の本体の `a = 1;` は、これまでどおり参照の使用にしない）
+fn value_in_an_enumeration_body_is_an_enumerated_value_not_a_reference_usage() {
+    // Arrange（境界値：列挙の定義の本体の `a = 1;` は、参照の使用ではなく列挙値。EnumeratedValue、8.2.2.8）
     let text = "enum def E { enum b; a = 1; }";
     // Act
     let r = run(text);
     // Assert
-    assert!(r.entries.iter().all(|e| e.name != "a"));
+    assert_eq!(entry(&r, "a").kind, "enum");
     assert_eq!(
         entry(&r, "E").enum_values.as_deref(),
-        Some(&["b".to_owned()][..])
+        Some(&["b".to_owned(), "a".to_owned()][..])
     );
 }
 
@@ -2309,4 +2309,53 @@ fn specializations_of_a_definition_are_not_extra_types() {
     let e = entry(&r, "E");
     assert!(e.more_types.is_empty());
     assert_eq!(e.specs.len(), 2);
+}
+
+#[test]
+fn enumerated_values_are_listed_in_written_order_whatever_their_form() {
+    // Arrange（同値分割: 名前だけ・enum 付き・値付き・キーワードの無い値付き・型付き・本体付き。EnumeratedValue = 'enum'? Usage、8.2.2.8）
+    let text = "package P { enum def Level { low; enum mid; enum high = 3; top = 4; typed : Real; enum noted { doc /* d */ } } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let level = entry(&r, "Level");
+    assert_eq!(
+        level.enum_values.as_deref(),
+        Some(&["low", "mid", "high", "top", "typed", "noted"].map(String::from)[..])
+    );
+    assert!(level.exprs.is_empty());
+}
+
+#[test]
+fn enumerated_values_with_a_value_keep_it_with_or_without_the_keyword() {
+    // Arrange
+    let text = "package P { enum def Level { enum high = 3; top = 4; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let got: Vec<(&str, &str, Option<&str>)> = ["high", "top"]
+        .iter()
+        .map(|n| entry(&r, n))
+        .map(|e| (e.kind.as_str(), e.name.as_str(), e.value.as_deref()))
+        .collect();
+    assert_eq!(
+        got,
+        [("enum", "high", Some("3")), ("enum", "top", Some("4"))]
+    );
+}
+
+#[test]
+fn a_keywordless_feature_outside_an_enum_definition_is_still_a_reference() {
+    // Arrange（境界: 列挙の定義の外では、`x = 1;` は参照の使用のまま。列挙の使用 `enum e : E;` は列挙値の並びに入れない）
+    let text = "package P { enum def E { a; } part def A { x = 1; enum e : E; } }";
+    // Act
+    let r = run(text);
+    // Assert
+    assert_eq!(entry(&r, "x").kind, "param");
+    assert_eq!(entry(&r, "e").kind, "enum");
+    assert_eq!(entry(&r, "A").enum_values, None);
+    assert_eq!(
+        entry(&r, "E").enum_values.as_deref(),
+        Some(&["a".to_owned()][..])
+    );
 }

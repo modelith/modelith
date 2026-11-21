@@ -193,6 +193,9 @@ struct Prev {
 /// 向きの付いたパラメータ（`in x : Real;`）と同じ種類にし、向きを `ref` にする。
 const REFERENCE_KIND: &str = "param";
 
+/// 列挙値（EnumeratedValue、8.2.2.8）の種類。`enum e : E;`（列挙の使用）と同じ種類にする。
+const ENUM_VALUE_KIND: &str = "enum";
+
 /// 利用者定義のキーワード（`#X def H;`・`#X h;`、8.2.2.27）で書いた宣言の、基の種類が決まらないときの種類。
 /// 定義は `"def"`、使用は `"usage"` にする（ツリーにだけ出す）。
 const EXTENDED_DEF_KIND: &str = "def";
@@ -832,17 +835,19 @@ impl Ctx {
             None => h,
         };
         // `x : Real;`・`y :> x;`・`ref r;`（種類のキーワードの無い参照の使用。DefaultReferenceUsage・ReferenceUsage、8.2.2.6）は、
-        // `ref s : A;` と同じく参照のパラメータにする。列挙の定義の本体の `a = 1;` と、結果のパラメータ `return r : R;` は、
-        // これまでどおり読む（列挙値・パラメータとして扱うまで）
-        let reference = n.kind() == REFERENCE_USAGE
-            && (mods.is_empty() || mods == "ref")
+        // `ref s : A;` と同じく参照のパラメータにする。結果のパラメータ `return r : R;` は、これまでどおり読む（パラメータとして扱うまで）。
+        // 列挙の定義の本体では、キーワードの無い `a = 1;`・`a : T;` も列挙値（EnumeratedValue = 'enum'? Usage、8.2.2.8）
+        let in_enum_def = pe.is_some_and(|pe| self.out.entries[pe].kind == "enum def");
+        let keywordless = n.kind() == REFERENCE_USAGE
             && prefix_meta.is_empty()
             && !has_keyword(n, "return")
-            && !pe.is_some_and(|pe| self.out.entries[pe].kind == "enum def")
             && !decl_parts(n, false).name.is_empty();
+        let reference = keywordless && !in_enum_def && (mods.is_empty() || mods == "ref");
+        let enumerated = keywordless && in_enum_def && mods.is_empty();
         if let Some((kind, is_def)) = node
             .map(|k| (k, false))
             .or_else(|| reference.then_some((REFERENCE_KIND, false)))
+            .or_else(|| enumerated.then_some((ENUM_VALUE_KIND, false)))
             .or_else(|| entry_kind(n, h, &mods, !prefix_meta.is_empty()))
         {
             let idx = self.out.entries.len();
@@ -974,6 +979,15 @@ impl Ctx {
             let is_flow_node = ACTION_FLOW_KINDS.contains(&e.kind.as_str())
                 || (e.kind == "event occurrence" && !self.in_state(pe));
             let name = e.name.clone();
+            // 値や型や本体を書いた列挙値（`enum low = 1;`・`mid = 2;`）も、名前だけの列挙値と同じ並びに入れる（書いた順）
+            if let (true, Some(pe)) = (in_enum_def && kind == ENUM_VALUE_KIND, pe)
+                && !name.is_empty()
+            {
+                self.out.entries[pe]
+                    .enum_values
+                    .get_or_insert_with(Vec::new)
+                    .push(name.clone());
+            }
             self.push_entry(e, pe);
             if is_flow_node {
                 self.flow_node(n, pe, idx, name);

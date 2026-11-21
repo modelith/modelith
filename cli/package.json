@@ -1,6 +1,5 @@
 {
   "name": "modelith-cli",
-  "private": true,
   "version": "0.3.0-alpha.1",
   "description": "Modelith for the command line and AI clients (MCP)",
   "license": "AGPL-3.0-only",

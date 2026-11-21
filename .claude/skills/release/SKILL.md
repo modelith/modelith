@@ -26,6 +26,7 @@ description: Modelith の版（alpha・beta・rc）を出す手順と、リリ�
    リリースの一覧（`https://github.com/modelith/modelith/releases`）と、編集画面（`releases/edit/untagged-…`）のリンクを渡す。
 8. 公開されたら、Pages のワークフローが成功したことと、画面右上の「ヘルプ」に出る版を確かめる。
    あわせて、「Release CLI」のワークフローが成功し、リリースに `modelith-cli-<版>.tgz` が添付されたことを確かめる（0.3.0 から）。
+   npm に置かれた版（npm の初期設定が済んでから）は、メンテナに npm での承認を頼む（releasing.md の「npm のレジストリへの公開」）。
    alpha・beta は `/modelith/preview/` に、rc は `/modelith/rc/` と `/modelith/preview/` に、正式版は `/modelith/` に出る（ADR-0022）。公開した版が出るはずの URL で確かめる。リリース計画（release-plan.md）のその行に「（公開済み）」を足す PR を出す。
 
 下書きが作られなかったときは、ワークフローのログの理由（ノートが無い・版が違う・ブランチが違う）を直す。

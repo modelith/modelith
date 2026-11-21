@@ -2189,3 +2189,89 @@ fn files_forget_a_file_that_grows_too_long() {
     files.clear();
     assert_eq!(files.others(None).0, Vec::<String>::new());
 }
+
+/// 名前を持たない文に本体を付けたモデルを読み、外側の package P を返すための元のテキストを作る。
+fn with_body(statement: &str, body: &str) -> String {
+    format!("package P {{ part x; part y; requirement def R; {statement} {{ {body} }} }}")
+}
+
+/// 宣言に、その名前のメタデータが付いているか。
+fn has_metadata(e: &Entry, name: &str) -> bool {
+    e.meta
+        .as_ref()
+        .is_some_and(|m| m.0.iter().any(|(k, _)| k == name))
+}
+
+#[test]
+fn doc_in_the_body_of_an_unnamed_statement_is_not_the_doc_of_the_outer_element() {
+    // Arrange（同値分割: 関係・流れ・順序・遷移・注釈の文。どれも宣言を作らない文）
+    let statements = [
+        "satisfy R by x",
+        "not satisfy R by x",
+        "verify R",
+        "flow from x to y",
+        "first x then y",
+        "message from x to y",
+        "transition first x then y",
+        "frame c",
+        "@M",
+    ];
+    // Act
+    let leaked: Vec<&str> = statements
+        .into_iter()
+        .filter(|s| {
+            let r = run(&with_body(s, "doc /* the reason */"));
+            entry(&r, "P").doc.is_some()
+        })
+        .collect();
+    // Assert
+    assert_eq!(leaked, Vec::<&str>::new());
+}
+
+#[test]
+fn metadata_rep_and_comment_in_the_body_of_an_unnamed_statement_do_not_annotate_the_outer_element()
+{
+    // Arrange
+    let text = with_body(
+        "satisfy R by x",
+        "@Mark; metadata Other; rep r language \"ocl\" /* true */ comment c /* note */",
+    );
+    // Act
+    let r = run(&text);
+    // Assert
+    let p = entry(&r, "P");
+    assert_eq!(p.meta, None);
+    assert!(p.reps.is_empty());
+    assert!(r.entries.iter().all(|e| e.kind != "comment"));
+}
+
+#[test]
+fn annotations_with_about_in_the_body_of_an_unnamed_statement_still_annotate_their_targets() {
+    // Arrange（about で相手を書いた注釈は、どこに書いても相手を注釈する）
+    let text = with_body(
+        "satisfy R by x",
+        "metadata Mark about y; comment about y /* note */",
+    );
+    // Act
+    let r = run(&text);
+    // Assert
+    let y = entry(&r, "y");
+    let comment = r.entries.iter().find(|e| e.kind == "comment");
+    assert!(has_metadata(y, "Mark"));
+    assert_eq!(comment.map(|c| c.about.clone()), Some(vec![y.idx]));
+    assert_eq!(entry(&r, "P").meta, None);
+}
+
+#[test]
+fn doc_and_metadata_directly_in_a_declaration_still_annotate_it() {
+    // Arrange（境界値: 無名の本体のすぐ外。宣言の本体の直下の注釈は、これまでどおり宣言のもの）
+    let text = "package P { doc /* about P */ @Mark; part x { doc /* about x */ } objective { doc /* goal */ } }";
+    // Act
+    let r = run(text);
+    // Assert
+    let p = entry(&r, "P");
+    assert_eq!(p.doc.as_deref(), Some("about P"));
+    assert!(has_metadata(p, "Mark"));
+    assert_eq!(entry(&r, "x").doc.as_deref(), Some("about x"));
+    assert_eq!(p.objective.as_deref(), Some("goal"));
+}

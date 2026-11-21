@@ -422,12 +422,21 @@ impl Ctx {
     /// - `owner`：要素の持ち主（宣言か無名ブロックの番号）。ファイルの直下なら `None`
     /// - `pe`：要素を含む、いちばん近い宣言の番号。無ければ `None`
     fn statement(&mut self, n: &SyntaxNode, owner: Option<Scope>, pe: Option<usize>) {
+        // 名前を持たない文の本体（`satisfy R by x { … }`・`flow … { … }`・`@M { … }` など）に書いた注釈（doc・rep・comment・@M）は、
+        // その文への注釈で、外側の宣言のものではない（AnnotatingMember は、それを持つ要素を注釈する。8.2.2.4）。
+        // 名前を持たない文への注釈はまだ記録しないので、外側の宣言には付けない
+        let in_unnamed_body = matches!(owner, Some(Scope::Block(_)));
         match n.kind() {
             COMMENT => {
-                self.comment(n, owner, pe);
+                if !(in_unnamed_body && comment_has_no_about(n)) {
+                    self.comment(n, owner, pe);
+                }
                 return;
             }
             TEXTUAL_REPRESENTATION => {
+                if in_unnamed_body {
+                    return;
+                }
                 if let (Some(pe), Some(rep)) = (pe, representation(n)) {
                     self.out.entries[pe].reps.push(rep);
                 }
@@ -447,7 +456,7 @@ impl Ctx {
                     let in_objective = matches!(owner, Some(Scope::Block(b)) if self.out.blocks[b].kw == "objective");
                     if in_objective {
                         self.out.entries[pe].objective = Some(normalize(inner));
-                    } else {
+                    } else if !in_unnamed_body {
                         self.out.entries[pe].doc = Some(normalize(inner));
                         self.out.entries[pe].doc_text = Some(doc_body(inner));
                     }
@@ -660,7 +669,13 @@ impl Ctx {
         }
         // メタデータの使用（`@M`・`metadata M`、about 付きを含む。8.2.2.27）
         if matches!(n.kind(), METADATA_USAGE | METADATA_KEYWORD_USAGE) {
-            self.metadata_usage(n, pe, start);
+            // 名前を持たない文の本体の中の `@M;` は、その文への注釈。外側の宣言には付けない（about 付きは、相手に付ける）
+            let annotated = if matches!(owner, Some(Scope::Block(_))) {
+                None
+            } else {
+                pe
+            };
+            self.metadata_usage(n, annotated, start);
             return None;
         }
         // 列挙値
@@ -2406,6 +2421,27 @@ fn value_op(v: &SyntaxNode) -> Option<String> {
         .collect::<Vec<_>>()
         .join(" ");
     (op != "=").then_some(op)
+}
+
+/// コメントの節に `about` の相手が無いか（無ければ、コメントは持ち主を注釈する。Comment、8.2.2.4）。
+///
+/// # 引数
+///
+/// - `n`：`COMMENT` の節
+///
+/// # 戻り値
+///
+/// `about` の相手（修飾名か特徴の連鎖）が 1 つも無ければ真。
+///
+/// # 例
+///
+/// ```text
+/// comment_has_no_about("comment c /* x */")          → true
+/// comment_has_no_about("comment about A, B /* x */") → false
+/// ```
+fn comment_has_no_about(n: &SyntaxNode) -> bool {
+    !n.children()
+        .any(|c| matches!(c.kind(), QUALIFIED_NAME | FEATURE_CHAIN))
 }
 
 /// 別の言語での表し方（`rep r language "x" /* … */`、TextualRepresentation、8.2.2.4）を読む。

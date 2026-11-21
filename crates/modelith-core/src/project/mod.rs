@@ -760,6 +760,18 @@ impl Ctx {
                 _ => {}
             }
         }
+        // package の直下の `filter @X;`（ElementFilterMember、8.2.2.5）は、その package の import を絞り込む
+        if let Some(pe) = pe
+            && n.kind() == ELEMENT_FILTER_MEMBER
+            && self.out.entries[pe].kind.ends_with("package")
+            && let Some(f) = h.strip_prefix("filter ")
+        {
+            self.out.entries[pe]
+                .filters
+                .get_or_insert_with(Vec::new)
+                .push(f.trim().to_owned());
+            return None;
+        }
         // 前置メタデータは、続く宣言のメタデータとして読む（ADR-0013）
         let (prefix_meta, h) = strip_prefix_metadata(h);
         let h = strip_then_return(h);
@@ -792,6 +804,7 @@ impl Ctx {
                     members: written.contains("::*"),
                     recursive: written.contains("::**"),
                     private: has_keyword(n, "private"),
+                    filters: bracket_filters(n),
                     pe,
                     start: self.utf16(n.text_range().start().into()),
                 });
@@ -2320,6 +2333,36 @@ fn decl_parts(n: &SyntaxNode, is_def: bool) -> DeclParts {
         name: name.unwrap_or_default(),
         typed,
     }
+}
+
+/// `import` の絞り込みの式（`import P::*[@Safety][@A or @B];` の角括弧の中。FilterPackage、8.2.2.5）。
+///
+/// # 引数
+///
+/// - `n`：`IMPORT` の節
+///
+/// # 戻り値
+///
+/// 角括弧ごとの式（括弧を除き、空白を 1 つにまとめたもの）。書いた順。絞り込みが無い・中が空なら入れない。
+///
+/// # 例
+///
+/// ```text
+/// bracket_filters("import P::*[@Safety];")             → ["@Safety"]
+/// bracket_filters("import P::**[@A and not @B][@C];")  → ["@A and not @B", "@C"]
+/// bracket_filters("import P::*;")                      → []
+/// bracket_filters("import P::*[];")                    → []
+/// ```
+fn bracket_filters(n: &SyntaxNode) -> Vec<String> {
+    n.children()
+        .filter(|c| c.kind() == EXPRESSION)
+        .map(|c| {
+            let t = normalize(&c.text().to_string());
+            let inner = t.strip_prefix('[').unwrap_or(&t);
+            inner.strip_suffix(']').unwrap_or(inner).trim().to_owned()
+        })
+        .filter(|f| !f.is_empty())
+        .collect()
 }
 
 /// 使用の宣言の、2 つめ以降の型（`part x : A, Q::B;` の `Q::B`。FeatureTyping の相手はカンマで複数書ける。8.2.2.6）。

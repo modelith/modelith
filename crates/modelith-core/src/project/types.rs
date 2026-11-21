@@ -479,6 +479,9 @@ pub struct Import {
     pub recursive: bool,
     /// `private import` か（取り込んだ名前を、書いた名前空間の外へ見せない）。
     pub private: bool,
+    /// 絞り込みの式（`import P::*[@Safety][@A or @B];` の `@Safety` と `@A or @B`。FilterPackage、8.2.2.5）。書いた順。
+    /// 取り込むのは、すべての式に合う要素だけ。絞り込みが無ければ空。
+    pub filters: Vec<String>,
     /// 書いた名前空間の宣言の番号。ファイルの一番上なら `None`。
     pub pe: Option<usize>,
     /// 文の位置（UTF-16。どのファイルに書いたかを知るため）。

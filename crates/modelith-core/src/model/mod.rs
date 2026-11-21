@@ -25,7 +25,8 @@ pub use views::{is_standard_view, std_view_label};
 use std::collections::{HashMap, HashSet};
 
 use crate::project::text::ref_segs;
-use crate::project::{Entry, ParseResult, RelKind, Span, merge};
+use crate::project::{Entry, Import, ParseResult, RelKind, Span, merge};
+use filters::{Filter, filter_of};
 
 /// 図に描かない定義の種類（ほかの定義はすべて図に描く要素になる）。ツリーにだけ出す。
 /// `def` は、基の種類の決まらない利用者定義のキーワードの定義（`#X def H;`）。
@@ -536,8 +537,9 @@ impl<'a> Builder<'a> {
                 continue;
             };
             let set = &mut imported[f];
-            self.bring(ns, imp.members, imp.recursive, set, 0);
-            // 取り込んだ名前空間の中の、private でない import も取り込む
+            let tests = self.import_tests(imp);
+            self.bring(ns, imp.members, imp.recursive, &tests, set, 0);
+            // 取り込んだ名前空間の中の、private でない import も取り込む（その import の絞り込みに合うものだけ）
             for inner in self
                 .p
                 .import_list
@@ -545,7 +547,8 @@ impl<'a> Builder<'a> {
                 .filter(|i| i.pe == Some(ns) && !i.private)
             {
                 if let Some(n2) = self.lookup(&inner.path, inner.pe) {
-                    self.bring(n2, inner.members, inner.recursive, set, 0);
+                    let inner_tests = self.import_tests(inner);
+                    self.bring(n2, inner.members, inner.recursive, &inner_tests, set, 0);
                 }
             }
         }
@@ -560,6 +563,7 @@ impl<'a> Builder<'a> {
     /// - `ns`：取り込む名前空間か要素の宣言の番号
     /// - `members`：中身を取り込むか（false なら `ns` そのもの）
     /// - `recursive`：入れ子の中身まで取り込むか
+    /// - `tests`：絞り込み。すべてに合う宣言だけを取り込む（空なら絞り込まない）
     /// - `set`：足す先
     /// - `depth`：たどった深さ
     fn bring(
@@ -567,22 +571,109 @@ impl<'a> Builder<'a> {
         ns: usize,
         members: bool,
         recursive: bool,
+        tests: &[Filter],
         set: &mut HashSet<usize>,
         depth: usize,
     ) {
+        let passes = |i: usize| tests.iter().all(|t| t.test(self.e(i)));
         if !members {
-            set.insert(ns);
+            if passes(ns) {
+                set.insert(ns);
+            }
             return;
         }
         for &c in &self.e(ns).children {
             if self.hidden(c) {
                 continue;
             }
-            set.insert(c);
+            if passes(c) {
+                set.insert(c);
+            }
+            // 絞り込みに合わない入れ物の中にも、合う要素があるかもしれないので、中はたどる
             if recursive && depth < 16 {
-                self.bring(c, true, true, set, depth + 1);
+                self.bring(c, true, true, tests, set, depth + 1);
             }
         }
+    }
+
+    /// `import` 1 つに掛かる絞り込みの式（FilterPackage・ElementFilterMember、8.2.2.5・7.5.4）。`import` の角括弧の式と、
+    /// それを書いた package の直下の `filter` の式を、書いた順に並べる。
+    ///
+    /// # 引数
+    ///
+    /// - `imp`：`import`
+    ///
+    /// # 戻り値
+    ///
+    /// 式の文字列（角括弧のもの、続けて package のもの）。どちらも無ければ空。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "package F { import Lib::*[@A]; filter @B; }" の import
+    /// import_filters(imp) → ["@A", "@B"]
+    /// ```
+    pub(crate) fn import_filters(&self, imp: &'a Import) -> Vec<&'a str> {
+        let of_package = imp
+            .pe
+            .map(|pe| &self.entries[pe])
+            .filter(|e| e.kind.ends_with("package"))
+            .and_then(|e| e.filters.as_ref());
+        imp.filters
+            .iter()
+            .chain(of_package.into_iter().flatten())
+            .map(String::as_str)
+            .collect()
+    }
+
+    /// `import` 1 つに掛かる絞り込みのうち、扱える式を読んだもの。扱えない式（値の比較など）は使わない
+    /// （`unusable_import_filters` が知らせる）。
+    ///
+    /// # 引数
+    ///
+    /// - `imp`：`import`
+    ///
+    /// # 戻り値
+    ///
+    /// 読めた絞り込み。取り込むのは、すべてに合う宣言だけ。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "import Lib::*[@Safety][level > 1];" の import（Safety は metadata def）
+    /// import_tests(imp) → [Metadata("Safety")]   // 値の比較は読めないので入れない
+    /// // "import Lib::*;" の import
+    /// import_tests(imp) → []
+    /// ```
+    fn import_tests(&self, imp: &'a Import) -> Vec<Filter> {
+        self.import_filters(imp)
+            .into_iter()
+            .filter_map(|f| filter_of(f, |n| self.is_metadata_def(n)))
+            .collect()
+    }
+
+    /// その名前のメタデータの定義（`metadata def`）があるか。絞り込みの `@X` が、メタクラスかメタデータかを見分ける。
+    ///
+    /// # 引数
+    ///
+    /// - `name`：名前
+    ///
+    /// # 戻り値
+    ///
+    /// モデルのどこかに、その名前の `metadata def` があれば true。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // "package P { metadata def Safety; part def A; }" のとき
+    /// is_metadata_def("Safety") → true
+    /// is_metadata_def("A")      → false   // 定義だが、メタデータの定義ではない
+    /// is_metadata_def("Nope")   → false
+    /// ```
+    pub(crate) fn is_metadata_def(&self, name: &str) -> bool {
+        self.by_name
+            .get(name)
+            .is_some_and(|l| l.iter().any(|&i| self.entries[i].kind == "metadata def"))
     }
 
     /// 宣言 `i` が `private`・`protected` で、持ち主の名前空間の外へ見せないものか。

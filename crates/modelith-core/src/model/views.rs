@@ -362,11 +362,7 @@ impl Builder<'_> {
 ///
 /// - `b`：要素（`nodes`）まで組み立てた状態
 pub(super) fn build_views(b: &mut Builder<'_>) {
-    let is_metadata = |b: &Builder<'_>, n: &str| {
-        b.by_name
-            .get(n)
-            .is_some_and(|l| l.iter().any(|&i| b.entries[i].kind == "metadata def"))
-    };
+    let is_metadata = |b: &Builder<'_>, n: &str| b.is_metadata_def(n);
     let entries = b.entries;
     for (vi, v) in entries.iter().enumerate() {
         if v.kind != "view" || v.name.is_empty() {

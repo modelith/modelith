@@ -6,6 +6,7 @@
 //! `import P::*` でまとめて取り込んだだけの名前は、型付けの検査と同じ基準（`is_lib`）で確かめる。
 //! 何でも見つかるものとすると、ライブラリを `import` したファイルでは書き誤りを知らせられないため（#297）。
 
+use super::filters::filter_of;
 use super::{Builder, is_lib, is_library_package, is_standard_view};
 
 impl Builder<'_> {
@@ -14,6 +15,7 @@ impl Builder<'_> {
         self.missing_generals();
         self.missing_alias_targets();
         self.missing_imports();
+        self.unusable_import_filters();
     }
 
     /// 定義の特殊化（`part def P :> Nope;`）の相手の定義が見つからなければ、問題にする（モデルの `problems` を書き換える）。
@@ -77,6 +79,26 @@ impl Builder<'_> {
                 format!("インポートする相手「{}」が見つかりません（import）", i.path),
                 None,
             );
+        }
+    }
+
+    /// `import` の絞り込み（`import P::*[…]` と、package の直下の `filter …;`）のうち、まだ扱えない式（値の比較など）を知らせる
+    /// （モデルの `problems` を書き換える）。扱えない式は使わずに取り込む。
+    fn unusable_import_filters(&mut self) {
+        let p = self.p;
+        for i in &p.import_list {
+            for f in self.import_filters(i) {
+                if filter_of(f, |n| self.is_metadata_def(n)).is_none() {
+                    self.problem(
+                        i.start,
+                        format!(
+                            "インポート「{}」の絞り込み「{f}」はまだ扱えないため、絞り込まずに取り込みます（import の [ ]・filter）",
+                            i.path
+                        ),
+                        Some("unsupported"),
+                    );
+                }
+            }
         }
     }
 

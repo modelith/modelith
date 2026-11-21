@@ -45,7 +45,8 @@ write_artifact() {
   mkdir -p "$src/e2e"
   echo '<p>report</p>' >"$src/e2e/index.html"
   echo '<p>requirements</p>' >"$src/requirements.html"
-  ln -s /etc/passwd "$src/e2e/link"
+  # リンクの先は相対パスにする（macOS の unzip は、絶対パスを指すリンクを取り出さずに失敗するため。消すことを確かめるのは同じ）
+  ln -s ../requirements.html "$src/e2e/link"
   echo '* filter=x' >"$src/.gitattributes"
   (cd "$src" && zip -q -r -y "$FIXTURES_DIR/artifact.zip" .)
   echo '{"artifacts":[{"id":9,"name":"test-reports","expired":false,"size_in_bytes":100,"created_at":"2026-11-19T01:30:00Z"}]}' >"$FIXTURES_DIR/artifacts.json"

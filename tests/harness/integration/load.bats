@@ -36,6 +36,6 @@ setup() {
   source "$SANDBOX/scripts/lib/load.sh"
   # Act
   cd "$SANDBOX" && harness_load
-  # Assert
-  [ "$HARNESS_ROOT" = "$SANDBOX" ]
+  # Assert（Git は実体のパスを返す。macOS では一時フォルダがシンボリックリンクの先にあるので、文字列ではなく同じフォルダかで比べる）
+  [ "$HARNESS_ROOT" -ef "$SANDBOX" ]
 }

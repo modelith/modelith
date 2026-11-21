@@ -2596,3 +2596,95 @@ fn a_missing_second_type_is_reported_and_library_types_are_not() {
     let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
     assert_eq!(msgs, ["型「Nope」が見つかりません（x）"]);
 }
+
+// ---- 絞り込み付きの import と、package の直下の filter（FilterPackage・ElementFilterMember、8.2.2.5・7.5.4） ----
+
+const MARKED: &str = "package Lib { metadata def Safety; metadata def Draft; part def Brake { @Safety; } part def Seat; \
+                      part def Prototype { @Safety; @Draft; } package Inner { part def Belt { @Safety; } part def Cup; } }";
+
+#[test]
+fn a_filtered_import_brings_only_the_members_that_pass_the_filter() {
+    // Arrange（同値分割: 絞り込みに合う Brake・合わない Seat）
+    let focus = "package App { import Lib::*[@Safety]; part b : Brake; part s : Seat; }";
+    // Act
+    let m = run_files(focus, &[MARKED]);
+    // Assert
+    assert_eq!(errors(&m), ["型「Seat」が見つかりません（s）"]);
+}
+
+#[test]
+fn every_bracket_of_a_filtered_import_must_pass() {
+    // Arrange（絞り込みを 2 つ続けた import は、どちらにも合う要素だけを取り込む。Prototype は Draft なので外れる）
+    let focus =
+        "package App { import Lib::*[@Safety][not @Draft]; part b : Brake; part p : Prototype; }";
+    // Act
+    let m = run_files(focus, &[MARKED]);
+    // Assert
+    assert_eq!(errors(&m), ["型「Prototype」が見つかりません（p）"]);
+}
+
+#[test]
+fn a_recursive_filtered_import_looks_inside_members_that_do_not_pass() {
+    // Arrange（境界値: Inner は絞り込みに合わないが、中の Belt は合う）
+    let focus = "package App { import Lib::**[@Safety]; part b : Belt; part c : Cup; }";
+    // Act
+    let m = run_files(focus, &[MARKED]);
+    // Assert
+    assert_eq!(errors(&m), ["型「Cup」が見つかりません（c）"]);
+}
+
+#[test]
+fn a_filter_of_a_package_narrows_the_imports_of_that_package() {
+    // Arrange（`package F { import Lib::*; filter @Safety; }` は `import Lib::*[@Safety];` と同じ）
+    let focus = "package F { import Lib::*; filter @Safety; part b : Brake; part s : Seat; }";
+    // Act
+    let m = run_files(focus, &[MARKED]);
+    // Assert
+    assert_eq!(errors(&m), ["型「Seat」が見つかりません（s）"]);
+}
+
+#[test]
+fn a_filter_of_a_package_does_not_narrow_the_imports_of_another_package() {
+    // Arrange（境界値: filter は、それを書いた package の import にだけ掛かる。取り込んだ名前はファイルの中で見える）
+    let focus = "package F { filter @Safety; } package G { import Lib::*; part s : Seat; }";
+    // Act
+    let m = run_files(focus, &[MARKED]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn an_import_without_a_filter_brings_everything_as_before() {
+    // Arrange（境界値: 絞り込みなし）
+    let focus = "package App { import Lib::*; part b : Brake; part s : Seat; }";
+    // Act
+    let m = run_files(focus, &[MARKED]);
+    // Assert
+    assert_eq!(errors(&m), Vec::<&str>::new());
+}
+
+#[test]
+fn a_filter_that_cannot_be_read_is_reported_and_not_applied() {
+    // Arrange（異常系: 値の比較を含む式はまだ扱えない。絞り込まずに取り込み、知らせる。ファイルが 1 つでも知らせる）
+    let focus = "package App { import Lib::*[level > 1]; part s : Seat; }";
+    let single = "package Lib { part def Seat; } package App { import Lib::*[level > 1]; filter x == 2; part s : Seat; }";
+    // Act
+    let m = run_files(focus, &[MARKED]);
+    let (_, one) = run(single);
+    // Assert
+    let msgs = |m: &Model| -> Vec<String> { m.problems.iter().map(|p| p.msg.clone()).collect() };
+    assert_eq!(
+        msgs(&m),
+        [
+            "インポート「Lib」の絞り込み「level > 1」はまだ扱えないため、絞り込まずに取り込みます（import の [ ]・filter）"
+        ]
+    );
+    assert_eq!(
+        msgs(&one),
+        [
+            "インポート「Lib」の絞り込み「level > 1」はまだ扱えないため、絞り込まずに取り込みます（import の [ ]・filter）",
+            "インポート「Lib」の絞り込み「x == 2」はまだ扱えないため、絞り込まずに取り込みます（import の [ ]・filter）"
+        ]
+    );
+    assert!(m.problems.iter().all(|p| p.kind == Some("unsupported")));
+}

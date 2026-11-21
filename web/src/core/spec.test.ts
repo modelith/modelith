@@ -1229,6 +1229,23 @@ describe("列挙値（EnumeratedValue = 'enum'? Usage、EnumerationBody、8.2.2.
   });
 });
 
+describe("絞り込み付きの import と package の直下の filter（FilterPackage = ImportDeclaration ( '[' OwnedExpression ']' )+、ElementFilterMember = 'filter' OwnedExpression ';'、8.2.2.5）", () => {
+  it("import Lib::*[@Safety][not @Draft]; と filter @Safety; を、エラーにも「まだ扱えない」にもせずに読む", () => {
+    // Arrange
+    const text = "package Lib { metadata def Safety; metadata def Draft; part def Brake { @Safety; } } package App { import Lib::*[@Safety][not @Draft]; filter @Safety; part b : Brake; }";
+    // Act・Assert
+    expect(problems(text)).toEqual([]);
+    expect(parse(text).errors).toEqual([]);
+  });
+
+  it("値の比較を含む絞り込みは、まだ扱えないことを知らせ、絞り込まずに取り込む", () => {
+    // Arrange
+    const text = "package Lib { part def Seat; } package App { import Lib::*[level > 1]; part s : Seat; }";
+    // Act・Assert
+    expect(problems(text)).toEqual(["インポート「Lib」の絞り込み「level > 1」はまだ扱えないため、絞り込まずに取り込みます（import の [ ]・filter）"]);
+  });
+});
+
 describe("関係の本体の注釈（RelationshipBody 8.2.2.2、Dependency 8.2.2.3・AliasMember 8.2.2.5）", () => {
   it("dependency A to B { doc /* … */ }・alias C for A { doc /* … */ } の説明を、外側の package の説明にしない", () => {
     // Arrange

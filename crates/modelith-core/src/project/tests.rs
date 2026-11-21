@@ -2359,3 +2359,23 @@ fn a_keywordless_feature_outside_an_enum_definition_is_still_a_reference() {
         Some(&["a".to_owned()][..])
     );
 }
+
+#[test]
+fn filters_of_an_import_and_of_a_package_are_recorded() {
+    // Arrange（同値分割: 絞り込みなし・1 つ・2 つ。package の直下の filter は package に記録する）
+    let text = "package F { import A::*; import B::*[@S]; private import C::**[@A and not @B][@C]; filter @Safety; filter @X or @Y; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let filters: Vec<Vec<&str>> = r
+        .import_list
+        .iter()
+        .map(|i| i.filters.iter().map(String::as_str).collect())
+        .collect();
+    assert_eq!(filters, [vec![], vec!["@S"], vec!["@A and not @B", "@C"]]);
+    assert_eq!(
+        entry(&r, "F").filters.as_deref(),
+        Some(&["@Safety".to_owned(), "@X or @Y".to_owned()][..])
+    );
+    assert!(r.errors.is_empty());
+}

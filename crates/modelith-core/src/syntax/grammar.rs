@@ -2034,7 +2034,8 @@ fn import_target(p: &mut Parser<'_>) {
     } else {
         p.error("対象の名前がありません");
     }
-    if p.at(L_BRACK) {
+    // 絞り込みは続けて書ける（FilterPackage = ImportDeclaration ( '[' OwnedExpression ']' )+、8.2.2.5）
+    while p.at(L_BRACK) {
         bracketed(p, EXPRESSION);
     }
 }

@@ -36,6 +36,8 @@ export interface Entry {
   /** 共役ポート（`~T`）。パラメータには無い。 */
   conj?: boolean;
   type: string;
+  /** 2 つめ以降の型（`part x : A, B;` の B）。型が 1 つ以下なら無い。 */
+  moreTypes?: { name: string }[];
   owner: Scope | null;
   /** 名前を持つ最も近い親。 */
   pe: Entry | null;

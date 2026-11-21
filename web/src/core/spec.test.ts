@@ -1185,6 +1185,26 @@ describe("KerML の宣言（KerML 8.2.3〜8.2.5。KerML は 0.3.0 以降）", ()
   });
 });
 
+describe("複数の型（FeatureTyping はカンマで複数書ける。TypedBy = DEFINED_BY FeatureTyping ( ',' FeatureTyping )*、8.2.2.6）", () => {
+  it("part x : A, B; は、A も B も型として読み、どちらにも型付けの線を引く", () => {
+    // Arrange
+    const text = "package P { part def A; part def B; part x : A, B; }";
+    // Act
+    const x = entry(text, "x");
+    // Assert
+    expect([x?.type, x?.moreTypes]).toEqual(["A", [{ name: "B" }]]);
+    expect(edges(text)).toEqual(["defined|x|A", "defined|x|B"]);
+    expect(problems(text)).toEqual([]);
+  });
+
+  it("2 つめの型が見つからないときも、1 つめと同じく知らせる", () => {
+    // Arrange
+    const text = "package P { part def A; part x : A, Nope; }";
+    // Act・Assert
+    expect(problems(text)).toEqual(["型「Nope」が見つかりません（x）"]);
+  });
+});
+
 describe("関係の本体の注釈（RelationshipBody 8.2.2.2、Dependency 8.2.2.3・AliasMember 8.2.2.5）", () => {
   it("dependency A to B { doc /* … */ }・alias C for A { doc /* … */ } の説明を、外側の package の説明にしない", () => {
     // Arrange

@@ -2275,3 +2275,38 @@ fn doc_and_metadata_directly_in_a_declaration_still_annotate_it() {
     assert_eq!(entry(&r, "x").doc.as_deref(), Some("about x"));
     assert_eq!(p.objective.as_deref(), Some("goal"));
 }
+
+#[test]
+fn second_and_later_types_of_a_usage_are_recorded_in_order() {
+    // Arrange（同値分割: 型 1 つ・2 つ・3 つ（修飾名と引用名）・defined by・型なし）
+    let text = "package P { part a : A; part b : A, B; part c : A, Q::B, 'c d'; part d defined by A, B; part e; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let more = |name: &str| -> Vec<(String, String)> {
+        entry(&r, name)
+            .more_types
+            .iter()
+            .map(|t| (t.name.clone(), t.path.clone()))
+            .collect()
+    };
+    let pair = |n: &str, p: &str| (n.to_owned(), p.to_owned());
+    assert_eq!(more("a"), []);
+    assert_eq!(more("b"), [pair("B", "B")]);
+    assert_eq!(more("c"), [pair("B", "Q::B"), pair("c d", "c d")]);
+    assert_eq!(more("d"), [pair("B", "B")]);
+    assert_eq!(more("e"), []);
+    assert_eq!(entry(&r, "c").ty, "A");
+}
+
+#[test]
+fn specializations_of_a_definition_are_not_extra_types() {
+    // Arrange（定義の `:> C, D` は特殊化で、型付けではない）
+    let text = "package P { part def E :> C, D; }";
+    // Act
+    let r = run(text);
+    // Assert
+    let e = entry(&r, "E");
+    assert!(e.more_types.is_empty());
+    assert_eq!(e.specs.len(), 2);
+}

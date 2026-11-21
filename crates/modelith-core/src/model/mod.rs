@@ -1151,38 +1151,54 @@ impl<'a> Builder<'a> {
             if u.is_def || u.ty.is_empty() || u.kind == "package" {
                 continue;
             }
-            let Some(t) = self.def_of(&u.ty_path, u.pe) else {
-                if !is_lib(&u.ty_path, self.quantities_imported)
-                    && u.kind != "subject"
-                    && !(u.kind == "view" && is_standard_view(&u.ty))
-                {
-                    let who = if u.name.is_empty() { &u.kind } else { &u.name };
-                    self.problem(
-                        u.start,
-                        format!("型「{}」が見つかりません（{who}）", u.ty_path),
-                        None,
-                    );
-                }
-                continue;
-            };
-            let tn = self.node_of.get(&t).copied();
-            let un = self.node_of.get(&i).copied();
-            let pn = u.pe.and_then(|pe| self.node_of.get(&pe).copied());
-            let src = Span {
-                start: u.start,
-                end: u.end,
-            };
-            if let Some(un) = un {
-                if let Some(tn) = tn {
-                    self.add_edge("defined", un, tn, String::new(), src);
-                }
-            } else if let (true, Some(pn), Some(tn)) =
-                (COMP_KINDS.contains(&u.kind.as_str()), pn, tn)
-                && u.pe != Some(t)
-            {
-                let ed = self.add_edge("comp", pn, tn, u.name.clone(), src);
-                self.model.edges[ed].end_label = end_label(u);
+            self.typing(i, &u.ty_path, &u.ty);
+            // 2 つめ以降の型（`part x : A, B;`）にも、同じ線を引き、見つからなければ知らせる
+            for t in &u.more_types {
+                self.typing(i, &t.path, &t.name);
             }
+        }
+    }
+
+    /// 使用の型 1 つを、型付けの線（defined）か、部品として持つ線（comp）にする。型が見つからなければ問題にする
+    /// （標準ライブラリの型・`subject`・標準ビュー定義を型にした view は、問題にしない）。
+    ///
+    /// # 引数
+    ///
+    /// - `i`：使用の宣言の番号
+    /// - `path`：型の修飾名（`Q::A`）
+    /// - `name`：型の名前（修飾名の最後の部分。標準ビュー定義かどうかを見る）
+    fn typing(&mut self, i: usize, path: &str, name: &str) {
+        let u = &self.entries[i];
+        let Some(t) = self.def_of(path, u.pe) else {
+            if !is_lib(path, self.quantities_imported)
+                && u.kind != "subject"
+                && !(u.kind == "view" && is_standard_view(name))
+            {
+                let who = if u.name.is_empty() { &u.kind } else { &u.name };
+                self.problem(
+                    u.start,
+                    format!("型「{path}」が見つかりません（{who}）"),
+                    None,
+                );
+            }
+            return;
+        };
+        let tn = self.node_of.get(&t).copied();
+        let un = self.node_of.get(&i).copied();
+        let pn = u.pe.and_then(|pe| self.node_of.get(&pe).copied());
+        let src = Span {
+            start: u.start,
+            end: u.end,
+        };
+        if let Some(un) = un {
+            if let Some(tn) = tn {
+                self.add_edge("defined", un, tn, String::new(), src);
+            }
+        } else if let (true, Some(pn), Some(tn)) = (COMP_KINDS.contains(&u.kind.as_str()), pn, tn)
+            && u.pe != Some(t)
+        {
+            let ed = self.add_edge("comp", pn, tn, u.name.clone(), src);
+            self.model.edges[ed].end_label = end_label(u);
         }
     }
 

@@ -1,7 +1,7 @@
 // 画面に出す名前（ADR-0014、docs/development/ui-writing.md）。
 import { describe, expect, it } from "vitest";
 import { standardViewName, stdViewLabel } from "../core";
-import { attrText, diagramName, docChangedMessage, savedViewHint, shownEdgeLabel, shownName, tabTitle, v2ViewNote, viewHint } from "./labels";
+import { attrText, diagramName, docChangedMessage, savedViewHint, shownEdgeLabel, shownName, tabTitle, typeText, v2ViewNote, viewHint } from "./labels";
 import { VIEWS } from "./view-content";
 
 describe("diagramName（ビューの名前を「〜の図」と呼べる形にする）", () => {
@@ -196,6 +196,26 @@ describe("tabTitle（タブのツールチップ）", () => {
     const title = tabTitle("すべ", hint);
     // Assert
     expect(title).toBe(`すべ\n${hint}`);
+  });
+});
+
+describe("typeText（宣言の型の表示）", () => {
+  it("型が 1 つならその名前、複数なら書いた順にカンマでつなぐ（同値分割：1 つ・2 つ・3 つ）", () => {
+    // Act
+    const got = [
+      typeText({ type: "A" }),
+      typeText({ type: "A", moreTypes: [{ name: "B" }] }),
+      typeText({ type: "A", moreTypes: [{ name: "B" }, { name: "C" }] }),
+    ];
+    // Assert
+    expect(got).toEqual(["A", "A, B", "A, B, C"]);
+  });
+
+  it("型が無ければ空文字列にする。引用名のエスケープは、表す文字に戻す（境界値）", () => {
+    // Act
+    const got = [typeText({ type: "" }), typeText({ type: "", moreTypes: [] }), typeText({ type: "a\\'b", moreTypes: [{ name: "c\\'d" }] })];
+    // Assert
+    expect(got).toEqual(["", "", "a'b, c'd"]);
   });
 });
 

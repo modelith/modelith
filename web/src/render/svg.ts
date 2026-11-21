@@ -3,7 +3,7 @@
 import type { Family } from "../core/types.ts";
 import { flowDetail, flowShape } from "./action-flow.ts";
 import { esc } from "./escape.ts";
-import { shownEdgeLabel, shownName } from "./labels.ts";
+import { shownEdgeLabel, shownName, typeText } from "./labels.ts";
 import {
   boundaryBoxes, BOUNDARY, boxesOf, LANE_HEAD, laneRects, computeRoutes, DOT, endLabelPos, HEAD, keywordOf, LH, linesOf, noteTop, packageRects, pinPoint, pinsOf, regionSeparators, segmentMids, STATE_HEAD, stateSize, stateTitle,
   textWidth, type Box, type NodeBox, type Route,
@@ -319,7 +319,7 @@ function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: s
   s += `<text x="${b.w / 2}" y="17" text-anchor="middle" font-size="10" fill="${C("ink2")}" font-family="${F}">${esc(`«${keywordOf(n)}»`)}</text>`;
   if (opts.phases && n.phase)
     s += `<text x="${b.w}" y="-5" text-anchor="end" font-size="9" fill="${C("k-" + fam)}" font-family="${F}">${esc(phaseLabel(n.phase))}${n.phaseOwn ? "" : "（継承）"}</text>`;
-  const title = (n.short ? `<'${n.short}'> ` : "") + shownName(n.name) + (!n.isDef && n.entry.type ? ` : ${shownName(n.entry.type)}` : "");
+  const title = (n.short ? `<'${n.short}'> ` : "") + shownName(n.name) + (!n.isDef && n.entry.type ? ` : ${typeText(n.entry)}` : "");
   const tfs = title.length > 26 ? 11 : title.length > 21 ? 12 : 13;
   s += `<text x="${b.w / 2}" y="34" text-anchor="middle" font-size="${tfs}" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(title.length > 34 ? title.slice(0, 33) + "…" : title)}</text>`;
   if (L2.length) {
@@ -704,7 +704,7 @@ export function seqMarkup(C: ColorFn, c: ViewContent, opts: Omit<MarkupOpts, "vi
   s += `<text x="${g.x0 + 8}" y="${g.y0 + 16}" font-size="12" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(title)}</text>`;
   c.nodes.forEach((l, i) => {
     const x = i * SEQ.dx, sel = opts.sel === l.key || !!opts.selSet?.has(l.key);
-    const label = shownName(l.name) + (l.entry.type ? " : " + shownName(l.entry.type) : "");
+    const label = shownName(l.name) + (l.entry.type ? " : " + typeText(l.entry) : "");
     s +=
       `<g class="lifeline" data-key="${esc(l.key)}">` +
       `<line x1="${X(i)}" y1="${SEQ.h}" x2="${X(i)}" y2="${g.H}" stroke="${C("ink2")}" stroke-dasharray="5 4"/>` +

@@ -2552,3 +2552,47 @@ fn unnamed_and_one_character_names_are_not_reported_as_empty_names() {
         Vec::<&str>::new()
     );
 }
+
+#[test]
+fn every_type_of_a_usage_gets_a_typing_edge() {
+    // Arrange（package の直下の使用は、型ごとに型付けの線を引く。FeatureTyping は複数書ける。8.2.2.6）
+    let text = "package P { part def A; part def B; part def C; part x : A, B, C; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let defined: Vec<(&str, &str)> = m
+        .edges
+        .iter()
+        .filter(|e| e.kind == "defined")
+        .map(|e| (e.from.as_str(), e.to.as_str()))
+        .collect();
+    assert_eq!(defined, [("x", "A"), ("x", "B"), ("x", "C")]);
+    assert!(m.problems.is_empty());
+}
+
+#[test]
+fn a_part_with_two_types_is_composed_of_both() {
+    // Arrange（定義の中の部品は、型ごとに「部品として持つ」線を引く）
+    let text = "package P { part def A; part def B; part def Car { part w : A, B; } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let comp: Vec<(&str, &str, &str)> = m
+        .edges
+        .iter()
+        .filter(|e| e.kind == "comp")
+        .map(|e| (e.from.as_str(), e.to.as_str(), e.label.as_str()))
+        .collect();
+    assert_eq!(comp, [("Car", "A", "w"), ("Car", "B", "w")]);
+}
+
+#[test]
+fn a_missing_second_type_is_reported_and_library_types_are_not() {
+    // Arrange（異常系: 2 つめの型が無い。境界: 2 つめが標準ライブラリの型）
+    let text = "package P { part def A; part x : A, Nope; attribute m : A, ISQ::MassValue; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert
+    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    assert_eq!(msgs, ["型「Nope」が見つかりません（x）"]);
+}

@@ -889,6 +889,7 @@ impl Ctx {
                     .map(|t| t.name.clone())
                     .unwrap_or_default(),
                 ty_path: parts.typed.map(|t| t.path).unwrap_or_default(),
+                more_types: if is_def { Vec::new() } else { extra_types(n) },
                 owner,
                 pe,
                 start,
@@ -991,6 +992,7 @@ impl Ctx {
                 conj: None,
                 ty: typed.name,
                 ty_path: typed.path,
+                more_types: Vec::new(),
                 owner,
                 pe,
                 start,
@@ -1660,6 +1662,7 @@ impl Ctx {
             conj: None,
             ty: String::new(),
             ty_path: String::new(),
+            more_types: Vec::new(),
             owner,
             pe,
             start,
@@ -2303,6 +2306,39 @@ fn decl_parts(n: &SyntaxNode, is_def: bool) -> DeclParts {
         name: name.unwrap_or_default(),
         typed,
     }
+}
+
+/// 使用の宣言の、2 つめ以降の型（`part x : A, Q::B;` の `Q::B`。FeatureTyping の相手はカンマで複数書ける。8.2.2.6）。
+///
+/// # 引数
+///
+/// - `n`：宣言の節
+///
+/// # 戻り値
+///
+/// 型付け（`:`・`defined by`・`typed by`）の相手のうち、最初の 1 つを除いたもの。書いた順。型が 1 つ以下なら空。
+///
+/// # 例
+///
+/// ```text
+/// extra_types("part x : A, Q::B, 'c d';") → [{ name: "B", path: "Q::B" }, { name: "c d", path: "c d" }]
+/// extra_types("part x : A;")              → []
+/// extra_types("part x;")                  → []
+/// ```
+fn extra_types(n: &SyntaxNode) -> Vec<ExtraType> {
+    n.children()
+        .filter(|c| c.kind() == FEATURE_TYPING)
+        .flat_map(|c| c.children().collect::<Vec<_>>())
+        .filter(|t| t.kind() == QUALIFIED_NAME)
+        .skip(1)
+        .map(|t| {
+            let path = path_of(&t);
+            ExtraType {
+                name: last_segment(&path).to_owned(),
+                path,
+            }
+        })
+        .collect()
 }
 
 /// 関係の相手の型（最後の修飾名の最後の部分と、修飾名全体）と、共役か。

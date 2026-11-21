@@ -77,6 +77,16 @@ impl<V: Serialize> Serialize for OrderedMap<V> {
     }
 }
 
+/// 2 つめ以降の型 1 つ（`part x : A, Q::B;` の `Q::B`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ExtraType {
+    /// 型の名前（修飾名の最後の部分。引用符を外したもの）。図やツリーに出す。
+    pub name: String,
+    /// 型の修飾名（引用符を外し `::` でつなぐ）。名前の解決にだけ使い、TS には渡さない。
+    #[serde(skip)]
+    pub path: String,
+}
+
 /// 宣言 1 つ（定義・使用・パラメータ）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -92,6 +102,9 @@ pub struct Entry {
     /// 型の修飾名（`Q::A`。引用符を外し `::` でつなぐ）。修飾の無い型は `ty` と同じ。名前の解決にだけ使い、TS には渡さない。
     #[serde(skip)]
     pub ty_path: String,
+    /// 2 つめ以降の型（`part x : A, B;` の `B`。FeatureTyping は複数書ける。8.2.2.6）。書いた順。1 つめは `ty`。
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub more_types: Vec<ExtraType>,
     pub owner: Option<Scope>,
     pub pe: Option<usize>,
     pub start: usize,

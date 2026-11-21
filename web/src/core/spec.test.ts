@@ -1205,6 +1205,30 @@ describe("複数の型（FeatureTyping はカンマで複数書ける。TypedBy 
   });
 });
 
+describe("列挙値（EnumeratedValue = 'enum'? Usage、EnumerationBody、8.2.2.8）", () => {
+  it("enum def の本体の a = 1;（キーワードの無い列挙値）は、列挙値として読み、定義の式にしない", () => {
+    // Arrange
+    const text = "package P { enum def Level { enum low = 1; mid = 2; plain; } }";
+    // Act
+    const level = entry(text, "Level");
+    // Assert
+    expect(level?.enumValues).toEqual(["low", "mid", "plain"]);
+    expect(level?.exprs).toEqual([]);
+    expect([entry(text, "mid")?.kind, entry(text, "mid")?.value]).toEqual(["enum", "2"]);
+    expect(problems(text)).toEqual([]);
+  });
+
+  it("値を書いた列挙値も、フェーズの並びに数える（Phase の stage の型の列挙）", () => {
+    // Arrange
+    const text = "package P { metadata def Phase { attribute stage : K; } enum def K { enum Need = 1; enum Design = 2; } part def A { @Phase { stage = K::Design; } } }";
+    // Act
+    const M = build(parse(text));
+    // Assert
+    expect(M.phases).toEqual(["Need", "Design"]);
+    expect(M.nodes.find((n) => n.name === "A")?.phase).toBe("Design");
+  });
+});
+
 describe("関係の本体の注釈（RelationshipBody 8.2.2.2、Dependency 8.2.2.3・AliasMember 8.2.2.5）", () => {
   it("dependency A to B { doc /* … */ }・alias C for A { doc /* … */ } の説明を、外側の package の説明にしない", () => {
     // Arrange

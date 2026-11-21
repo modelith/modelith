@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Entry, ModelEdge, ModelLane, ModelNode } from "../core";
 import { build, parse } from "../core/rust";
 import { contentOf, viewDef, type ViewTarget } from "./view-content";
-import { assertWord, autoPlace, BOUNDARY, boundaryBoxes, boxesOf, LANE_HEAD, LANE_PAD, laneRects, placeInLanes, compartment, DOT, downward, endLabelPos, featureText, freeSpot, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, placeView, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
+import { assertWord, autoPlace, BOUNDARY, boundaryBoxes, boxesOf, LANE_HEAD, LANE_PAD, laneRects, placeInLanes, compartment, DOT, downward, endLabelPos, enumLines, featureText, freeSpot, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, placeView, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -379,6 +379,45 @@ describe("compartment（要求図の区画：前提・満たすべき制約・�
   it("assertWord は否定した制約に not を付ける（境界値）", () => {
     // Act / Assert
     expect([assertWord({ text: "x", via: "assert" }), assertWord({ text: "x", via: "assert", neg: true })]).toEqual(["assert", "assert not"]);
+  });
+});
+
+describe("compartment（列挙の定義の区画、8.2.3.8 の enums-compartment）", () => {
+  /** テキストを読み、名前で図の要素を引く。 */
+  const nodeOf = (text: string, name: string): ModelNode => {
+    const n = build(parse(text)).nodes.find((x) => x.name === name);
+    if (!n) throw new Error(`${name} がありません`);
+    return n;
+  };
+
+  it("F-EDIT-8: 列挙値を、書いた順に 1 行ずつ書く。値や型を書いた列挙値は、キーワードの有無によらず `名前 = 値`・`名前 : 型` と書く（同値分割）", () => {
+    // Arrange
+    const n = nodeOf("package P { enum def Level { low; enum mid; enum high = 3; top = 4; typed : Real; } }", "Level");
+    // Act
+    const [lines, drawn] = [enumLines(n.entry), compartment(n)];
+    // Assert
+    expect(lines).toEqual(["low", "mid", "high = 3", "top = 4", "typed : Real"]);
+    expect(drawn).toEqual(lines.map((t) => ({ t, cls: "attr" })));
+  });
+
+  it("列挙値の無い列挙の定義は、区画に何も書かない。ほかの定義は、列挙値の行を持たない（境界値）", () => {
+    // Arrange
+    const text = "package P { enum def Empty; enum def E { a; } part def A { enum e : E; } }";
+    // Act
+    const [empty, other] = [compartment(nodeOf(text, "Empty")), enumLines(nodeOf(text, "A").entry)];
+    // Assert
+    expect(empty).toEqual([]);
+    expect(other).toEqual([]);
+  });
+
+  it("列挙値が多いときは、ほかの区画と同じく 8 行で切って残りの行数を示す（境界値：8 個と 9 個）", () => {
+    // Arrange
+    const def = (count: number): string => `package P { enum def E { ${Array.from({ length: count }, (_, i) => `v${i};`).join(" ")} } }`;
+    // Act
+    const [eight, nine] = [compartment(nodeOf(def(8), "E")), compartment(nodeOf(def(9), "E"))];
+    // Assert
+    expect(eight.map((l) => l.t)).toEqual(["v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7"]);
+    expect(nine.map((l) => l.t)).toEqual(["v0", "v1", "v2", "v3", "v4", "v5", "v6", "… ほか 2 行"]);
   });
 });
 

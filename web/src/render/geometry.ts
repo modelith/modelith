@@ -120,6 +120,23 @@ export function featureText(c: Entry): string {
   return parts.filter(Boolean).join(" ");
 }
 
+/**
+ * 列挙の定義の区画に書く、列挙値の行（8.2.3.8 の enums-compartment）。名前を書いた順に並べ、値や型を書いた列挙値は
+ * 属性と同じ書き方（`名前 = 値`・`名前 : 型`）にする。
+ *
+ * @param e 列挙の定義の宣言
+ * @returns 列挙値ごとの 1 行。列挙値が無ければ空の配列
+ * @example
+ * enumLines(enum def Level { low; enum high = 3; })  // → ["low", "high = 3"]
+ * enumLines(enum def Empty;)                         // → []（境界）
+ */
+export function enumLines(e: Entry): string[] {
+  return (e.enumValues ?? []).map((name) => {
+    const written = e.children.find((c) => c.kind === "enum" && c.name === name);
+    return written ? featureText(written) : shownName(name);
+  });
+}
+
 export interface Line {
   t: string;
   cls: "doc" | "expr" | "attr" | "more";
@@ -185,6 +202,7 @@ export function compartment(n: ModelNode): Line[] {
   if (["part", "other"].includes(n.fam)) {
     for (const c of e.children) if (c.kind === "attribute" || c.kind === "param") push(featureText(c), "attr", 1);
   }
+  if (n.kind === "enum def") for (const t of enumLines(e)) push(t, "attr", 1);
   if (n.kind === "state def") {
     const st = e.children.filter((c) => c.kind === "state").map((c) => shownName(c.name));
     if (st.length) push("states: " + st.join(", "), "attr");

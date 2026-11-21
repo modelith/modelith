@@ -34,9 +34,9 @@ Modelith が SysML v2 仕様のどこに対応し、どこが未対応かを示�
 
 「予定」の列は、対応するリリース（[リリース計画](../development/release-plan.md) の「SysML v2 の文法への対応」）。— は予定の無いもの。
 
-件数：テキスト記法（2 章）120 項目のうち ○ 102・△ 12・× 6・⚠ 0。
+件数：テキスト記法（2 章）120 項目のうち ○ 103・△ 11・× 6・⚠ 0。
 
-0.3.0-alpha.1 の後で、名前を持たない文の本体（`satisfy R by x { … }`・`flow … { … }`・`first a then b { … }`・`transition … { … }` など）に書いた説明・メタデータが、外側の要素のものとして読まれていたのを直した（誤った表示だったので、表に 1 行足して × にした。記録はまだしない）。複数の型（`part x : A, B;`）を、すべて型として読むようにした。
+0.3.0-alpha.1 の後で、名前を持たない文の本体（`satisfy R by x { … }`・`flow … { … }`・`first a then b { … }`・`transition … { … }` など）に書いた説明・メタデータが、外側の要素のものとして読まれていたのを直した（誤った表示だったので、表に 1 行足して × にした。記録はまだしない）。複数の型（`part x : A, B;`）を、すべて型として読むようにした。列挙の定義の本体のキーワードの無い列挙値（`b = 3;`）を、定義の式ではなく列挙値として読み、値を書いた列挙値もフェーズの並びに数え、列挙の定義の区画に列挙値を書くようにした。
 
 0.2.0-alpha.3 で、`assert constraint`・`assert not` の否定を記録して持ち主の区画に書き、`objective` を検証・解析の区画に書き、型の無い検証・解析の使用の中の `verify` も線にした（Rust のコアと一般ビュー。8.2.3.20〜24）。それまでは ○ 98・△ 16・× 5 だった。
 
@@ -133,7 +133,7 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | `:=` / `default` | FeatureValue | ○ | | `=`（束縛）・`:=`（初期値、isInitial）・`default`・`default =`・`default :=`（既定値、isDefault）を区別して記録し、区画に書いたとおり（`m := 10`・`m default 10`）書く。図からの名前の変更でも書き方は変わらない（値を書き換える図の操作は無い） |
 | `abstract`・`ref`・`derived`・`end`・`in`・`out`・`inout` など | Prefix 系 | ○ | | 記録する |
 | `ref r : A;`・型の無い `ref r;` | ReferenceUsage | ○ | | 型の無い `ref r;` も参照の使用にする。特殊化の相手・多重度・値も記録し、区画の属性の行に書く（型も値も無ければ名前だけ） |
-| キーワードの無い特性 `x : Real;`・`y :> x;`・`z : Real = 3;` | DefaultReferenceUsage | ○ | | `ref s : A;` と同じく参照の使用にする（区画の属性の行）。要求・制約の式にはしない。列挙の定義の本体の `a = 1;` と `return r : R;` はこれまでどおり |
+| キーワードの無い特性 `x : Real;`・`y :> x;`・`z : Real = 3;` | DefaultReferenceUsage | ○ | | `ref s : A;` と同じく参照の使用にする（区画の属性の行）。要求・制約の式にはしない。列挙の定義の本体の `a = 1;` は列挙値（下の 2.5）。`return r : R;` はこれまでどおり |
 | `crosses`・`=>` | OwnedCrossFeatureMember | ○ | | 値にせず、交差の相手として記録し、部品の線の端（`crosses q.r`）と区画の行（`w : A => q.r`）に書く。インスペクタには出さない。`end` の特性の形は未確認 |
 | `constant`・`variant` | UsagePrefix 等 | ○ | | 後ろの宣言をそのまま読み、`constant`・`variant` を修飾として記録する。`variant a;`（VariantReference）は種類 `variant` の要素になる。`variation part def V { variant part a; }` も読む（バリアントの意味は持たない） |
 
@@ -142,8 +142,8 @@ alpha.7 の 2 回目の更新で、`case`・`actor`・`include use case`・`enum
 | 要素 | 対応 | 予定 | 根拠・備考 |
 | --- | --- | --- | --- |
 | `attribute def` / `attribute` | ○ | | |
-| `enum def`・列挙値 | ○ | | 列挙値はフェーズにも使う |
-| 値付きの列挙値 `enum b = 3;` | △ | 0.3.0 | 列挙値として読むが、値は記録しない |
+| `enum def`・列挙値 | ○ | | 列挙値はフェーズにも使う。列挙の定義の区画に、列挙値を書いた順に並べる（8.2.3.8） |
+| 値付きの列挙値 `enum b = 3;`・キーワードの無い `b = 3;`・`b : T;` | ○ | | 列挙値として読み、値と型を記録する（EnumeratedValue = 'enum'? Usage、8.2.2.8）。名前だけの列挙値と同じ並びに入れ（フェーズにも使う）、列挙の定義の区画に、書いた順に `b = 3` と書く（8.2.3.8 の enums-compartment） |
 | `enum` の使用 `enum e : E;` | ○ | | 種類 `enum` の要素になる。`enum def` の中の `enum a;` はこれまでどおり列挙値 |
 | `occurrence def` / `occurrence` | ○ | | シーケンス図の文脈 |
 | `individual` | ○ | | 修飾として記録し（isIndividual）、図の見出しを «individual part def» のように書く。種類のキーワードの無い `individual def E;`・`individual e : E;`（IndividualDefinition・IndividualUsage）は `occurrence def`・`occurrence` として読む（以前は、定義を「まだ扱えない」と知らせ、使用を型付きのパラメータと取り違えていた） |

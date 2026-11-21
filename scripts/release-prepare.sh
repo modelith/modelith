@@ -13,7 +13,12 @@ if [[ $branch != "chore/release-v$version" ]]; then
 fi
 
 git fetch --quiet --tags origin || echo "注意: タグを取得できませんでした。前の版はノートのファイルから選びます" >&2
-sed -i -E "0,/^version = \".*\"$/s//version = \"$version\"/" Cargo.toml
+# Cargo.toml の最初の version の行（ワークスペースの版）だけを書き換える。GNU と BSD（macOS）の sed は、その場での書き換えと
+# 「最初の 1 つだけ」の書き方が違うので、どちらでも動く awk で書き、できたものと置き換える
+tmp=$(mktemp)
+awk -v v="$version" '!done && /^version = ".*"$/ { print "version = \"" v "\""; done = 1; next } { print }' Cargo.toml >"$tmp"
+cat "$tmp" >Cargo.toml
+rm -f "$tmp"
 cargo update --workspace --quiet
 npm version "$version" --no-git-tag-version --prefix web >/dev/null
 npm version "$version" --no-git-tag-version --prefix cli >/dev/null

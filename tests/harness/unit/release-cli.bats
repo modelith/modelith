@@ -45,3 +45,13 @@ setup() {
   [ "$plain" = "modelith-cli-0.3.0-alpha.1.tgz" ]
   [ "$scoped" = "scope-name-1.0.0.tgz" ]
 }
+
+@test "release_cli_dist_tag: プレリリース版は next、正式版は latest にする（同値分割: alpha・beta・rc・正式版・パッチ）" {
+  # Arrange
+  local versions=(0.3.0-alpha.1 0.3.0-beta.2 0.3.0-rc.1 0.3.0 1.2.3)
+  # Act
+  local results=() v
+  for v in "${versions[@]}"; do results+=("$(release_cli_dist_tag "$v")"); done
+  # Assert
+  [ "${results[*]}" = "next next next latest latest" ]
+}

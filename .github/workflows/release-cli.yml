@@ -2,9 +2,12 @@ name: Release CLI
 
 # リリースを公開すると、そのタグの中身から CLI と MCP のサーバのパッケージ（modelith-cli。npm pack の .tgz）を組み立て、
 # そのリリースに添付する（docs/development/releasing.md、ADR-0024 の 6、ADR-0028）。
-# npm のレジストリへの公開は、まだ行わない（公開のしかたを決めてから、ここに足す。ADR-0028 の 3）。
+# 続けて、添付したのと同じ .tgz を、npm のレジストリに「置く」（npm stage publish。ADR-0028 の 3）。
+# 置いただけでは公開されず、メンテナが npm で 2 段階認証をして承認すると公開される。
 #
-# 添付するだけで、secret は使わない。タグのコミットの定義で動く（このファイルが無い古いタグでは、何も起きない）。
+# secret は使わない。npm には、このワークフローのファイル（release-cli.yml）と npm の結び付け（Trusted Publishing）で入る。
+# 結び付けを npm に登録するまでは、リポジトリの変数 NPM_STAGE_PUBLISH を true にせず、npm の段を飛ばす（docs/development/releasing.md）。
+# タグのコミットの定義で動く（このファイルが無い古いタグでは、何も起きない）。
 on:
   release:
     types: [published]
@@ -54,3 +57,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: scripts/release-cli.sh "$TAG"
+
+  npm:
+    needs: attach
+    # npm に結び付けを登録したあとで、リポジトリの変数を true にする。それまでは何もしない
+    if: vars.NPM_STAGE_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read   # リリースに添付した .tgz を取る
+      id-token: write  # npm に、このワークフローであることを示す（Trusted Publishing）
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+      # registry-url は渡さない（渡すと、鍵を使う設定が書かれ、結び付けでの認証を妨げる）
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          check-latest: true
+      - name: Use an npm that can stage a package
+        # npm stage publish は npm 11.15.0 から。Node に付いてくる版に頼らず、決めた版を使う
+        run: npm install --global --ignore-scripts npm@12.2.3
+      - name: Stage the package on npm
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/release-cli-npm.sh "$TAG"

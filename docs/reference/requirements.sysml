@@ -465,8 +465,9 @@ package ModelithRequirements {
         }
         requirement def <'F-AI-4'> CliDistributionReq {
             doc /* CLI と MCP のサーバを、npm のパッケージ（modelith-cli。ADR-0028）として入れられる。版は本体と同じ。パッケージは、リリースを公開すると組み立てて、そのリリースに .tgz で添付する。
+                   npm のレジストリには、添付したのと同じ .tgz を、リリースのワークフローが鍵を持たずに置き、メンテナが npm で承認すると公開される（ADR-0028 の 3）。プレリリース版は next、正式版は latest の印で出す。
                    本体のライセンス（AGPL-3.0 とプラグイン例外）と、組み込んだ第三者の部品のライセンスを同梱する。
-                   予定：npm のレジストリへの公開（npx modelith-cli で使えるようにする）、リリースに付けた実行ファイル（macOS・Windows・Linux）、cargo install */
+                   予定：リリースに付けた実行ファイル（macOS・Windows・Linux）、cargo install */
         }
 
         // ---- サーバ（ADR-0025。0.5.0 から） ----------------------------
@@ -1590,7 +1591,7 @@ package ModelithRequirements {
         verification def CliPackageTest {
             doc /* scripts/build-cli.sh --smoke（scripts/check.sh の結合の段）：cli を配る形に組み立て、組み立てたものでサンプルのモデルの図を SVG と draw.io で書き出せること、
                    パッケージに要るファイル（入口・描画・コアの wasm・ライセンス文・README）が入り、ソースやテストが入らないことを確かめる。
-                   tests/harness/unit/release-cli.bats：リリースに添付するときの判断（タグの版とパッケージの版が同じこと、.tgz の名前）。
+                   tests/harness/unit/release-cli.bats：リリースに添付するとき・npm に置くときの判断（タグの版とパッケージの版が同じこと、.tgz の名前、npm に付ける印）。
                    web/tools/licenses.test.ts：同梱する第三者の部品のライセンスの選び方と書式 */
             objective {
                 verify CliDistributionReq;

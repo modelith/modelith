@@ -27,3 +27,17 @@ release_cli_tarball() {
   name=${name#@}
   printf '%s-%s.tgz\n' "${name//\//-}" "$version"
 }
+
+# npm のレジストリに置くときの印（dist-tag）。プレリリース版（版に - がある）は next、正式版は latest。
+# npm install modelith-cli は latest を入れるので、プレリリース版を latest にしない。
+# 例: release_cli_dist_tag 0.3.0-alpha.1 → next
+#     release_cli_dist_tag 0.3.0-rc.1    → next
+#     release_cli_dist_tag 0.3.0         → latest
+release_cli_dist_tag() {
+  local version=$1
+  if [[ $version == *-* ]]; then
+    echo next
+  else
+    echo latest
+  fi
+}

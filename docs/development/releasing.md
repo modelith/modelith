@@ -81,8 +81,40 @@
 - 版は、本体と同じ（`scripts/release-prepare.sh` が `cli/package.json` も書き換える）。タグの版と違うときは、添付しない。
 - 添付し直すとき（組み立てに失敗した・添付を消したとき）は、Actions の「Release CLI」を、タグを渡して手で動かす。
 - 添付した `.tgz` は、npm のレジストリを使わずに入れられる：`npm install -g https://github.com/modelith/modelith/releases/download/v<版>/modelith-cli-<版>.tgz`。
-- npm のレジストリへの公開は、まだ行わない。公開のしかた（npm の Trusted Publishing か、トークンか）を決めてから、同じワークフローに足す（ADR-0028 の 3）。
-  そのときは、`cli/package.json` の `private` を外す。
+
+### npm のレジストリへの公開
+
+npm への公開は、2 段階で行う（ADR-0028 の 3）。
+
+1. 同じワークフローが、添付したのと同じ `.tgz` を、npm に「置く」（`scripts/release-cli-npm.sh`。`npm stage publish`）。置いただけでは公開されない。
+   印（dist-tag）は、プレリリース版は `next`、正式版は `latest`。
+2. メンテナが、npm のパッケージのページ（<https://www.npmjs.com/package/modelith-cli>）で置かれた版を見て、2 段階認証をして承認する。承認すると公開される。
+   手元のコマンドでもできる：`npm stage list modelith-cli` で一覧、`npm stage approve <ID>` で承認、`npm stage reject <ID>` で取り下げ。
+
+置き直すとき（置くのに失敗した・取り下げたとき）は、Actions の「Release CLI」を、タグを渡して手で動かす。同じ版を 2 回は置けないので、置いたままの版は、先に取り下げる。
+
+#### 初期設定（一度だけ）
+
+ワークフローは鍵を持たず、npm との結び付け（Trusted Publishing）で入る。結び付けは、npm にパッケージがあってからでないと登録できないので、最初の 1 回だけは、メンテナが手元から公開する。
+npm のコマンドは 11.15.0 以上を使う（`npm install -g npm@latest`）。トークンや合言葉を、リポジトリ・Issue・チャットに書かない。
+
+1. 最初の版を公開する。リリースに添付された `.tgz`（ワークフローが組み立てたもの）を取ってきて、そのまま出す。手元で組み立てたものは出さない。
+
+   ```bash
+   npm login
+   curl -LO https://github.com/modelith/modelith/releases/download/v<版>/modelith-cli-<版>.tgz
+   npm publish ./modelith-cli-<版>.tgz --tag next   # 正式版なら --tag latest
+   ```
+
+2. 結び付けを登録する。「置く」ことだけを許す（`--allow-publish` は付けない）。
+
+   ```bash
+   npm trust github modelith-cli --repo modelith/modelith --file release-cli.yml --allow-stage-publish
+   ```
+
+   npm の画面でもできる（パッケージのページ → Settings → Trusted Publisher）。
+3. npm のパッケージの Settings（パッケージの公開の権限の欄）で、「Require two-factor authentication and disallow tokens」を選ぶ（トークンでは公開できなくする）。
+4. GitHub のリポジトリの Settings → Secrets and variables → Actions → Variables に、`NPM_STAGE_PUBLISH` = `true` を足す。これが無い間、ワークフローは npm の段を飛ばす。
 
 ## GitHub Pages の初期設定（一度だけ）
 

@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { build, parse } from "../core";
 import { flowContentOf } from "../render/action-flow";
-import { copyFailureText, drawioEdgeStyle, drawioFlowCell, drawioLineShape, drawioStateCell, drawioText, mxfileXml } from "./export";
+import { copyFailureText, dataUrlBlob, drawioEdgeStyle, drawioFlowCell, drawioLineShape, drawioStateCell, drawioText, mxfileXml } from "./export";
 import { stateContentOf } from "../render/state-machine";
 
 describe("drawioEdgeStyle（F-EXP-2）", () => {
@@ -154,5 +154,35 @@ describe("drawioLineShape（F-EXP-2。#244）", () => {
 
   it("画面が曲線なら、draw.io も曲線にする", () => {
     expect(drawioLineShape("curve")).toBe("curved=1;");
+  });
+});
+
+describe("dataUrlBlob（F-EXP-3・F-EXP-5：キャンバスの data: の URL を、画像のバイト列にする）", () => {
+  it("base64 の data: の URL は、種類と中身を保った Blob にする（正常系）", async () => {
+    // Arrange（"abc" の base64）
+    const url = "data:image/png;base64,YWJj";
+    // Act
+    const blob = dataUrlBlob(url);
+    // Assert
+    expect(blob?.type).toBe("image/png");
+    expect(await blob?.text()).toBe("abc");
+  });
+
+  it("0〜255 のどのバイトも、そのまま保つ（境界値：0x00・0x7F・0x80・0xFF）", async () => {
+    // Arrange
+    const bytes = [0x00, 0x7f, 0x80, 0xff];
+    const url = `data:image/jpeg;base64,${btoa(String.fromCharCode(...bytes))}`;
+    // Act
+    const blob = dataUrlBlob(url);
+    // Assert
+    expect(blob?.type).toBe("image/jpeg");
+    expect([...new Uint8Array((await blob?.arrayBuffer()) ?? new ArrayBuffer(0))]).toEqual(bytes);
+  });
+
+  it("画像を作れなかったときの「data:,」・base64 でない URL・壊れた base64・ほかの URL は null にする（異常系）", () => {
+    // Act
+    const got = ["data:,", "data:image/png;base64,", "data:text/plain,abc", "data:image/png;base64,@@@", "https://example.com/a.png", ""].map(dataUrlBlob);
+    // Assert
+    expect(got).toEqual([null, null, null, null, null, null]);
   });
 });

@@ -74,7 +74,35 @@ export async function rasterize(image: DiagramImage, scale: number, type: string
     g.fillRect(0, 0, canvas.width, canvas.height);
   }
   g.drawImage(img, 0, 0, canvas.width, canvas.height);
-  return await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("画像を作れませんでした"))), type, 0.92));
+  // `canvas.toBlob` は使わない。ブラウザの手が空いたときに変換を進める作りで、画面が動いていない間は終わらないことがある
+  // （「画像をコピー」が、成功も失敗も知らせずに止まった。#310）。その場で変換する `toDataURL` から作る
+  const blob = dataUrlBlob(canvas.toDataURL(type, 0.92));
+  if (!blob) throw new Error("画像を作れませんでした");
+  return blob;
+}
+
+/**
+ * `data:` の URL（base64）を、バイト列（Blob）にする。
+ *
+ * @param url `data:<種類>;base64,<中身>` の形の URL（`canvas.toDataURL` の結果）
+ * @returns その種類の Blob。base64 の `data:` の URL でない・中身が空・中身を読めないときは null
+ * @example
+ * dataUrlBlob("data:image/png;base64,iVBORw0KGgo=") // → 種類 "image/png"、8 バイトの Blob
+ * dataUrlBlob("data:,")                             // → null（大きすぎるキャンバスなどで、ブラウザが画像を作れなかったとき）
+ * dataUrlBlob("https://example.com/a.png")          // → null
+ */
+export function dataUrlBlob(url: string): Blob | null {
+  const m = /^data:([^;,]+);base64,(.+)$/.exec(url);
+  if (!m) return null;
+  let binary: string;
+  try {
+    binary = atob(m[2] ?? "");
+  } catch {
+    return null;
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: m[1] ?? "" });
 }
 
 /**

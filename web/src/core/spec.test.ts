@@ -1246,6 +1246,38 @@ describe("絞り込み付きの import と package の直下の filter（FilterP
   });
 });
 
+describe("値の式の文法（OwnedExpression、KerML 8.2.5.8。値の式 FeatureValue、8.2.2.6）", () => {
+  it("単位付きの値・本体付きの式・if の式・関数の呼び出しは、エラーにしない", () => {
+    // Arrange（BracketExpression・FunctionOperationExpression・CollectExpression・ConditionalExpression・InvocationExpression）
+    const text =
+      "package P { part def Car { attribute mass = 1500 [kg]; attribute speed = 10 [m/s] * 2; attribute total = parts->collect{ p | p.mass }->sum(); " +
+      "attribute doubled = xs.{ in i; i * 2 }; attribute lim = if a > 1 ? 2.0 else 3.0; attribute m = max(a, b + 1); attribute r = 1..*; } }";
+    // Act・Assert
+    expect(parse(text).errors).toEqual([]);
+  });
+
+  it("演算子の後に値が無い式・値の間に演算子が無い式・カンマの前後に値が無い式は、どこが壊れているかを知らせる", () => {
+    // Arrange
+    const broken = (value: string): string[] => parse(`package P { part def Car { attribute a = ${value}; } }`).errors.map((e) => e.msg);
+    // Act・Assert
+    expect(broken("1 +")).toEqual(["「+」の後に値がありません"]);
+    expect(broken("1 2")).toEqual(["「1」と「2」の間に演算子がありません"]);
+    expect(broken("f(a,)")).toEqual(["「,」の後に値がありません"]);
+    expect(broken("if a ? 1")).toEqual(["「if」の式に「else」がありません"]);
+    expect(broken("a.")).toEqual(["「.」の後に名前がありません"]);
+  });
+
+  it("壊れた式があっても、その宣言とほかの宣言は読む", () => {
+    // Arrange
+    const text = "package P { part def Car { attribute a = 1 +; attribute b = 2; } }";
+    // Act
+    const names = parse(text).entries.map((e) => e.name);
+    // Assert
+    expect(names).toEqual(["P", "Car", "a", "b"]);
+    expect(entry(text, "b")?.value).toBe("2");
+  });
+});
+
 describe("関係の本体の注釈（RelationshipBody 8.2.2.2、Dependency 8.2.2.3・AliasMember 8.2.2.5）", () => {
   it("dependency A to B { doc /* … */ }・alias C for A { doc /* … */ } の説明を、外側の package の説明にしない", () => {
     // Arrange

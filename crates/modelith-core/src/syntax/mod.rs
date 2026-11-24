@@ -3,6 +3,7 @@
 //! 字句解析（`lexer`）→ 再帰下降（`grammar`、イベントを出す）→ 木の組み立て（この層、`rowan`）の順に進む。
 //! 木の文字列は入力と 1 文字も違わず、どんな入力でも panic しない。
 
+mod expr;
 mod grammar;
 mod kind;
 mod lexer;

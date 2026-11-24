@@ -4,6 +4,7 @@
 //! 文法として読み、式は括弧の釣り合いで区切った `EXPRESSION` として持つ。
 //! どの入力でも止まらず、読めない部分は `ERROR` か `UNSUPPORTED_MEMBER` に入れて続きを読む。
 
+use super::expr;
 use super::kind::SyntaxKind::{self, *};
 use super::kind::{KERML_DECLARATION_KEYWORDS, KERML_PREFIX_KEYWORDS};
 use super::parser::{ErrorAt, Parser};
@@ -2085,10 +2086,35 @@ fn feature_value(p: &mut Parser<'_>) {
     } else {
         p.bump();
     }
-    if !expression(p, false) {
+    let from = p.position();
+    if expression(p, false) {
+        check_expression(p, from);
+    } else {
         p.error("値の式がありません");
     }
     m.complete(p, FEATURE_VALUE);
+}
+
+/// 読み終えた式が文法（KerML 8.2.5.8）に合っているかを確かめ、確かに壊れているところがあれば、エラーを 1 つ置く。
+///
+/// # 引数
+///
+/// - `p`：式を読み終えたパーサ
+/// - `from`：式を読み始めた位置（`Parser::position`）
+fn check_expression(p: &mut Parser<'_>, from: usize) {
+    let toks: Vec<expr::Tok<'_>> = p
+        .read_since(from)
+        .into_iter()
+        .map(|(kind, text)| expr::Tok { kind, text })
+        .collect();
+    if let Some(fault) = expr::check(&toks) {
+        let at = if fault.after {
+            ErrorAt::End(from + fault.at)
+        } else {
+            ErrorAt::Start(from + fault.at)
+        };
+        p.error_at(at, fault.message);
+    }
 }
 
 /// 修飾名（`A::B`）か、特徴の連鎖（`a.b.c`）。

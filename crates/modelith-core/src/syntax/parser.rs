@@ -447,6 +447,32 @@ impl<'t> Parser<'t> {
         }
     }
 
+    /// `from` から今の位置の手前までに読んだトークン（種類と文字）。
+    ///
+    /// # 引数
+    ///
+    /// - `from`：`position` で覚えておいた位置
+    ///
+    /// # 戻り値
+    ///
+    /// 読んだトークン。`from` が今の位置以降なら空。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// // 入力 [a, +, b, ;] を 3 つ読んだ後
+    /// read_since(0) → [(IDENT, "a"), (OP, "+"), (IDENT, "b")]
+    /// read_since(3) → []
+    /// ```
+    pub fn read_since(&self, from: usize) -> Vec<(SyntaxKind, &'t str)> {
+        self.input
+            .get(from..self.pos)
+            .unwrap_or_default()
+            .iter()
+            .map(|t| (t.kind, t.text))
+            .collect()
+    }
+
     /// 位置 `at` にエラーを置く（`Error` のイベントを出す。読み進めない）。
     ///
     /// # 引数

@@ -41,3 +41,12 @@ release_cli_dist_tag() {
     echo latest
   fi
 }
+
+# その版が、もう npm で公開されているか。`npm view <名前>@<版> version` の出力を渡す（無い版は空になる）。
+# 公開済みの版は置き直せない（npm が断る）ので、添付し直しで動かしたときは、置くのを飛ばす。
+# 例: release_cli_is_published 0.3.0-alpha.2 0.3.0-alpha.2 → 0（公開済み）
+#     release_cli_is_published 0.3.0-alpha.3 ""            → 1（まだ）
+release_cli_is_published() {
+  local version=$1 seen=$2
+  [[ -n $seen && $seen == "$version" ]]
+}

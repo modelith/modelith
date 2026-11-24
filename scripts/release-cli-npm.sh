@@ -19,6 +19,13 @@ if ! reason=$(release_cli_check "$tag" "$version"); then
   exit 1
 fi
 
+# 無い版・無いパッケージでは、出力が空になる（失敗しても、まだ公開していないものとして先へ進む）
+seen=$(npm view "$name@$version" version 2>/dev/null || true)
+if release_cli_is_published "$version" "$seen"; then
+  echo "$name@$version は、もう npm で公開されています。置かずに終わります"
+  exit 0
+fi
+
 tarball=$(release_cli_tarball "$name" "$version")
 out=$(mktemp -d)
 gh release download "$tag" --pattern "$tarball" --dir "$out" --repo "${GITHUB_REPOSITORY:?}"

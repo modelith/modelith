@@ -55,3 +55,15 @@ setup() {
   # Assert
   [ "${results[*]}" = "next next next latest latest" ]
 }
+
+@test "release_cli_is_published: npm にその版があるときだけ公開済みとする（同値分割: 同じ版・空・別の版）" {
+  # Arrange
+  local seen=(0.3.0-alpha.2 "" 0.3.0-alpha.1)
+  # Act
+  local results=() s
+  for s in "${seen[@]}"; do
+    if release_cli_is_published 0.3.0-alpha.2 "$s"; then results+=(yes); else results+=(no); fi
+  done
+  # Assert
+  [ "${results[*]}" = "yes no no" ]
+}

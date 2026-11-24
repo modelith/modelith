@@ -1705,3 +1705,74 @@ fn reserved_word_used_as_a_declaration_name_is_an_error() {
         assert_eq!(errors(text), [], "{text}");
     }
 }
+
+#[test]
+fn result_and_filter_expressions_that_follow_the_grammar_have_no_error() {
+    // Arrange（正常系：制約・計算・要求の本体の式と、filter の式。KerML 8.2.5.8）
+    let good = [
+        "constraint def C { in v : Real; v > 10 and v <= 20 }",
+        "calc def K { in x : Real; return : Real; x * 2 [kg] }",
+        "calc def K { in xs : Real[*]; xs->collect { in i; i * 2 } }",
+        "calc def K { in a; (a as T).x ?? 0 }",
+        "requirement r { assume constraint { x > 0 implies y } require constraint { m <= 10 } }",
+        "package P { filter @Safety and Safety::isMandatory; filter not (@A or @B); }",
+    ];
+    for text in good {
+        // Act / Assert
+        assert_eq!(errors(text), [], "{text}");
+    }
+}
+
+#[test]
+fn broken_result_and_filter_expressions_are_reported_where_they_break() {
+    // Arrange（異常系：演算子の後に値が無い・値の間に演算子が無い・@ の後に型が無い）
+    let bad = [
+        (
+            "constraint def C { v > 10 + }",
+            27,
+            "「+」の後に値がありません",
+        ),
+        (
+            "calc def K { x 2 }",
+            15,
+            "「x」と「2」の間に演算子がありません",
+        ),
+        (
+            "requirement r { require constraint { m <= } }",
+            41,
+            "「<=」の後に値がありません",
+        ),
+        (
+            "package P { filter @A and @; }",
+            27,
+            "「@」の後に型の名前がありません",
+        ),
+    ];
+    for (text, at, message) in bad {
+        // Act
+        let errs = errors(text);
+        // Assert
+        assert_eq!(errs, [(at, message.to_owned())], "{text}");
+    }
+}
+
+#[test]
+fn a_member_that_starts_with_two_names_is_reported_as_an_unknown_kind() {
+    // Arrange（境界：名前が 2 つ続く書き出し（種類の語の書き誤り）と、そうでない書き出し）
+    let typo = errors("part def A { prt engine : Engine; part ok; }");
+    let quoted = errors("part def A { 'my part' engine; }");
+    let declared = errors("part def A { engine : Engine; }");
+    // Act / Assert
+    assert_eq!(
+        typo,
+        [(13, "「prt」という種類の要素はありません".to_owned())]
+    );
+    assert_eq!(
+        quoted,
+        [(
+            23,
+            "「'my part'」と「engine」の間に演算子がありません".to_owned()
+        )]
+    );
+    assert_eq!(declared, []);
+}

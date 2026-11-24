@@ -437,7 +437,16 @@ fn member(p: &mut Parser<'_>) {
         m.complete(p, ERROR);
         return;
     }
+    // `prt engine : Engine;` のように、名前が 2 つ続く書き出しは式にならない。種類の語の書き誤りとして知らせる
+    let unknown_kind = p.at(IDENT) && p.nth_at_name(1);
+    if unknown_kind {
+        p.error(format!("「{}」という種類の要素はありません", p.nth_text(0)));
+    }
+    let from = p.position();
     if expression(p, false) {
+        if !unknown_kind {
+            check_expression(p, from);
+        }
         if !p.eat(SEMI) && !p.at(R_BRACE) {
             if p.at(L_BRACE) {
                 body(p, owner, "");
@@ -583,7 +592,10 @@ fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
         }
         "filter" => {
             p.bump();
-            expression(p, false);
+            let from = p.position();
+            if expression(p, false) {
+                check_expression(p, from);
+            }
             end(p, owner, kw, false);
             ELEMENT_FILTER_MEMBER
         }

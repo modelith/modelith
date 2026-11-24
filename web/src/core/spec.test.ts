@@ -1278,6 +1278,38 @@ describe("値の式の文法（OwnedExpression、KerML 8.2.5.8。値の式 Featu
   });
 });
 
+describe("本体の式と絞り込みの式の文法（ResultExpressionMember、8.2.2.19。ElementFilterMember、8.2.2.5。式は KerML 8.2.5.8）", () => {
+  it("制約・計算・要求の本体の式と、filter の式は、エラーにしない", () => {
+    // Arrange
+    const text =
+      "package P { filter @Safety and Safety::isMandatory; constraint def C { in v : Real; v > 10 and v <= 20 } " +
+      "calc def K { in xs : Real[*]; return : Real; xs->collect { in i; i * 2 [kg] } } " +
+      "requirement r { attribute m : Real; assume constraint { m > 0 implies ok } require constraint { m <= 10 } } }";
+    // Act・Assert
+    expect(parse(text).errors).toEqual([]);
+  });
+
+  it("壊れた本体の式・絞り込みの式は、どこが壊れているかを知らせる", () => {
+    // Arrange
+    const messages = (text: string): string[] => parse(text).errors.map((e) => e.msg);
+    // Act・Assert
+    expect(messages("package P { constraint def C { in v : Real; v > 10 + } }")).toEqual(["「+」の後に値がありません"]);
+    expect(messages("package P { calc def K { in x : Real; x 2 } }")).toEqual(["「x」と「2」の間に演算子がありません"]);
+    expect(messages("package P { requirement r { require constraint { m <= } } }")).toEqual(["「<=」の後に値がありません"]);
+    expect(messages("package P { filter @A and @; }")).toEqual(["「@」の後に型の名前がありません"]);
+  });
+
+  it("名前が 2 つ続く書き出しは、種類の語の書き誤りとして知らせ、続く宣言は読む", () => {
+    // Arrange（BNF に、名前 2 つで始まる本体の要素は無い）
+    const text = "package P { part def Car { prt engine : Engine; part wheel; } }";
+    // Act
+    const got = parse(text);
+    // Assert
+    expect(got.errors.map((e) => e.msg)).toEqual(["「prt」という種類の要素はありません"]);
+    expect(got.entries.map((e) => e.name)).toContain("wheel");
+  });
+});
+
 describe("関係の本体の注釈（RelationshipBody 8.2.2.2、Dependency 8.2.2.3・AliasMember 8.2.2.5）", () => {
   it("dependency A to B { doc /* … */ }・alias C for A { doc /* … */ } の説明を、外側の package の説明にしない", () => {
     // Arrange

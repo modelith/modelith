@@ -520,9 +520,53 @@ const EXPRESSION_KEYWORDS: &[&str] = &["true", "false", "null", "not", "new"];
 /// at_expression_keyword("part p;")        → false
 /// ```
 fn at_expression_keyword(p: &Parser<'_>) -> bool {
+    if at_conditional_expression(p) {
+        return true;
+    }
     p.at(KEYWORD)
         && EXPRESSION_KEYWORDS.contains(&p.nth_text(0))
         && !(p.at_kw("not") && p.nth_at_kw(1, "satisfy"))
+}
+
+/// 今の `if` が、条件の式（ConditionalExpression `if c ? a else b`、KerML 8.2.5.8）の始まりか。読み進めない。
+///
+/// `if` のアクション（IfNode `if c { … }`、8.2.2.17）と、遷移のガード（`if c then x;`）は、条件の後に `?` が来ない。
+/// 条件の後（括弧の外）に `?` があれば式とみなす。`a.?{ … }`（SelectExpression）の `?` は数えない。
+///
+/// # 引数
+///
+/// - `p`：要素の頭にいるパーサ
+///
+/// # 戻り値
+///
+/// `if` にいて、`;`・`{`・`}`・`then`・末尾より前の、括弧の外に `?` があれば `true`。
+///
+/// # 例
+///
+/// ```text
+/// at_conditional_expression("if a > 0 ? a else -a }") → true
+/// at_conditional_expression("if f(x ? 1 else 2) { }") → false   // 括弧の中の ? は、条件の中の式のもの
+/// at_conditional_expression("if a { } else { }")      → false   // if のアクション
+/// at_conditional_expression("if a then b;")           → false   // 遷移のガード
+/// at_conditional_expression("if xs.?{ in i; i } { }") → false   // .? は選ぶ式
+/// ```
+fn at_conditional_expression(p: &Parser<'_>) -> bool {
+    if !p.at_kw("if") {
+        return false;
+    }
+    let mut depth = 0usize;
+    let mut n = 1;
+    loop {
+        match p.nth(n) {
+            L_PAREN | L_BRACK => depth += 1,
+            R_PAREN | R_BRACK => depth = depth.saturating_sub(1),
+            ERROR | SEMI | L_BRACE | R_BRACE => return false,
+            KEYWORD if depth == 0 && p.nth_text(n) == "then" => return false,
+            OP if depth == 0 && p.nth_text(n) == "?" && p.nth(n - 1) != DOT => return true,
+            _ => {}
+        }
+        n += 1;
+    }
 }
 
 /// キーワードで始まる、種類キーワード以外の要素。

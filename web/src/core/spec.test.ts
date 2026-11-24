@@ -1289,6 +1289,16 @@ describe("本体の式と絞り込みの式の文法（ResultExpressionMember、
     expect(parse(text).errors).toEqual([]);
   });
 
+  it("if で始まる結果の式（ConditionalExpression）は、if のアクションではなく式として読む（#340）", () => {
+    // Arrange（条件の後に ? があれば式。無ければ if のアクション（IfNode、8.2.2.17））
+    const expression = "package P { calc def Abs { in a : Real; if a > 0 ? a else -a } }";
+    const action = "package P { action def A { if x > 0 { action b; } else { action c; } } }";
+    // Act・Assert
+    expect(parse(expression).errors).toEqual([]);
+    expect(parse(action).errors).toEqual([]);
+    expect(parse(action).entries.map((e) => e.name)).toEqual(expect.arrayContaining(["b", "c"]));
+  });
+
   it("壊れた本体の式・絞り込みの式は、どこが壊れているかを知らせる", () => {
     // Arrange
     const messages = (text: string): string[] => parse(text).errors.map((e) => e.msg);

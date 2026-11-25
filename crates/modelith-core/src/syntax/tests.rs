@@ -1776,3 +1776,33 @@ fn a_member_that_starts_with_two_names_is_reported_as_an_unknown_kind() {
     );
     assert_eq!(declared, []);
 }
+
+#[test]
+fn result_expression_that_starts_with_if_is_read_as_an_expression() {
+    // Arrange（#340。同値分割：条件の式（? がある）と、if のアクション・遷移のガード（? が無い）。境界：括弧の中だけに ? がある）
+    let expression = "calc def Abs { in a : Real; if a > 0 ? a else -a }";
+    let nested = "calc def K { in a; if a > 0 ? (if a > 9 ? 9 else a) else 0 }";
+    let action = "action def A { if f(x > 0 ? 1 else 2) > 1 { action b; } else { action c; } }";
+    let guard = "action def A { first start; if x > 0 then b; action b; }";
+    // Act
+    let kinds = node_kinds(expression);
+    // Assert
+    assert!(kinds.contains(&EXPRESSION_MEMBER), "{kinds:?}");
+    assert!(!kinds.contains(&IF_NODE), "{kinds:?}");
+    assert_eq!(errors(expression), []);
+    assert_eq!(errors(nested), []);
+    assert_eq!(errors(action), []);
+    assert!(node_kinds(action).contains(&IF_NODE));
+    assert_eq!(errors(guard), []);
+    assert!(!node_kinds(guard).contains(&EXPRESSION_MEMBER));
+}
+
+#[test]
+fn broken_result_expression_that_starts_with_if_is_reported() {
+    // Arrange（異常系：else が無い）
+    let text = "calc def K { in a; if a > 0 ? a }";
+    // Act
+    let errs = errors(text);
+    // Assert
+    assert_eq!(errs, [(31, "「if」の式に「else」がありません".to_owned())]);
+}

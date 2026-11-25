@@ -1267,6 +1267,22 @@ describe("「::」を含む引用名（Name と QualifiedName、8.2.2.3。引用
   });
 });
 
+describe("流れの端の、型の定義のポート（FlowEnd の特徴の連鎖、8.2.2.16。#345）", () => {
+  it("使用の型の定義に書いたポートへの流れは、問題にしない", () => {
+    // Arrange（x.pq の pq は、x の型 AB から引き継いだポート）
+    const text = "package P { part def AB { port pq; } part x : AB; part z : AB; flow x.pq to z.pq; }";
+    // Act・Assert
+    expect(problems(text)).toEqual([]);
+  });
+
+  it("要素にも型の定義にも無い名前は、問題にする", () => {
+    // Arrange
+    const text = "package P { part def AB { port pq; } part x : AB; part z : AB; flow x.nope to z.pq; }";
+    // Act・Assert
+    expect(problems(text)).toEqual(["ポート「nope」が x にありません"]);
+  });
+});
+
 describe("値の式の文法（OwnedExpression、KerML 8.2.5.8。値の式 FeatureValue、8.2.2.6）", () => {
   it("単位付きの値・本体付きの式・if の式・関数の呼び出しは、エラーにしない", () => {
     // Arrange（BracketExpression・FunctionOperationExpression・CollectExpression・ConditionalExpression・InvocationExpression）

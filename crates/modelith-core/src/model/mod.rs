@@ -1652,7 +1652,7 @@ impl<'a> Builder<'a> {
         })
     }
 
-    /// 流れの端のポート（`a.p` の `p`）。要素にポートがあればそこにつなぎ、ポートでも中身でもなければ問題にする。
+    /// 流れの端のポート（`a.p` の `p`）。要素にポートがあればそこにつなぎ、ポートでも中身でも、型の定義の中身でもなければ問題にする。
     /// つないだ端には `port:p` を `from_port`／`to_port` に入れる（モデルの `edges`・`problems` を書き換える）。`seg` が None なら何もしない。
     ///
     /// # 引数
@@ -1672,7 +1672,13 @@ impl<'a> Builder<'a> {
             } else {
                 self.model.edges[ed].to_port = port;
             }
-        } else if self.child_named(node.entry, seg).is_none() {
+        } else if self.child_named(node.entry, seg).is_none()
+            && self
+                .type_scope(node.entry)
+                .and_then(|t| self.child_named(t, seg))
+                .is_none()
+        {
+            // 要素自身の中身にも、その型の定義の中身（`part x : AB;` の AB のポート。#345）にも無い
             let msg = format!("ポート「{seg}」が {} にありません", node.name);
             self.problem(pos, msg, None);
         }

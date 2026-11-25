@@ -2768,3 +2768,29 @@ fn missing_relation_target_with_colons_is_shown_without_quotes_in_views() {
         ["図「v」に出す要素「no::such」が見つかりません（expose）"]
     );
 }
+
+#[test]
+fn flow_end_may_be_a_port_of_the_type_of_a_usage() {
+    // Arrange（#345。同値分割：型の定義のポート・要素自身のポート・どこにも無い名前）
+    let typed =
+        "package P { part def AB { port pq; } part x : AB; part z : AB; flow x.pq to z.pq; }";
+    let own = "package P { part x { port pq; } part z { port pq; } flow x.pq to z.pq; }";
+    let missing =
+        "package P { part def AB { port pq; } part x : AB; part z : AB; flow x.nope to z.pq; }";
+    // Act
+    let messages =
+        |text: &str| -> Vec<String> { run(text).1.problems.into_iter().map(|p| p.msg).collect() };
+    // Assert
+    assert_eq!(messages(typed), Vec::<String>::new());
+    assert_eq!(messages(own), Vec::<String>::new());
+    assert_eq!(messages(missing), ["ポート「nope」が x にありません"]);
+    assert_eq!(
+        run(typed)
+            .1
+            .edges
+            .iter()
+            .filter(|e| e.kind == "flow")
+            .count(),
+        1
+    );
+}

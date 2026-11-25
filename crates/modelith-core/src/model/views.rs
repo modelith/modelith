@@ -6,7 +6,7 @@ use std::collections::HashSet;
 
 use super::filters::filter_of;
 use super::{Builder, Frame, View};
-use crate::project::text::last_segment;
+use crate::project::text::{is_qualified, last_segment, shown_path, unquote};
 use crate::project::{Entry, Expose};
 
 /// 標準ビュー定義（名前・短い名前）と、Modelith の描き方。None は専用の描き方が無い（ノードと線の図で代わりに描く）。
@@ -194,13 +194,14 @@ impl Builder<'_> {
     /// resolve_qualified("Nope::X", Some(v の番号)) → None
     /// ```
     fn resolve_qualified(&self, qn: &str, ctx: Option<usize>) -> Option<usize> {
-        if qn.contains("::") {
+        if is_qualified(qn) {
             return self.lookup(qn, ctx);
         }
+        let name = unquote(qn);
         self.by_name
-            .get(qn)
+            .get(name)
             .and_then(|l| l.first().copied())
-            .or_else(|| self.alias_anywhere(qn, 0))
+            .or_else(|| self.alias_anywhere(name, 0))
     }
 
     /// 表し方の名前を、標準の表し方（`RENDERINGS`）までたどる。標準でなければ、その名前の `rendering`（合成形の
@@ -410,7 +411,8 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
             let Some(target) = b.resolve_qualified(&x.target, Some(vi)) else {
                 let msg = format!(
                     "図「{}」に出す要素「{}」が見つかりません（expose）",
-                    v.name, x.target
+                    v.name,
+                    shown_path(&x.target)
                 );
                 b.problem(x.start, msg, None);
                 continue;

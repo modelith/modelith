@@ -1831,7 +1831,7 @@ impl Ctx {
         let (mut members, mut recursive) = (false, false);
         for t in tokens(&qn) {
             match t.kind() {
-                IDENT | QUOTED_NAME => target.push(unquote(t.text()).to_owned()),
+                IDENT | QUOTED_NAME => target.push(path_seg(t.text()).to_owned()),
                 STAR => members = true,
                 STAR2 => recursive = true,
                 _ => {}
@@ -2629,11 +2629,12 @@ fn removal_range(rel: &SyntaxNode, targets: &[SyntaxNode], i: usize) -> (usize, 
 /// ```text
 /// path_of("'P 1' :: A") → "P 1::A"
 /// path_of("A")          → "A"
+/// path_of("P :: 'a::b'") → "P::'a::b'"   // `::` を含む名前は、段の区切りと見分けられるよう引用名のまま（#324）
 /// ```
 fn path_of(qn: &SyntaxNode) -> String {
     tokens(qn)
         .filter(|t| matches!(t.kind(), IDENT | QUOTED_NAME))
-        .map(|t| unquote(t.text()).to_owned())
+        .map(|t| path_seg(t.text()).to_owned())
         .collect::<Vec<_>>()
         .join("::")
 }

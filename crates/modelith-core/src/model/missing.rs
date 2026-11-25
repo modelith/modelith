@@ -8,6 +8,7 @@
 
 use super::filters::filter_of;
 use super::{Builder, is_lib, is_library_package, is_standard_view};
+use crate::project::text::{is_qualified, last_segment, path_segs, shown_path};
 
 impl Builder<'_> {
     /// 定義の特殊化・別名・`import` の相手が見つからない箇所を、問題一覧に加える（モデルの `problems` を書き換える）。
@@ -35,7 +36,11 @@ impl Builder<'_> {
                 }
                 self.problem(
                     e.start,
-                    format!("引き継ぐ定義「{}」が見つかりません（{}）", s.path, e.name),
+                    format!(
+                        "引き継ぐ定義「{}」が見つかりません（{}）",
+                        shown_path(&s.path),
+                        e.name
+                    ),
                     None,
                 );
             }
@@ -53,7 +58,8 @@ impl Builder<'_> {
                 a.start,
                 format!(
                     "別名「{}」の指す先「{}」が見つかりません（alias）",
-                    a.name, a.target
+                    a.name,
+                    shown_path(&a.target)
                 ),
                 None,
             );
@@ -65,7 +71,7 @@ impl Builder<'_> {
     fn missing_imports(&mut self) {
         let p = self.p;
         for i in &p.import_list {
-            let first = i.path.split("::").next().unwrap_or("");
+            let first = path_segs(&i.path).first().copied().unwrap_or("");
             if first.is_empty()
                 || is_library_package(first)
                 || self.lookup(&i.path, i.pe).is_some()
@@ -76,7 +82,10 @@ impl Builder<'_> {
             }
             self.problem(
                 i.start,
-                format!("インポートする相手「{}」が見つかりません（import）", i.path),
+                format!(
+                    "インポートする相手「{}」が見つかりません（import）",
+                    shown_path(&i.path)
+                ),
                 None,
             );
         }
@@ -130,14 +139,12 @@ impl Builder<'_> {
         if is_lib(path, self.quantities_imported) || is_standard_view(path) {
             return true;
         }
-        let mut segs = path.split("::");
-        let first = segs.next().unwrap_or("");
-        if path.contains("::") {
-            return is_library_package(first);
+        if is_qualified(path) {
+            return is_library_package(path_segs(path).first().copied().unwrap_or(""));
         }
         self.p.import_list.iter().any(|i| {
-            let from = i.path.split("::").next().unwrap_or("");
-            is_library_package(from) && !i.members && i.path.rsplit("::").next() == Some(path)
+            let from = path_segs(&i.path).first().copied().unwrap_or("");
+            is_library_package(from) && !i.members && last_segment(&i.path) == path
         })
     }
 }

@@ -1246,6 +1246,27 @@ describe("絞り込み付きの import と package の直下の filter（FilterP
   });
 });
 
+describe("「::」を含む引用名（Name と QualifiedName、8.2.2.3。引用名の中の「::」は区切りではない。#324）", () => {
+  it("型・特殊化・関係の相手として、1 つの名前で解決する", () => {
+    // Arrange
+    const text =
+      "package P { requirement def 'r::1'; part def 'has::colons'; part y : 'has::colons'; part def Z :> 'has::colons'; satisfy 'r::1' by y; }\n" +
+      "package Q { part v : P::'has::colons'; }";
+    // Act
+    const m = build(parse(text));
+    // Assert
+    expect(m.problems).toEqual([]);
+    expect(m.edges.filter((e) => e.kind === "defined").map((e) => e.to)).toEqual(["has::colons", "has::colons"]);
+  });
+
+  it("見つからないときは、名前を 1 つのものとして知らせる", () => {
+    // Arrange・Act
+    const m = build(parse("package P { part y : 'no::such'; }"));
+    // Assert
+    expect(m.problems.map((p) => p.msg)).toEqual(["型「no::such」が見つかりません（y）"]);
+  });
+});
+
 describe("値の式の文法（OwnedExpression、KerML 8.2.5.8。値の式 FeatureValue、8.2.2.6）", () => {
   it("単位付きの値・本体付きの式・if の式・関数の呼び出しは、エラーにしない", () => {
     // Arrange（BracketExpression・FunctionOperationExpression・CollectExpression・ConditionalExpression・InvocationExpression）

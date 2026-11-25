@@ -24,7 +24,7 @@ pub use views::{is_standard_view, std_view_label};
 
 use std::collections::{HashMap, HashSet};
 
-use crate::project::text::ref_segs;
+use crate::project::text::{is_qualified, last_segment, path_segs, ref_segs, shown_path, unquote};
 use crate::project::{Entry, Import, ParseResult, RelKind, Span, merge};
 use filters::{Filter, filter_of};
 
@@ -273,7 +273,7 @@ const QUANTITY_PACKAGES: &[&str] = &[
 /// is_quantity_path("MyLib::Value")   → false
 /// ```
 fn is_quantity_path(path: &str) -> bool {
-    let first = path.split("::").next().unwrap_or("");
+    let first = path_segs(path).first().copied().unwrap_or("");
     QUANTITY_PACKAGES.contains(&first)
 }
 
@@ -306,7 +306,7 @@ fn is_quantity_path(path: &str) -> bool {
 /// is_lib("", false)                → false   // 空の名前
 /// ```
 pub fn is_lib(path: &str, quantities_imported: bool) -> bool {
-    let name = path.rsplit("::").next().unwrap_or(path);
+    let name = unquote(last_segment(path));
     if LIBRARY_TYPES.contains(&name)
         || METACLASS_PACKAGES
             .iter()
@@ -314,7 +314,7 @@ pub fn is_lib(path: &str, quantities_imported: bool) -> bool {
     {
         return true;
     }
-    let qualified = path.contains("::");
+    let qualified = is_qualified(path);
     (name.ends_with("Value") || name.ends_with("Kind"))
         && (quantities_imported || (qualified && is_quantity_path(path)))
 }
@@ -1268,7 +1268,7 @@ impl<'a> Builder<'a> {
                 let who = if u.name.is_empty() { &u.kind } else { &u.name };
                 self.problem(
                     u.start,
-                    format!("型「{path}」が見つかりません（{who}）"),
+                    format!("型「{}」が見つかりません（{who}）", shown_path(path)),
                     None,
                 );
             }

@@ -36,7 +36,7 @@ plugin-sdk の TypeScript のパッケージも、`@modelith/plugin-sdk` とい�
 - plugin-sdk は 1.0.0 未満で、互換を約束していない（[バージョン規則](../reference/versioning.md)）。0.1.0 を使っている人はまだ少ないので、0.2.0 で変える。0.1.0 の `.tgz` はそのまま残す。
 - Rust の crate の名前（`modelith-plugin-protocol`）は変えない。crates.io では取れている。
 - 変えるのは名前だけで、型・スキーマ・`apiVersion` は変えない。
-- 本体の文書（`docs/reference/script-plugins.md` など）の `@modelith/plugin-sdk` は、plugin-sdk の 0.2.0 が出たときに書き換える。
+- 本体の文書（`docs/reference/script-plugins.md` など）の `@modelith/plugin-sdk` は、plugin-sdk の 0.2.0 が npm に出た後に `modelith-plugin-sdk` へ書き換えた。
 
 ### 3. npm のレジストリへの公開は、承認つきのリリースのワークフローから行う
 

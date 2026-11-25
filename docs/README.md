@@ -42,7 +42,7 @@ API リファレンスは手書きせず、コードから生成して `referenc
 | --- | --- | --- |
 | Rust（`modelith-core` など） | rustdoc（doc コメント） | docs.rs、ドキュメントサイト |
 | プラグイン API（Rust） | rustdoc（`modelith/plugin-sdk`） | docs.rs |
-| プラグイン API（TypeScript） | TypeDoc（`@modelith/plugin-sdk`） | ドキュメントサイト |
+| プラグイン API（TypeScript） | TypeDoc（`modelith-plugin-sdk`） | ドキュメントサイト |
 | マニフェスト・レジストリ索引 | JSON Schema（`modelith/plugin-sdk` の `schema/`） | ドキュメントサイト |
 
 そのため、公開 API には必ず doc コメントを書く（CLAUDE.md のコーディング規約）。

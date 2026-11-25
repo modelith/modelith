@@ -106,6 +106,17 @@ npm のコマンドは 11.15.0 以上を使う（`npm install -g npm@latest`）�
    npm publish ./modelith-cli-<版>.tgz --tag next   # 正式版なら --tag latest
    ```
 
+   正式版がまだ無いときは、npm が最初の版に `latest` も付けるので、`latest` を仮の置き場の版に向け直し、注意書きを付ける（ADR-0028 の 3）。
+   仮の置き場の版（`0.0.0-stage`）は、npm のサイトでパッケージの名前を先に取ったときにできる。無ければ、この手順は飛ばす。
+
+   ```bash
+   npm dist-tag add modelith-cli@0.0.0-stage latest
+   npm deprecate modelith-cli@0.0.0-stage "There is no stable release of modelith-cli yet. Use the preview: npx modelith-cli@next"
+   npm view modelith-cli dist-tags   # latest が 0.0.0-stage、next が出した版になっていること
+   ```
+
+   正式版を `--tag latest` で出すと、`latest` はその版に移る。仮の置き場の版と注意書きは、残したままでよい。
+
 2. 結び付けを登録する。「置く」ことだけを許す（`--allow-publish` は付けない）。
 
    ```bash

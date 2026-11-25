@@ -865,6 +865,7 @@ impl Ctx {
         {
             let idx = self.out.entries.len();
             let parts = decl_parts(n, is_def);
+            let declared = !parts.name.is_empty() && !parts.borrowed;
             let name = if parts.name.is_empty()
                 && matches!(
                     n.kind(),
@@ -899,6 +900,7 @@ impl Ctx {
                 kind: kind.to_owned(),
                 is_def,
                 short: parts.short,
+                borrowed_name: !declared && !name.is_empty(),
                 name,
                 conj: Some(parts.typed.as_ref().is_some_and(|t| t.conj)),
                 ty: parts
@@ -1016,6 +1018,7 @@ impl Ctx {
                 is_def: false,
                 short: String::new(),
                 name,
+                borrowed_name: false,
                 conj: None,
                 ty: typed.name,
                 ty_path: typed.path,
@@ -1686,6 +1689,7 @@ impl Ctx {
             is_def: false,
             short: parts.short,
             name: parts.name,
+            borrowed_name: parts.borrowed,
             conj: None,
             ty: String::new(),
             ty_path: String::new(),
@@ -2234,6 +2238,8 @@ fn constraint_reference_text(h: &str) -> String {
 struct DeclParts {
     short: String,
     name: String,
+    /// 名前を書かずに、関係の相手の名前を借りたか（`:>> mass`）
+    borrowed: bool,
     /// 型（型付け、または定義の特殊化の相手）
     typed: Option<TypeRef>,
 }
@@ -2290,11 +2296,12 @@ fn has_empty_name(n: &SyntaxNode) -> bool {
 /// ```text
 /// decl_parts("part def <P1> Engine :> Base", true) → { short: "P1", name: "Engine", typed: Some({ name: "Base", conj: false, path: "Base" }) }
 /// decl_parts("port p : ~Q::Fuel[1];", false)       → { short: "", name: "p", typed: Some({ name: "Fuel", conj: true, path: "Q::Fuel" }) }
-/// decl_parts("attribute :>> mass;", false)         → { short: "", name: "mass", typed: None }
+/// decl_parts("attribute :>> mass;", false)         → { short: "", name: "mass", borrowed: true, typed: None }
 /// ```
 fn decl_parts(n: &SyntaxNode, is_def: bool) -> DeclParts {
     let mut short = String::new();
     let mut name: Option<String> = None;
+    let mut borrowed = false;
     let mut typed = None;
     let mut first_element = true;
     for c in n.children() {
@@ -2318,6 +2325,7 @@ fn decl_parts(n: &SyntaxNode, is_def: bool) -> DeclParts {
                 name = tokens(&c)
                     .find(|t| matches!(t.kind(), IDENT | QUOTED_NAME))
                     .map(|t| unquote(t.text()).to_owned());
+                borrowed = name.is_some();
                 if is_def && c.kind() == SUBCLASSIFICATION {
                     typed = typed.or_else(|| type_of(&c));
                 }
@@ -2331,6 +2339,7 @@ fn decl_parts(n: &SyntaxNode, is_def: bool) -> DeclParts {
     DeclParts {
         short,
         name: name.unwrap_or_default(),
+        borrowed,
         typed,
     }
 }

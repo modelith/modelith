@@ -95,6 +95,10 @@ pub struct Entry {
     pub is_def: bool,
     pub short: String,
     pub name: String,
+    /// 名前を書かずに、関係の相手の名前を借りた宣言か（`:>> mass`・`perform x;`・`exhibit st;`）。
+    /// 借りた名前は、同じ場所の名前の重なりとして数えない。TS には渡さない。
+    #[serde(skip)]
+    pub borrowed_name: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conj: Option<bool>,
     #[serde(rename = "type")]

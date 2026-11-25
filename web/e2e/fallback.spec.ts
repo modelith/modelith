@@ -90,8 +90,9 @@ test("F-FILE-13: フォルダを開けないブラウザでも、再読み込み
   await page.waitForTimeout(400); // 入力の反映（0.28 秒）を待つ
   // Act
   await page.reload();
-  // Assert
-  await expect(page.locator("#docName")).toHaveText("untitled-1.sysml");
+  // Assert（戻した下書きはどこにも保存していないので、未保存の印を出す。手を入れていないサンプルには出さない。#326）
+  await expect(page.locator("#docName")).toHaveText("untitled-1.sysml ●");
+  await expect(page.locator('#explorer [data-doc] .dot')).toHaveCount(1);
   await expect.poll(() => editorText(page)).toBe("package U;\n");
   expect(await page.locator("#explorer [data-doc] .nm").allInnerTexts()).toEqual(["electric-kettle.sysml", "untitled-1.sysml"]);
 });

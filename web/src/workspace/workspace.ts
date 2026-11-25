@@ -391,17 +391,22 @@ export class Workspace {
    * 中身の無い下書き（以前の版が残したもの）は戻さない。戻したら変更を知らせる。
    * この版の知らない形の記録は戻さず、その数を `draftsKept` に残す（画面で知らせるため。C-11）。
    *
+   * 戻した文書は、どこにも保存していないので、未保存の変更があるものとして扱う（ファイル名に「●」を出す）。
+   * 手を入れていないと分かっているテキスト（サンプル）と同じ中身の下書きだけは、変更の無いものとして戻す（#326）。
+   *
+   * @param untouched 手を入れていないものとして扱うテキスト（サンプルのテキスト）。既定は無し
    * @returns 下書きを戻したら "drafts"。戻すものが無く、前回すべての文書を閉じて終えたなら "nothing"、それ以外は "sample"
    * @example
-   * ws.restoreDrafts() // → "drafts"（前回、無題の文書を 1 つ残したとき）
+   * ws.restoreDrafts() // → "drafts"（前回、無題の文書を 1 つ残したとき。戻した文書は ws.isDirty(doc) が true）
+   * ws.restoreDrafts(["package Sample;"]) // → "drafts"（下書きが "package Sample;" のままなら、ws.isDirty(doc) は false）
    * ws.restoreDrafts() // → "nothing"（前回、すべて閉じて終えたとき）
    * ws.restoreDrafts() // → "sample"（初めて開いた・下書きが壊れている・中身の無い下書きしか無い）
    */
-  restoreDrafts(): StartWith {
+  restoreDrafts(untouched: readonly string[] = []): StartWith {
     const { drafts, closedAll, unused, locked } = this.drafts.load();
     this.draftsKept = { unused: unused ?? 0, locked: locked ?? false };
     const kept = drafts.filter(hasContent);
-    for (const d of kept) this.add({ ref: null, name: d.name, text: d.text, savedText: d.text, version: null, ...this.noLayoutHome(d.layout ?? "") });
+    for (const d of kept) this.add({ ref: null, name: d.name, text: d.text, savedText: untouched.includes(d.text) ? d.text : "", version: null, ...this.noLayoutHome(d.layout ?? "") });
     if (!kept.length) return closedAll ? "nothing" : "sample";
     this.changed();
     return "drafts";
@@ -413,12 +418,14 @@ export class Workspace {
    * @param name 文書の名前（保存するときの名前の候補）
    * @param text 初めのテキスト（保存した内容としても扱う）
    * @param layout 初めの配置（配置ファイルの文字列。既定は空）
+   * @param saved 保存した内容として扱うテキスト（既定は初めのテキスト）。ほかから読み込んだテキストのように、初めから未保存として扱うなら空文字列
    * @returns 作った文書（key は `doc:番号`）
    * @example
    * ws.newUntitled("untitled", "package U;") // → { key: "doc:1", ref: null, name: "untitled", text: "package U;", layoutHome: "none", … }
+   * ws.newUntitled("読み込み", "package I;", "", "") // → 初めから未保存の変更がある文書（ws.isDirty(doc) が true）
    */
-  newUntitled(name: string, text: string, layout = ""): Doc {
-    const doc = this.add({ ref: null, name, text, savedText: text, version: null, ...this.noLayoutHome(layout) });
+  newUntitled(name: string, text: string, layout = "", saved = text): Doc {
+    const doc = this.add({ ref: null, name, text, savedText: saved, version: null, ...this.noLayoutHome(layout) });
     this.activeKey = doc.key;
     this.persistDrafts();
     this.changed();

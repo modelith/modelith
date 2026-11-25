@@ -79,7 +79,7 @@
 動くことを確かめてから（`scripts/build-cli.sh --smoke`）、リリースに `modelith-cli-<版>.tgz` を添付する（`scripts/release-cli.sh`）。
 
 - 版は、本体と同じ（`scripts/release-prepare.sh` が `cli/package.json` も書き換える）。タグの版と違うときは、添付しない。
-- 添付し直すとき（組み立てに失敗した・添付を消したとき）は、Actions の「Release CLI」を、タグを渡して手で動かす。
+- 添付し直すとき（組み立てに失敗した・添付を消したとき）は、Actions の「Release CLI」を、タグを渡して手で動かす。その版がもう npm で公開されていれば、npm に置くのは飛ばす（公開済みの版は置き直せない）。
 - 添付した `.tgz` は、npm のレジストリを使わずに入れられる：`npm install -g https://github.com/modelith/modelith/releases/download/v<版>/modelith-cli-<版>.tgz`。
 
 ### npm のレジストリへの公開

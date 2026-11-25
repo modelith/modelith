@@ -918,19 +918,19 @@ fn action_node(p: &mut Parser<'_>, owner: usize) -> Option<SyntaxKind> {
             node_parameter(p, &[]);
         }
         "if" => {
-            if !expression_until(p, &["action"]) {
+            if !checked_expression_until(p, &["action"]) {
                 p.error("条件の式がありません");
             }
             if_tail(p, owner);
             return Some(kind);
         }
         "while" | "loop" => {
-            if kw == "while" && !expression_until(p, &["action"]) {
+            if kw == "while" && !checked_expression_until(p, &["action"]) {
                 p.error("条件の式がありません");
             }
             body_parameter(p, owner);
             if p.eat_kw("until") {
-                if !expression_until(p, &[]) {
+                if !checked_expression_until(p, &[]) {
                     p.error("条件の式がありません");
                 }
                 if !p.eat(SEMI) {
@@ -944,7 +944,7 @@ fn action_node(p: &mut Parser<'_>, owner: usize) -> Option<SyntaxKind> {
             if !p.eat_kw("in") {
                 p.error("「in」がありません");
             }
-            if !expression_until(p, &["action"]) {
+            if !checked_expression_until(p, &["action"]) {
                 p.error("値の式がありません");
             }
             body_parameter(p, owner);
@@ -982,7 +982,7 @@ fn if_tail(p: &mut Parser<'_>, owner: usize) {
     if p.at_kw("if") {
         let m = p.start();
         p.bump();
-        if !expression_until(p, &["action"]) {
+        if !checked_expression_until(p, &["action"]) {
             p.error("条件の式がありません");
         }
         if_tail(p, owner);
@@ -1067,7 +1067,7 @@ fn for_variable(p: &mut Parser<'_>) {
 /// ```
 fn node_parameter(p: &mut Parser<'_>, stops: &[&str]) -> bool {
     let m = p.start();
-    if expression_until(p, stops) {
+    if checked_expression_until(p, stops) {
         m.complete(p, NODE_PARAMETER);
         true
     } else {
@@ -1874,7 +1874,7 @@ fn succession_ends(p: &mut Parser<'_>) {
 fn guard(p: &mut Parser<'_>, stops: &[&str]) {
     let g = p.start();
     p.bump();
-    if !expression_until(p, stops) {
+    if !checked_expression_until(p, stops) {
         p.error("条件の式がありません");
     }
     g.complete(p, GUARD_EXPRESSION);
@@ -1906,7 +1906,7 @@ fn guard(p: &mut Parser<'_>, stops: &[&str]) {
 fn guarded_target(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
     let g = p.start();
     p.bump();
-    let any = expression_until(p, &["then", "action", "do"]);
+    let any = checked_expression_until(p, &["then", "action", "do"]);
     if p.at(L_BRACE) || p.at_kw("action") {
         // `if g { … }`（IfNode、8.2.2.17）
         g.abandon();
@@ -2310,6 +2310,34 @@ fn expression(p: &mut Parser<'_>, stop_at_keyword: bool) -> bool {
 /// ```
 fn expression_until(p: &mut Parser<'_>, stops: &[&str]) -> bool {
     expression_with(p, |p, _| stops.iter().any(|k| p.at_kw(k)))
+}
+
+/// `expression_until` で式を読み、読めたら文法（KerML 8.2.5.8）に合っているかも確かめる（`check_expression`）。
+/// 条件の式（`if`・`while`・`until`・ガード）、`for` の値の式、アクションの節の引数（送るもの・代入する値など）に使う。
+///
+/// # 引数
+///
+/// - `p`：式の頭にいるパーサ
+/// - `stops`：括弧の外で着いたら止まるキーワード（式の先頭でも止まる）
+///
+/// # 戻り値
+///
+/// 1 つ以上のトークンを読んだら `true`。何も読まなかったら `false`（節も作らない）。
+///
+/// # 例
+///
+/// ```text
+/// checked_expression_until("x > 0 then b;", &["then"]) → true（エラーなし）
+/// checked_expression_until("x > then b;", &["then"])   → true（「「>」の後に値がありません」）
+/// checked_expression_until("then b;", &["then"])       → false
+/// ```
+fn checked_expression_until(p: &mut Parser<'_>, stops: &[&str]) -> bool {
+    let from = p.position();
+    let any = expression_until(p, stops);
+    if any {
+        check_expression(p, from);
+    }
+    any
 }
 
 /// 式（段階 A）を読む本体。`;`・`{`・`}`・末尾・対応の無い閉じ括弧、改行の後の新しい要素の頭、括弧の外で `stop` が真になる所の手前で止まる。

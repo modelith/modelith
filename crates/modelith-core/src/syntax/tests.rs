@@ -1806,3 +1806,71 @@ fn broken_result_expression_that_starts_with_if_is_reported() {
     // Assert
     assert_eq!(errs, [(31, "「if」の式に「else」がありません".to_owned())]);
 }
+
+#[test]
+fn conditions_and_action_arguments_that_follow_the_grammar_have_no_error() {
+    // Arrange（正常系：if・while・until・for・ガード・送るもの・受けるもの・代入する値）
+    let good = [
+        "action def A { if x > 0 { action c; } else if x < -1 { action d; } else { action e; } }",
+        "action def A { while i < 10 and not done { assign i := i + 1; } until i >= 5; }",
+        "action def A { for k in 1..3 { action r; } for j : Integer in (1, 2, 3) { action s; } }",
+        "action def A { send S(1, x = 2) via p to q.r; accept s : S via p; accept after 5 [s]; }",
+        "action def A { assign a.b := if c ? 1 else 2; terminate a.b; }",
+        "action def A { first start; if x > 0 and y.z then b; action b; }",
+        "state def S { state a; state b; transition first a accept s : Sig if x > 0 and s.v == 1 do send T() to q then b; }",
+    ];
+    for text in good {
+        // Act / Assert
+        assert_eq!(errors(text), [], "{text}");
+    }
+}
+
+#[test]
+fn broken_conditions_and_action_arguments_are_reported_where_they_break() {
+    // Arrange（異常系：それぞれの場所で、演算子の後に値が無い・値の間に演算子が無い・カンマの後に値が無い）
+    let bad = [
+        ("action def A { if x > { } }", "「>」の後に値がありません"),
+        (
+            "action def A { if a b { } }",
+            "「a」と「b」の間に演算子がありません",
+        ),
+        (
+            "action def A { if x { } else if y < { } }",
+            "「<」の後に値がありません",
+        ),
+        (
+            "action def A { while i < { } }",
+            "「<」の後に値がありません",
+        ),
+        (
+            "action def A { loop { } until i >= ; }",
+            "「>=」の後に値がありません",
+        ),
+        (
+            "action def A { for k in 1 2 { } }",
+            "「1」と「2」の間に演算子がありません",
+        ),
+        (
+            "action def A { send S(1,) to q; }",
+            "「,」の後に値がありません",
+        ),
+        (
+            "action def A { assign a := 1 + ; }",
+            "「+」の後に値がありません",
+        ),
+        (
+            "action def A { first start; if x > then b; action b; }",
+            "「>」の後に値がありません",
+        ),
+        (
+            "state def S { state a; state b; transition first a if x == then b; }",
+            "「==」の後に値がありません",
+        ),
+    ];
+    for (text, message) in bad {
+        // Act
+        let messages: Vec<String> = errors(text).into_iter().map(|(_, m)| m).collect();
+        // Assert
+        assert_eq!(messages, [message.to_owned()], "{text}");
+    }
+}

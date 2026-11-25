@@ -190,20 +190,25 @@ async function pickTarget(name: string, kind: DiagramKind): Promise<string[] | n
 /**
  * 作成した図の名前を変える（サイドバーの「図」・ツリーの右クリック。F-VIEW-11）。新しい名前をダイアログで尋ね、
  * コアに意図 `renameView` を渡してテキストの view の名前を書き換え、配置と開いているタブを新しい名前に移す。
- * やめた・同じ名前・コアが断ったときは何も変えない。
+ * やめた・同じ名前のときは何も変えない。コアが名前を断ったら（既にある図の名前など）、理由を示し、入れた名前のままダイアログを開き直す（#326）。
  *
  * @param name 今の図の名前
  */
 export async function renameDiagram(name: string): Promise<void> {
-  const r = await ask("図の名前を変更", `図「${name}」の新しい名前を入力してください。`, [
-    { id: "cancel", label: "やめる" },
-    { id: "ok", label: "変更", kind: "primary" },
-  ], { value: name, label: "図の名前" });
-  if (r?.id !== "ok") return;
-  const to = r.value.trim();
-  if (to === name) return;
-  const ins = await perform({ op: "renameView", view: name, name: to });
-  if (!ins) return;
+  let value = name;
+  let to = name;
+  let ins: Awaited<ReturnType<typeof perform>> = null;
+  while (!ins) {
+    const r = await ask("図の名前を変更", `図「${name}」の新しい名前を入力してください。`, [
+      { id: "cancel", label: "やめる" },
+      { id: "ok", label: "変更", kind: "primary" },
+    ], { value, label: "図の名前" });
+    if (r?.id !== "ok") return;
+    value = r.value;
+    to = r.value.trim();
+    if (to === name) return;
+    ins = await perform({ op: "renameView", view: name, name: to });
+  }
   renameViewLayout(S.layout, name, to);
   renameViewTabs(S.tabs, name, to);
   if (S.modelView === name) S.modelView = to;

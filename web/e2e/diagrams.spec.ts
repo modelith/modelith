@@ -156,6 +156,39 @@ test.describe("サイドバーの「図」（F-VIEW-11）", () => {
     expect(await editorText(page)).toBe(WITH_VIEWS);
   });
 
+  test("F-VIEW-11: 断られた名前は、入れた名前のままダイアログを開き直し、直せばそのまま変えられる（異常系。#326）", async ({ page }) => {
+    // Arrange
+    await openModel(page, WITH_VIEWS);
+    await showDiagrams(page);
+    await page.locator('#diagramList [data-mv="overview"]').hover();
+    await page.locator('#diagramList [data-rename-mv="overview"]').click();
+    await page.locator("#dialogInput").fill("other");
+    // Act（断られた後、開き直したダイアログで名前を直す）
+    await page.locator('#dialogButtons [data-id="ok"]').click();
+    await expect(page.locator("#toast")).toHaveText("「other」という図は既にあります。別の名前にしてください");
+    await expect(page.locator("#dialogInput")).toHaveValue("other");
+    await page.locator("#dialogInput").fill("other2");
+    await page.locator('#dialogButtons [data-id="ok"]').click();
+    // Assert
+    await expect(page.locator("#diagramList .ti .nm")).toHaveText(["other2", "other"]);
+  });
+
+  test("F-VIEW-11: 断られて開き直したダイアログでやめると、何も変えない（異常系。#326）", async ({ page }) => {
+    // Arrange
+    await openModel(page, WITH_VIEWS);
+    await showDiagrams(page);
+    await page.locator('#diagramList [data-mv="overview"]').hover();
+    await page.locator('#diagramList [data-rename-mv="overview"]').click();
+    await page.locator("#dialogInput").fill("other");
+    await page.locator('#dialogButtons [data-id="ok"]').click();
+    await expect(page.locator("#dialogInput")).toHaveValue("other");
+    // Act
+    await page.locator('#dialogButtons [data-id="cancel"]').click();
+    // Assert
+    await expect(page.locator("#dialogInput")).toBeHidden();
+    expect(await editorText(page)).toBe(WITH_VIEWS);
+  });
+
   test("F-VIEW-11: 削除すると確認を取り、図とタブは消え、モデルの要素は残る", async ({ page }) => {
     // Arrange
     await openModel(page, WITH_VIEWS);

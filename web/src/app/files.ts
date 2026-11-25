@@ -959,7 +959,7 @@ async function start(): Promise<void> {
   const sampleAtStart = store.get(START_SAMPLE_KEY) === "1";
   const access = local && session?.folder && !sampleAtStart ? await local.recentAccess() : "none";
   const plan = planStart(session, sampleAtStart, access);
-  const drafts = ws.restoreDrafts();
+  const drafts = ws.restoreDrafts([sampleDoc.text]);
   const kept = keptDraftsNotice(ws.draftsKept);
   if (kept) toast(kept);
   if (plan === "ask" && session && local) {
@@ -1536,7 +1536,8 @@ function chooseFolderFiles(): Promise<File[]> {
  */
 function openImported(fileName: string, text: string): string {
   const name = importedDocName(fileName, new Set(ws.list().map((d) => d.name)));
-  showDoc(ws.newUntitled(name, text).key);
+  // 読み込んだテキストはどこにも保存していないので、初めから未保存として扱う（読み込み直した後と同じ印にする。#326）
+  showDoc(ws.newUntitled(name, text, "", "").key);
   return name;
 }
 

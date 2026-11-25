@@ -142,6 +142,41 @@ describe("Workspace: 無題の文書と名前を付けて保存（F-FILE-3・10�
     expect(next.list()[0]?.text).toBe("package U2;");
   });
 
+  it("戻した下書きは、未保存の変更があるものとして扱う（#326）", () => {
+    // Arrange（同値分割：書き換えた文書・作ったまま手を入れていない文書）
+    const s = setup();
+    const edited = s.ws.newUntitled("無題", "");
+    s.ws.setText(edited.key, "package U2;");
+    s.ws.newUntitled("取り込み", "package I;");
+    const next = new Workspace(new ProviderRegistry([s.local, s.browser]), s.drafts);
+    // Act
+    next.restoreDrafts();
+    // Assert
+    expect(next.list().map((d) => next.isDirty(d))).toEqual([true, true]);
+  });
+
+  it("手を入れていないと分かっているテキスト（サンプル）のままの下書きは、変更の無いものとして戻す（境界値。#326）", () => {
+    // Arrange（サンプルのまま・サンプルを 1 文字書き換えた）
+    const s = setup();
+    s.ws.newUntitled("sample", "package Sample;");
+    const changed = s.ws.newUntitled("sample2", "package Sample;");
+    s.ws.setText(changed.key, "package Sample2;");
+    const next = new Workspace(new ProviderRegistry([s.local, s.browser]), s.drafts);
+    // Act
+    next.restoreDrafts(["package Sample;"]);
+    // Assert
+    expect(next.list().map((d) => next.isDirty(d))).toEqual([false, true]);
+  });
+
+  it("保存した内容を空にして作った無題の文書は、初めから未保存の変更がある（#326）", () => {
+    // Arrange
+    const s = setup();
+    // Act
+    const doc = s.ws.newUntitled("読み込み", "package I;", "", "");
+    // Assert
+    expect(s.ws.isDirty(doc)).toBe(true);
+  });
+
   it("無題の文書を開いているフォルダに名前を付けて保存すると、以後はそのファイルの文書になり下書きから消える", async () => {
     // Arrange
     const s = setup();

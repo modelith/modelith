@@ -11,7 +11,7 @@ import { parseArgs, USAGE } from "./cli.ts";
 import { fsProjectReader, fsProjectWriter } from "./fs-project.ts";
 import { callTool, createServer } from "./mcp-server.ts";
 import { memoryProposals } from "./proposals.ts";
-import { TOOLS } from "./tools.ts";
+import { TOOLS, toolsFor } from "./tools.ts";
 import { loadWasmCore } from "./wasm-core.ts";
 import { loadWebRenderer } from "./web-render.ts";
 
@@ -59,7 +59,8 @@ if (command.kind === "export") {
   if (command.out === undefined) process.stdout.write(content);
   else await writeFile(command.out, content, "utf8");
 } else {
-  const server = createServer(TOOLS, { ...deps, version });
+  const server = createServer(toolsFor(command.direct), { ...deps, version });
   await server.connect(new StdioServerTransport());
   console.error(`Modelith MCP server ${version} is reading "${folder}".`);
+  if (command.direct) console.error("Started with --write-directly: the edit tool writes changes to the model files without a separate confirmation.");
 }

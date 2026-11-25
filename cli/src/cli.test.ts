@@ -1,12 +1,30 @@
 // コマンドラインの引数の読み方の単体テスト。
 import { expect, it } from "vitest";
-import { exportOptions, parseArgs } from "./cli.ts";
+import { exportOptions, mcpCommand, parseArgs } from "./cli.ts";
 
 it("mcp とフォルダを渡すと、そのコマンドにする（正常系）", () => {
   // Act
   const got = parseArgs(["mcp", "./kettle"]);
   // Assert
-  expect(got).toEqual({ kind: "mcp", folder: "./kettle" });
+  expect(got).toEqual({ kind: "mcp", folder: "./kettle", direct: false });
+});
+
+it("F-AI-2: mcp に --write-directly を付けると、確かめずに書く設定にする（正常系）", () => {
+  // Act
+  const got = parseArgs(["mcp", "./kettle", "--write-directly"]);
+  // Assert
+  expect(got).toEqual({ kind: "mcp", folder: "./kettle", direct: true });
+});
+
+it("mcp の知らない指定・余分な引数・同じ指定の繰り返しは、理由を付けた使い方にする（異常系）", () => {
+  // Act
+  const got = [["--nope"], ["extra"], ["--write-directly", "--write-directly"]].map((rest) => mcpCommand("./kettle", rest));
+  // Assert
+  expect(got).toEqual([
+    { kind: "usage", error: 'Unknown option "--nope".' },
+    { kind: "usage", error: "Too many arguments." },
+    { kind: "usage", error: "--write-directly is given twice." },
+  ]);
 });
 
 it("引数なし・--help・-h は、誤りの無い使い方にする（正常系）", () => {

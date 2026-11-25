@@ -88,7 +88,7 @@ export function createServer(tools: Tool[], deps: ServerDeps): McpServer {
         title: tool.title,
         description: tool.description,
         inputSchema: inputShape(tool.params),
-        // 書く道具は apply_edit だけ。どの道具も、プロジェクトのフォルダの外には触れない
+        // 書く道具は apply_edit と、確かめずに書く設定のときの edit だけ。どの道具も、プロジェクトのフォルダの外には触れない
         annotations: tool.writes
           ? { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
           : { readOnlyHint: true, openWorldHint: false },

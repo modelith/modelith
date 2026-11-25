@@ -2,18 +2,19 @@
 
 /** 読んだコマンド。 */
 export type Command =
-  | { kind: "mcp"; folder: string }
+  | { kind: "mcp"; folder: string; direct: boolean }
   | { kind: "export"; folder: string; args: Record<string, string>; out?: string }
   | { kind: "usage"; error?: string };
 
 /** 使い方（標準エラーに出す）。 */
 export const USAGE = [
-  "Usage: modelith mcp <project folder>",
+  "Usage: modelith mcp <project folder> [--write-directly]",
   "",
   "Starts an MCP server on standard input and output. AI clients can read and check the SysML v2 model",
   "in the project folder (list_files, list_elements, get_element, list_diagrams, list_problems), and change it",
   "in two steps: propose_edit returns the changes without writing, and apply_edit writes a proposal.",
   "Only files inside the project folder are read, and only its model files are written.",
+  "With --write-directly, the server also offers edit, which makes a change and writes it in one step.",
   "",
   "Usage: modelith export <project folder> --format <svg|drawio> (--diagram <qualified name> | --subject <qualified name> | --file <model file> [--view <view>]) [--out <file>]",
   "",
@@ -41,7 +42,7 @@ export function parseArgs(args: string[]): Command {
   if (command === undefined || command === "--help" || command === "-h") return { kind: "usage" };
   if (command !== "mcp" && command !== "export") return { kind: "usage", error: `Unknown command "${command}".` };
   if (folder === undefined || folder.startsWith("--")) return { kind: "usage", error: "The project folder is missing." };
-  if (command === "mcp") return rest.length ? { kind: "usage", error: "Too many arguments." } : { kind: "mcp", folder };
+  if (command === "mcp") return mcpCommand(folder, rest);
   const options = exportOptions(rest);
   if (typeof options === "string") return { kind: "usage", error: options };
   const { out, ...toolArgs } = options;
@@ -73,4 +74,26 @@ export function exportOptions(rest: string[]): Record<string, string> | string {
     options[name] = value;
   }
   return options;
+}
+
+/** `modelith mcp` の、確かめずに書く設定の指定（ADR-0024 の 4）。 */
+const WRITE_DIRECTLY = "--write-directly";
+
+/**
+ * `modelith mcp <フォルダ>` の残りの引数を読む。
+ *
+ * @param folder プロジェクトのフォルダ
+ * @param rest フォルダの後ろの引数
+ * @returns MCP のサーバを動かす指定。知らない引数・同じ指定の繰り返しがあれば、理由を付けた使い方の表示
+ * @example
+ * mcpCommand("proj", [])                    // → { kind: "mcp", folder: "proj", direct: false }
+ * mcpCommand("proj", ["--write-directly"])  // → { kind: "mcp", folder: "proj", direct: true }
+ * mcpCommand("proj", ["--nope"])            // → { kind: "usage", error: "Unknown option \"--nope\"." }
+ * mcpCommand("proj", ["extra"])             // → { kind: "usage", error: "Too many arguments." }
+ */
+export function mcpCommand(folder: string, rest: string[]): Command {
+  const unknown = rest.find((a) => a !== WRITE_DIRECTLY);
+  if (unknown !== undefined) return { kind: "usage", error: unknown.startsWith("--") ? `Unknown option "${unknown}".` : "Too many arguments." };
+  if (rest.length > 1) return { kind: "usage", error: `${WRITE_DIRECTLY} is given twice.` };
+  return { kind: "mcp", folder, direct: rest.length === 1 };
 }

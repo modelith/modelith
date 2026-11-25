@@ -6,6 +6,7 @@
 //! SysML v2 の意味（名前解決・継承など）に沿った作り直しは、0.1.0 の後に行う。
 
 mod chains;
+mod duplicates;
 mod filters;
 mod flows;
 mod focus;
@@ -457,6 +458,7 @@ pub fn build_whole(p: &ParseResult) -> Model {
     b.sequences();
     b.parse_problems();
     b.missing_references();
+    b.duplicate_names();
     b.phases();
     views::build_views(&mut b);
     b.model

@@ -4,7 +4,7 @@ Claude Code や Codex などの AI のクライアントが、手元のフォル
 [MCP](https://modelcontextprotocol.io/) のサーバとして、標準入出力で動く。
 
 いまできるのは **読む・確かめる・書く・図を書き出す（SVG・draw.io）** で、PNG の書き出しは、このあと足す。
-リリースに添付したパッケージから入れられる（下の「配る形に組み立てる」。0.3.0-alpha.1 から）。npm からは、最初の版を npm に公開したあとで入れられるようになる（F-AI-4）。
+リリースに添付したパッケージから入れられる（下の「配る形に組み立てる」。0.3.0-alpha.1 から）。npm からも使える（`npx modelith-cli@next mcp <フォルダ>`。0.3.0-alpha.2 から。F-AI-4）。
 
 ## 動かし方
 
@@ -40,7 +40,7 @@ npm install -g https://github.com/modelith/modelith/releases/download/v<版>/mod
 modelith mcp <プロジェクトのフォルダ>
 ```
 
-npm のレジストリには、リリースのワークフローが置き、メンテナが承認して公開する（[リリース手順](../development/releasing.md)、要求 F-AI-4）。パッケージの名前は `modelith-cli`（[ADR-0028](../adr/0028-npm-package-names.md)）で、npm に公開された版は `npx modelith-cli mcp <フォルダ>` で使える（プレリリース版は `npx modelith-cli@next`）。
+npm のレジストリには、リリースのワークフローが置き、メンテナが承認して公開する（[リリース手順](../development/releasing.md)、要求 F-AI-4）。パッケージの名前は `modelith-cli`（[ADR-0028](../adr/0028-npm-package-names.md)）で、npm に公開された版は `npx modelith-cli@next mcp <フォルダ>` で使える。安定版が出るまでは、`@next` を付けないと動かない（`latest` は中身の無い仮の版を指す。ADR-0028）。安定版が出たら、`npx modelith-cli mcp <フォルダ>` で使える。
 
 ## 道具（読む・確かめる）
 

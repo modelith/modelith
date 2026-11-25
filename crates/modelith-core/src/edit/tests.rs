@@ -1654,6 +1654,27 @@ fn nested_flow_elements_and_lines_can_be_renamed_and_deleted() {
 
 // ---- 状態遷移の図（StateTransitionView、8.2.3.18） ----
 
+#[test]
+fn connect_succession_twice_is_refused_instead_of_writing_the_same_line() {
+    // Arrange（同値分割：既にある first … then の文と同じ線・ガード付きの線と同じ向き・逆向き。#326）
+    let same = r#"{"op":"connect","rel":"succession","from":"a:b","to":"a:done","ctx":"A"}"#;
+    let guarded = r#"{"op":"connect","rel":"succession","from":"a:d","to":"a:b","ctx":"A"}"#;
+    let reverse = r#"{"op":"connect","rel":"succession","from":"a:b","to":"a:d","ctx":"A"}"#;
+    // Act
+    let reason = refused(FLOW, same);
+    let (after_guarded, _) = run(FLOW, guarded);
+    let (after_reverse, _) = run(FLOW, reverse);
+    // Assert
+    assert_eq!(reason, "同じ順序の線が既にあります");
+    assert!(after_guarded.contains("first d then b;"), "{after_guarded}");
+    assert!(after_reverse.contains("first b then d;"), "{after_reverse}");
+    // 足した線をもう一度足すと断る
+    assert_eq!(
+        refused(&after_reverse, reverse),
+        "同じ順序の線が既にあります"
+    );
+}
+
 const STATES: &str = "package P {\n    state def S {\n        entry; then off;\n        state off;\n        accept Go then on;\n        state on {\n            entry; then low;\n            state low;\n            state high;\n        }\n        transition t first on accept Stop if ready do beep then off;\n    }\n}\n";
 
 #[test]
@@ -1710,6 +1731,24 @@ fn unknown_transition_or_state_is_refused() {
     // Act / Assert
     assert!(refused(STATES, line).contains("関係"));
     assert!(refused(STATES, node).contains("s:x"));
+}
+
+#[test]
+fn connect_transition_twice_is_refused_instead_of_writing_the_same_line() {
+    // Arrange（同値分割：足した遷移と同じ遷移・きっかけ付きの遷移と同じ向き・逆向き。#326）
+    let same = r#"{"op":"connect","rel":"transition","from":"s:off","to":"s:on","ctx":"S"}"#;
+    let reverse = r#"{"op":"connect","rel":"transition","from":"s:on","to":"s:off","ctx":"S"}"#;
+    // Act（off から on へは、きっかけ付きの遷移（accept Go then on）が既にある）
+    let (once, _) = run(STATES, same);
+    let reason = refused(&once, same);
+    let (with_reverse, _) = run(&once, reverse);
+    // Assert
+    assert_eq!(once.matches("transition first off then on;").count(), 1);
+    assert!(reason.starts_with("同じ遷移が既にあります"), "{reason}");
+    assert!(
+        with_reverse.contains("transition first on then off;"),
+        "{with_reverse}"
+    );
 }
 
 #[test]

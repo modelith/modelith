@@ -110,7 +110,7 @@ pub(super) fn edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
 /// # 戻り値
 ///
 /// 書いた後のテキストと、光らせる範囲（足した文）。要素が無いとき・名前の無い状態のとき・開始の記号から始まるとき・
-/// 開始の記号へ向かうとき・終了の記号から始まるとき・別の本体の終了の記号へ向かうときは、理由の文（`Err`）。
+/// 開始の記号へ向かうとき・終了の記号から始まるとき・別の本体の終了の記号へ向かうとき・きっかけも条件も無い同じ向きの遷移が既にあるときは、理由の文（`Err`）。
 ///
 /// # 例
 ///
@@ -119,6 +119,8 @@ pub(super) fn edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
 /// add_transition(d, "s:a", "s:b", Some("S"))
 ///   → Ok(text に "        state b;\n        transition first a then b;\n    }")
 /// add_transition(d, "s:a", "s:#start", Some("S")) → Err("開始の記号へ向かう遷移は引けません")
+/// // 足した後のテキストにもう一度
+/// add_transition(d, "s:a", "s:b", Some("S")) → Err("同じ遷移が既にあります。…")
 /// ```
 pub(super) fn add_transition(
     d: &Doc<'_>,
@@ -161,6 +163,17 @@ pub(super) fn add_transition(
     } else {
         (c, reference(a, true)?, reference(b, true)?)
     };
+    // きっかけも条件も無い同じ向きの遷移が既にあれば、同じ文が 2 行になるので足さない（#326）
+    if machine
+        .edges
+        .iter()
+        .any(|e| e.from == from && e.to == to && e.label.is_empty())
+    {
+        return Err(
+            "同じ遷移が既にあります。もう 1 つ足すときは、先にテキストで、いまの遷移にきっかけや条件を書いてください"
+                .to_owned(),
+        );
+    }
     let snippet = format!("transition first {source} then {target};");
     let (text, start, end) = insert_into(d.text, d.target(body), &snippet);
     Ok(Change {

@@ -109,7 +109,7 @@ pub(super) fn edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
 /// # 戻り値
 ///
 /// 書いた後のテキストと、光らせる範囲（足した文）。入れ子の本体の要素どうしなら、その本体に書く。
-/// 要素が無いとき・名前の無い要素のとき・終了から始まるとき・開始へ向かうとき・本体の違う要素どうしのときは理由の文（`Err`）。
+/// 要素が無いとき・名前の無い要素のとき・終了から始まるとき・開始へ向かうとき・本体の違う要素どうしのとき・条件も名前も無い同じ向きの順序の線が既にあるときは理由の文（`Err`）。
 ///
 /// # 例
 ///
@@ -117,6 +117,8 @@ pub(super) fn edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
 /// // d.text = "package P {\n    action def A {\n        action a;\n        action b;\n    }\n}\n" のとき
 /// add_succession(d, "a:a", "a:b", Some("A")) → Ok(text に "        action b;\n        first a then b;\n    }")
 /// add_succession(d, "a:b", "a:start", Some("A")) → Err("開始の記号へ向かう順序の線は引けません")
+/// // 足した後のテキストにもう一度
+/// add_succession(d, "a:a", "a:b", Some("A")) → Err("同じ順序の線が既にあります")
 /// // a の中に入れ子の本体（要素 a:a.x・a:a.y）があるとき
 /// add_succession(d, "a:a.x", "a:a.y", Some("A")) → Ok(a の本体に "first x then y;")
 /// add_succession(d, "a:a.x", "a:b", Some("A"))   → Err("順序の線は、同じアクションの中の要素どうしにだけ引けます")
@@ -161,6 +163,14 @@ pub(super) fn add_succession(
         }
         Ok(sysml_name(&n.name))
     };
+    // 条件も名前も無い同じ向きの順序の線が既にあれば、同じ文が 2 行になるので足さない（#326）
+    if flow
+        .edges
+        .iter()
+        .any(|e| e.kind == "succession" && e.from == from && e.to == to && e.label.is_empty())
+    {
+        return Err("同じ順序の線が既にあります".to_owned());
+    }
     let snippet = format!("first {} then {};", name_of(from)?, name_of(to)?);
     let (text, a, b) = insert_into(d.text, d.target(host), &snippet);
     Ok(Change {

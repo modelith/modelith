@@ -1320,6 +1320,32 @@ describe("本体の式と絞り込みの式の文法（ResultExpressionMember、
   });
 });
 
+describe("アクションと遷移の式の文法（IfNode・WhileLoopNode・ForLoopNode・NodeParameterMember、8.2.2.17。GuardExpressionMember、8.2.2.18。式は KerML 8.2.5.8）", () => {
+  it("条件・ガード・送るもの・代入する値の式は、エラーにしない", () => {
+    // Arrange
+    const text =
+      "package P { action def A { if x > 0 { action c; } else if x < -1 { action d; } while i < 10 { assign i := i + 1; } until i >= 5; " +
+      "for k in 1..3 { action r; } send S(1, x = 2) via p to q.r; accept s : S via p; } " +
+      "state def M { state a; state b; transition first a accept s : Sig if x > 0 and s.v == 1 then b; } }";
+    // Act・Assert
+    expect(parse(text).errors).toEqual([]);
+  });
+
+  it("壊れた条件・ガード・引数の式は、どこが壊れているかを知らせる", () => {
+    // Arrange
+    const inAction = (body: string): string[] => parse(`package P { action def A { ${body} } }`).errors.map((e) => e.msg);
+    // Act・Assert
+    expect(inAction("if x > { }")).toEqual(["「>」の後に値がありません"]);
+    expect(inAction("while i < { }")).toEqual(["「<」の後に値がありません"]);
+    expect(inAction("for k in 1 2 { }")).toEqual(["「1」と「2」の間に演算子がありません"]);
+    expect(inAction("send S(1,) to q;")).toEqual(["「,」の後に値がありません"]);
+    expect(inAction("assign a := 1 + ;")).toEqual(["「+」の後に値がありません"]);
+    expect(parse("package P { state def M { state a; state b; transition first a if x == then b; } }").errors.map((e) => e.msg)).toEqual([
+      "「==」の後に値がありません",
+    ]);
+  });
+});
+
 describe("関係の本体の注釈（RelationshipBody 8.2.2.2、Dependency 8.2.2.3・AliasMember 8.2.2.5）", () => {
   it("dependency A to B { doc /* … */ }・alias C for A { doc /* … */ } の説明を、外側の package の説明にしない", () => {
     // Arrange

@@ -905,29 +905,7 @@ pub(super) fn rename_refs(d: &Doc<'_>, f: &Found, nn: &str) -> Change {
     let e = d.e(f.entry);
     let old = e.name.as_str();
     let ts = tokens(d.text);
-    let significant = |i: usize, step: isize| -> Option<&(SyntaxKind, usize, &str)> {
-        let mut j = i as isize + step;
-        while let Some(t) = usize::try_from(j).ok().and_then(|j| ts.get(j)) {
-            if !t.0.is_trivia() && t.0 != SyntaxKind::REGULAR_COMMENT {
-                return Some(t);
-            }
-            j += step;
-        }
-        None
-    };
-    // 名前の字句：基本名の IDENT か、短い名前（`<'…'>`）でない引用名
-    let is_name = |i: usize| -> bool {
-        let (kind, _, s) = ts[i];
-        match kind {
-            SyntaxKind::IDENT => s == old,
-            SyntaxKind::QUOTED_NAME => {
-                s.len() >= 2
-                    && &s[1..s.len() - 1] == old
-                    && !significant(i, -1).is_some_and(|t| t.2 == "<")
-            }
-            _ => false,
-        }
-    };
+    let is_name = |i: usize| is_name_token(&ts, i, old);
     // 使用の名前は、持ち主（部品定義など）の中でだけ参照される。`a.e` の `.` の後ろは、別の要素の特性なので変えない
     let owner =
         e.pe.map_or(0..d.text.len(), |p| d.b(d.e(p).start)..d.b(d.e(p).end));
@@ -992,6 +970,90 @@ pub(super) fn rename_refs(d: &Doc<'_>, f: &Found, nn: &str) -> Change {
         select: Some(nn.to_owned()),
         flash: Some(flash),
     }
+}
+
+/// トークンが、名前 `old` を書いたものか。基本名の IDENT か、短い名前（`<'…'>`）でない引用名。
+///
+/// # 引数
+///
+/// - `ts`：テキストのトークンの列（`tokens`）
+/// - `i`：調べるトークンの番号
+/// - `old`：名前（引用符を外したもの）
+///
+/// # 戻り値
+///
+/// その名前を書いたトークンなら true。
+///
+/// # 例
+///
+/// ```text
+/// // "part def A; part x : 'A'; part def <'A'> B;" のとき
+/// is_name_token(ts, 「A」の番号, "A")        → true
+/// is_name_token(ts, 「'A'」の番号, "A")      → true
+/// is_name_token(ts, 「<'A'>」の 'A' の番号, "A") → false   // 短い名前
+/// ```
+fn is_name_token(ts: &[(SyntaxKind, usize, &str)], i: usize, old: &str) -> bool {
+    let (kind, _, s) = ts[i];
+    match kind {
+        SyntaxKind::IDENT => s == old,
+        SyntaxKind::QUOTED_NAME => {
+            let before = ts[..i]
+                .iter()
+                .rev()
+                .find(|t| !t.0.is_trivia() && t.0 != SyntaxKind::REGULAR_COMMENT);
+            s.len() >= 2 && &s[1..s.len() - 1] == old && !before.is_some_and(|t| t.2 == "<")
+        }
+        _ => false,
+    }
+}
+
+/// ほかのファイルの要素の名前を変えたときに、このファイルに書いた、その要素を指す名前を新しい名前に書き換える（ADR-0021）。
+/// 名前を書いた場所から解決して、その要素を指すものだけを変える（同じ名前の別の要素は変えない）。
+///
+/// # 引数
+///
+/// - `d`：参照を直すファイルのテキスト（名前を変える要素のあるファイルを、ほかのファイルとしてつないだもの）
+/// - `target`：名前を変える要素の宣言の番号（ほかのファイルの宣言）
+/// - `nn`：新しい名前
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキスト。その要素を指す名前が無ければ None。
+///
+/// # 例
+///
+/// ```text
+/// // d.text = "package Q { import P::*; part x : A; part def A2; }"、ほかのファイルに "package P { part def A; }"
+/// rename_elsewhere(d, P の A, "B") → Some("package Q { import P::*; part x : B; part def A2; }")
+/// // d.text = "package Q { part def A; part x : A; }"（この A は Q の A を指す）
+/// rename_elsewhere(d, P の A, "B") → None
+/// ```
+pub(super) fn rename_elsewhere(d: &Doc<'_>, target: usize, nn: &str) -> Option<String> {
+    let e = d.e(target);
+    let old = e.name.as_str();
+    let ts = tokens(d.text);
+    let cands: Vec<usize> = (0..ts.len())
+        .filter(|&i| is_name_token(&ts, i, old))
+        .collect();
+    let mut hits = if e.is_def || e.kind == "package" {
+        cands
+            .into_iter()
+            .filter(|&i| !(i > 0 && ts[i - 1].0 == SyntaxKind::DOT))
+            .filter(|&i| names_entry(d, &ts, i) == Some(target))
+            .collect()
+    } else {
+        feature_refs(d, &ts, &cands, target)
+    };
+    if hits.is_empty() {
+        return None;
+    }
+    hits.sort_unstable();
+    let mut out = d.text.to_owned();
+    for &i in hits.iter().rev() {
+        let (_, at, s) = ts[i];
+        out.replace_range(at..at + s.len(), &sysml_name(nn));
+    }
+    Some(out)
 }
 
 /// 名前のトークンが指す宣言を、書いた場所から解決する（SysML 8.2.2.5 の名前の解決。`model::resolve_refs`）。

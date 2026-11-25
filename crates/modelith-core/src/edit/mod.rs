@@ -309,6 +309,43 @@ pub fn edit_in(text: &str, others: Vec<ParseResult>, intent: &Intent) -> Result<
         })
 }
 
+/// ほかのファイルの要素の名前を変えたときに、このファイルに書いた、その要素を指す名前を新しい名前に書き換える（ADR-0021）。
+///
+/// # 引数
+///
+/// - `text`：参照を直すファイルのテキスト
+/// - `others`：ほかのファイルの解析結果（名前を変える要素のあるファイルを含む。名前を変える前のもの）
+/// - `file`：名前を変える要素のあるファイルの番号（`others` の中の順。1 から）
+/// - `start`：名前を変える要素の宣言の位置（そのファイルの中の UTF-16 のオフセット）
+/// - `name`：新しい名前
+///
+/// # 戻り値
+///
+/// 書き換えた後のテキスト。その要素を指す名前が無い・要素が見つからない・括弧が閉じていないときは None。
+///
+/// # 例
+///
+/// ```text
+/// // text = "package Q { import P::*; part x : A; }"、others = ["package P { part def A; }"]（A の位置は 12）
+/// rename_elsewhere(text, others, 1, 12, "B") → Some("package Q { import P::*; part x : B; }")
+/// rename_elsewhere("package Q;", others, 1, 12, "B") → None
+/// ```
+pub fn rename_elsewhere(
+    text: &str,
+    others: Vec<ParseResult>,
+    file: usize,
+    start: usize,
+    name: &str,
+) -> Option<String> {
+    if !balanced(text) {
+        return None;
+    }
+    let doc = Doc::with(text, project::merge::join(text, others));
+    let at = file * project::merge::FILE_STRIDE + start;
+    let target = doc.p.entries.iter().position(|e| e.start == at)?;
+    ops::rename_elsewhere(&doc, target, name.trim())
+}
+
 /// テキストの括弧が閉じていないときに、図からの操作を断る理由の文（画面にそのまま出す。ADR-0014）。
 pub const UNBALANCED: &str = "テキストに閉じていない括弧（{ }）やコメントがあるため、図から変更できません。テキストを直してから、もう一度操作してください";
 

@@ -183,7 +183,8 @@ package ModelithRequirements {
             doc /* ビューをタブで複数開け、開いているタブと表示位置はブラウザに記憶する。記憶したタブが壊れていても（JSON でない・形の合わない項目がある）起動は止まらず、形の合わない項目だけを捨てて残りを戻す */
         }
         requirement def <'F-VIEW-3'> LayoutReq {
-            doc /* 未配置の要素は自動で並べ、手で動かした配置は、モデルごとの配置ファイル（model.sysml の隣の model.layout.json）に保存する（ADR-0005） */
+            doc /* 未配置の要素は自動で並べ、手で動かした配置は、モデルごとの配置ファイル（model.sysml の隣の model.layout.json）に保存する（ADR-0005）。
+                   線のラベルどうしが同じ位置に重なるとき（同じ 2 つの要素の間の線が同じ経路を通るときなど）は、後の線のラベルを 1 行ずつ下へずらし、どのラベルも読めるようにする */
         }
         requirement def <'F-VIEW-6'> UnsavedLayoutReq {
             doc /* 配置の保存先が無いとき（ファイルを 1 つだけ開いた・新規）は「配置は未保存」と画面に示し、保存の際に保存先を選ばせる。配置が黙って失われることはない（ADR-0005）。
@@ -1390,7 +1391,8 @@ package ModelithRequirements {
             }
         }
         verification def LayoutTest {
-            doc /* web/src/render/layout.test.ts・web/src/render/layout-file.test.ts：配置情報の読み書きと、配置ファイルの書式（キー順の固定・要素ごとに 1 行・壊れたファイル） */
+            doc /* web/src/render/layout.test.ts・web/src/render/layout-file.test.ts：配置情報の読み書きと、配置ファイルの書式（キー順の固定・要素ごとに 1 行・壊れたファイル）。
+                   web/src/render/geometry.test.ts：重なる線のラベルを 1 行ずつ下へずらすこと（同じ位置・横に並ぶだけ・縦に離れている・同じ 2 要素の間の 2 本の線。#325） */
             objective {
                 verify LayoutReq;
             }

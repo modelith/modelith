@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Entry, ModelEdge, ModelLane, ModelNode } from "../core";
 import { build, parse } from "../core/rust";
 import { contentOf, viewDef, type ViewTarget } from "./view-content";
-import { assertWord, autoPlace, BOUNDARY, boundaryBoxes, boxesOf, LANE_HEAD, LANE_PAD, laneRects, placeInLanes, compartment, DOT, downward, endLabelPos, enumLines, featureText, freeSpot, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, placeJunctions, placeNested, placeNotes, placeView, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type RouteEnd } from "./geometry";
+import { assertWord, autoPlace, BOUNDARY, boundaryBoxes, boxesOf, LANE_HEAD, LANE_PAD, laneRects, placeInLanes, compartment, DOT, downward, endLabelPos, enumLines, featureText, freeSpot, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, spreadLabels, computeRoutes, placeJunctions, placeNested, placeNotes, placeView, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type NodeBox, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -613,5 +613,59 @@ describe("freeSpot（既にある要素に重ならない位置、F-VIEW-8・#29
     expect(right).toEqual([200, 170]);
     expect(below).toEqual([200, 170]);
     expect(one).toEqual([200, 300]);
+  });
+});
+
+describe("spreadLabels：重なる線のラベル（F-VIEW-3・#325）", () => {
+  it("同じ位置のラベルは、後のものを 1 行ずつ下へずらす", () => {
+    // Act
+    const out = spreadLabels([
+      { x: 50, y: 13, a: "middle", w: 40 },
+      { x: 50, y: 13, a: "middle", w: 30 },
+      { x: 50, y: 13, a: "middle", w: 30 },
+    ]);
+    // Assert
+    expect(out).toEqual([{ x: 50, y: 13, a: "middle" }, { x: 50, y: 26, a: "middle" }, { x: 50, y: 39, a: "middle" }]);
+  });
+
+  it("横に並ぶだけ・縦に 1 行離れているラベルは、動かさない（境界値）", () => {
+    // Arrange（1 つめは x が 0〜40。2 つめは 40 から始まり、3 つめは 1 行下にある）
+    const labs = [
+      { x: 0, y: 13, a: "start" as const, w: 40 },
+      { x: 40, y: 13, a: "start" as const, w: 30 },
+      { x: 0, y: 26, a: "start" as const, w: 40 },
+    ];
+    // Act
+    const out = spreadLabels(labs);
+    // Assert
+    expect(out.map((l) => l.y)).toEqual([13, 13, 26]);
+  });
+
+  it("中央揃えと左揃えのラベルは、文字の範囲で重なりを見る", () => {
+    // Act（中央揃えは 30〜70、左揃えは 60〜90 で重なる。左揃えが 70 から始まれば重ならない）
+    const hit = spreadLabels([{ x: 50, y: 13, a: "middle", w: 40 }, { x: 60, y: 13, a: "start", w: 30 }]);
+    const free = spreadLabels([{ x: 50, y: 13, a: "middle", w: 40 }, { x: 70, y: 13, a: "start", w: 30 }]);
+    // Assert
+    expect(hit[1]?.y).toBe(26);
+    expect(free[1]?.y).toBe(13);
+  });
+
+  it("ラベルが無ければ、空を返す（境界値）", () => {
+    expect(spreadLabels([])).toEqual([]);
+  });
+
+  it("同じ 2 つの要素の間の 2 本の線が同じ経路を通っても、ラベルは重ならない", () => {
+    // Arrange（A と B の間の少し下に C があり、2 本の線はどちらも C の上の同じ道を通る）
+    const M = build(parse("package P { part def A { part one : B; ref part two : B; } part def B; part def C; }"));
+    const pos: Record<string, [number, number]> = { A: [600, 30], C: [300, 50], B: [0, 30] };
+    const rects = boxesOf(M.nodes, pos);
+    const box = new Map<string, NodeBox>(M.nodes.filter((n) => n.key in pos).map((n) => [n.key, { ...(rects.get(n.key) as NodeBox), n, pins: [] }]));
+    const edges = M.edges.filter((e) => box.has(e.from) && box.has(e.to) && e.label);
+    // Act
+    const labs = [...computeRoutes(box, edges, undefined, "ortho").values()].map((r) => r.lab);
+    // Assert
+    expect(labs).toHaveLength(2);
+    expect(labs[0]?.x).toBe(labs[1]?.x);
+    expect(Math.abs((labs[0]?.y ?? 0) - (labs[1]?.y ?? 0))).toBe(13);
   });
 });

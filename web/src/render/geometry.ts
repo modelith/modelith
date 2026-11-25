@@ -3,7 +3,7 @@
 import type { Entry, Expr, ModelEdge, ModelLane, ModelNode, Port, PortDir } from "../core/types.ts";
 import { flowBodyLines, flowDetail, flowShape } from "./action-flow.ts";
 import { isPseudoState, stateActionLines } from "./state-machine.ts";
-import { shownName } from "./labels.ts";
+import { shownEdgeLabel, shownName } from "./labels.ts";
 import type { Pos, Side, ViewLayout } from "./layout.ts";
 import type { ViewContent, ViewDef } from "./view-content.ts";
 
@@ -1218,7 +1218,48 @@ export function computeRoutes(box: Map<string, NodeBox>, edges: ModelEdge[], L: 
     }
     out.set(r.e.id, { d, lab, from: a, to: z, via: [a.P, ...bends, z.P], pts });
   }
+  // 同じ経路を通る線のラベルが重ならないよう、後の線のラベルを下へずらす（F-VIEW-3）
+  const labelled = recs.filter((r) => r.e.label && out.has(r.e.id));
+  const spread = spreadLabels(labelled.map((r) => ({ ...(out.get(r.e.id) as Route).lab, w: textWidth(shownEdgeLabel(r.e)) })));
+  labelled.forEach((r, i) => {
+    const rt = out.get(r.e.id), lab = spread[i];
+    if (rt && lab) rt.lab = lab;
+  });
   return out;
+}
+
+/** ラベルの 1 行の高さ（重なったラベルをずらす幅）。 */
+const LABEL_LINE = 13;
+/** 重なったラベルをずらす回数の上限（これを超えたら、重なったままにする）。 */
+const LABEL_TRIES = 8;
+
+/**
+ * 線のラベルどうしが重ならないよう、位置をずらす。先のラベルはそのままにし、先のどれかと重なるラベルを 1 行ずつ下へ送る。
+ * 同じ 2 つの要素の間の線が同じ経路を通ると、ラベルが同じ位置に出て読めなくなるため（#325）。
+ *
+ * @param labs ラベルの位置（x・y はベースライン）・揃え・文字の幅。描く順
+ * @returns ずらした後の位置と揃え（labs と同じ順・同じ数）
+ * @example
+ * spreadLabels([{ x: 50, y: 13, a: "middle", w: 40 }, { x: 50, y: 13, a: "middle", w: 30 }])
+ * // → [{ x: 50, y: 13, a: "middle" }, { x: 50, y: 26, a: "middle" }]（2 つめを 1 行下へ）
+ * spreadLabels([{ x: 0, y: 13, a: "start", w: 40 }, { x: 40, y: 13, a: "start", w: 30 }])
+ * // → そのまま（横に並んでいて、重ならない）
+ * spreadLabels([]) // → []
+ */
+export function spreadLabels(labs: readonly (Route["lab"] & { w: number })[]): Route["lab"][] {
+  const placed: Rect[] = [];
+  const rect = (l: Route["lab"] & { w: number }, y: number): Rect => {
+    const x0 = l.a === "middle" ? l.x - l.w / 2 : l.x;
+    return { x0, y0: y - LABEL_LINE, x1: x0 + l.w, y1: y };
+  };
+  const hit = (r: Rect): boolean => placed.some((p) => r.x0 < p.x1 && r.x1 > p.x0 && r.y0 < p.y1 && r.y1 > p.y0);
+  return labs.map((l) => {
+    let y = l.y;
+    for (let i = 0; i < LABEL_TRIES && hit(rect(l, y)); i++) y += LABEL_LINE;
+    if (hit(rect(l, y))) y = l.y;
+    placed.push(rect(l, y));
+    return { x: l.x, y, a: l.a };
+  });
 }
 
 /**

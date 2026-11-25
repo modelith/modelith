@@ -203,6 +203,32 @@ describe("MCP のサーバ：書く（2 段階）", () => {
     expect(remove.problems).toEqual([]);
   });
 
+  it("F-AI-2: 名前の変更は、ほかのファイルに書いた参照も直し、書き込むと両方のファイルに入る（正常系。ADR-0021）", async () => {
+    // Arrange（req.sysml の Safe を、app/brake.sysml が satisfy Req::Safe で指している）
+    const before = read("app/brake.sysml");
+    // Act
+    const proposal = await json<EditProposal & { proposalId: string }>("propose_edit", { type: "rename", element: "Req::Safe", name: "Secure" });
+    const applied = await json<{ written: string[] }>("apply_edit", { proposalId: proposal.proposalId });
+    // Assert
+    expect(proposal.changes.map((c) => c.file).sort()).toEqual(["app/brake.sysml", "req.sysml"]);
+    expect(applied.written.sort()).toEqual(["app/brake.sysml", "req.sysml"]);
+    expect(read("req.sysml")).toContain("requirement def <'R1'> Secure");
+    expect(read("app/brake.sysml")).toBe(before.replace("satisfy Req::Safe by Brake;", "satisfy Req::Secure by Brake;"));
+  });
+
+  it("F-AI-2: 複数のファイルを変える提案は、そのうち 1 つでも変わっていたら、どのファイルも書かない（異常系）", async () => {
+    // Arrange（提案のあとで、参照のあるほうのファイルだけが書き換えられた）
+    const proposal = await json<{ proposalId: string }>("propose_edit", { type: "rename", element: "Req::Safe", name: "Secure" });
+    const req = read("req.sysml");
+    write("app/brake.sysml", read("app/brake.sysml") + "\n");
+    // Act
+    const got = await call("apply_edit", { proposalId: proposal.proposalId });
+    // Assert
+    expect(got.isError).toBe(true);
+    expect(got.text).toContain("app/brake.sysml changed after the proposal");
+    expect(read("req.sysml")).toBe(req);
+  });
+
   it("F-AI-2: 提案のあとにファイルが変わっていたら、黙って上書きせずに断り、何も書かない（異常系）", async () => {
     // Arrange
     const proposal = await json<{ proposalId: string }>("propose_edit", { type: "rename", element: "App::Brake", name: "DiscBrake" });

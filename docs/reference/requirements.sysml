@@ -476,7 +476,8 @@ package ModelithRequirements {
                    提案のあとにファイルが変わっていたら、黙って上書きせずに断り、何も書かない。同じ提案は 2 回書けない。書けるのは、指定したフォルダの中のモデルのファイルだけ。
                    確かめずに書く設定（サーバを --write-directly を付けて動かす。ADR-0024 の 4）を選んだときだけ、同じ意図を 1 回で書く道具（edit）も出す。
                    edit は、差分・書いたファイル・当てたあとの問題一覧を返す。設定を選ばなければ、edit は出さない。設定は、サーバを動かす人が選び、プロジェクトのファイルからは選べない。
-                   予定：ほかのファイルの参照も直す名前の変更（ADR-0021） */
+                   名前の変更は、ほかのファイルに書いた、その要素を指す名前も書き換える（ADR-0021）。名前を書いた場所から解決して、その要素を指すものだけを変え、同じ名前の別の要素は変えない。
+                   差分は変わるファイルごとに返し、書き込みは、どれか 1 つでも変わっていたら、どれも書かない */
         }
         requirement def <'F-AI-3'> HeadlessExportReq {
             doc /* 画面を開かずに、CLI（modelith export）と MCP（export_diagram）から、テキストに書いた図の名前、またはモデルのファイルと自動の図の種類を指定して、SVG・draw.io を書き出せる。
@@ -1595,9 +1596,9 @@ package ModelithRequirements {
         verification def McpWriteTest {
             doc /* cli/src/mcp-server.test.ts：MCP のクライアントをメモリ上でつなぎ、本物のコア（wasm）と一時フォルダのプロジェクトで、提案が何も書かないこと、書き込むと提案の中身がファイルに入ること、
                    修飾名で指した名前の変更・説明・関係の追加・削除・ファイルの書き換え、提案のあとにファイルが変わっていたら断って何も書かないこと、当てられない意図・足りない引数・知らない ID の伝え方を確かめる。
-                   cli/src/tools.test.ts：引数から意図を作る（種類ごとの同値分割、足りない引数）、提案と書き込みの判断（同じ提案を 2 回書かない・変わったファイル・消えたファイル・何も変わらない提案）、確かめずに書く設定のときだけ出す edit（1 回で書く・何も変わらない編集・断られた編集）。cli/src/cli.test.ts：--write-directly の読み方。mcp-server.test.ts：設定を選ばなければ edit を出さず、選べば 1 回で書くこと。
+                   cli/src/tools.test.ts：引数から意図を作る（種類ごとの同値分割、足りない引数）、提案と書き込みの判断（同じ提案を 2 回書かない・変わったファイル・消えたファイル・何も変わらない提案）、確かめずに書く設定のときだけ出す edit（1 回で書く・何も変わらない編集・断られた編集）。cli/src/cli.test.ts：--write-directly の読み方。mcp-server.test.ts：設定を選ばなければ edit を出さず、選べば 1 回で書くこと。名前の変更が、ほかのファイルの参照も直して両方のファイルに書くことと、1 つでも変わっていたらどれも書かないこと。
                    cli/src/edits.test.ts：版と、編集の当て方（複数・行またぎ・UTF-16・末尾・範囲の外）。cli/src/proposals.test.ts：提案を覚える数の境界。cli/src/fs-project.test.ts：書けるのはモデルのファイルだけ（フォルダの外・設定ファイル・プラグイン・シンボリックリンクに書かない）。
-                   crates/modelith-core/src/write.rs：提案（差分・前提の版・当てたあとの問題一覧・関係の言葉・断る理由）。crates/modelith-core/src/edit/tests.rs：修飾名のキー（q:）と、名前と入れる先を決めた追加（addElement）。crates/modelith-wasm/src/write.rs：契約の形の JSON と、読めない入力 */
+                   crates/modelith-core/src/write.rs：提案（差分・前提の版・当てたあとの問題一覧・関係の言葉・断る理由）と、ファイルをまたぐ名前の変更（修飾名・import した名前・特殊化の相手・特性・package の名前を直し、同じ名前の別の要素と参照の無いファイルは変えない。断られたら何も変えない）。crates/modelith-core/src/edit/tests.rs：修飾名のキー（q:）と、名前と入れる先を決めた追加（addElement）。crates/modelith-wasm/src/write.rs：契約の形の JSON と、読めない入力 */
             objective {
                 verify McpWriteReq;
             }

@@ -49,6 +49,7 @@ pub struct Workspace<'a> {
 /// # 戻り値
 ///
 /// 差分（変わるファイルごとに、前提の版と編集）と、当てたあとのプロジェクトの問題一覧。何も変わらなければ、差分は空。
+/// 名前の変更は、ほかのファイルに書いた、その要素を指す名前も書き換える（差分が複数のファイルになる。ADR-0021）。
 /// 当てられないとき（指す要素やファイルが無い、名前が使えない、括弧が閉じていないなど）は、理由の文（`Err`）。
 ///
 /// # 例
@@ -61,14 +62,16 @@ pub struct Workspace<'a> {
 ///   → Err("操作する要素「P::Nope」が見つかりません。テキストが先に変わった可能性があります")
 /// ```
 pub fn propose(ws: &Workspace<'_>, request: &EditRequest) -> Result<EditProposal, String> {
-    let (at, new_text) = match request {
+    // 変わるファイルの番号と、新しいテキスト
+    let mut rewritten: BTreeMap<usize, String> = BTreeMap::new();
+    match request {
         EditRequest::ReplaceText { file, text } => {
             let at = ws
                 .files
                 .iter()
                 .position(|f| f.path == file)
                 .ok_or_else(|| format!("ファイル「{file}」が見つかりません"))?;
-            (at, text.clone())
+            rewritten.insert(at, text.clone());
         }
         _ => {
             let parsed = parse_all(ws.files);
@@ -77,34 +80,37 @@ pub fn propose(ws: &Workspace<'_>, request: &EditRequest) -> Result<EditProposal
                 return Ok(EditProposal::default());
             };
             let at = file_of(&parsed, anchor).ok_or_else(|| edit::missing(anchor))?;
-            let others = parsed
-                .into_iter()
-                .enumerate()
-                .filter_map(|(i, p)| (i != at).then_some(p).flatten())
-                .collect();
+            let others = others_of(&parsed, at, None);
             let old = ws.files[at].text;
             let outcome = edit::edit_in(old, others, &intent).map_err(|r| r.reason)?;
-            (at, apply(old, &outcome.edits))
+            let new_text = apply(old, &outcome.edits);
+            if let EditRequest::Rename { element, name } = request
+                && new_text != old
+            {
+                rewritten.extend(renamed_elsewhere(ws.files, &parsed, at, element, name));
+            }
+            rewritten.insert(at, new_text);
         }
     };
-    let file = ws.files[at];
-    let edits = text_edits(file.text, &new_text);
-    let changes = if edits.is_empty() {
-        Vec::new()
-    } else {
-        vec![FileChange {
-            file: file.path.to_owned(),
-            base_version: file.version.to_owned(),
-            edits,
-        }]
-    };
+    let changes = rewritten
+        .iter()
+        .filter_map(|(&i, new_text)| {
+            let file = ws.files[i];
+            let edits = text_edits(file.text, new_text);
+            (!edits.is_empty()).then(|| FileChange {
+                file: file.path.to_owned(),
+                base_version: file.version.to_owned(),
+                edits,
+            })
+        })
+        .collect();
     let after: Vec<SourceFile<'_>> = ws
         .files
         .iter()
         .enumerate()
         .map(|(i, f)| SourceFile {
             path: f.path,
-            text: if i == at { &new_text } else { f.text },
+            text: rewritten.get(&i).map_or(f.text, String::as_str),
         })
         .collect();
     let problems = read::check(&Project {
@@ -113,6 +119,83 @@ pub fn propose(ws: &Workspace<'_>, request: &EditRequest) -> Result<EditProposal
         plugin_files: ws.plugin_files,
     });
     Ok(EditProposal { changes, problems })
+}
+
+/// ファイル `first` を先頭に、`skip` と `first` を除いたほかのファイルの解析結果を並べる（つなげないファイルは除く）。
+///
+/// # 引数
+///
+/// - `parsed`：ファイルごとの解析結果（`parse_all`）
+/// - `skip`：除くファイルの番号（表示中として扱うファイル）
+/// - `first`：先頭に置くファイルの番号。無ければ、`skip` を除いて元の順
+///
+/// # 戻り値
+///
+/// ほかのファイルとしてつなぐ解析結果。
+///
+/// # 例
+///
+/// ```text
+/// others_of([a, b, c], 0, None)    → [b, c]
+/// others_of([a, b, c], 1, Some(2)) → [c, a]   // c が 1 番（先頭）になる
+/// ```
+fn others_of(
+    parsed: &[Option<ParseResult>],
+    skip: usize,
+    first: Option<usize>,
+) -> Vec<ParseResult> {
+    let rest = (0..parsed.len()).filter(|&i| i != skip && Some(i) != first);
+    first
+        .into_iter()
+        .chain(rest)
+        .filter_map(|i| parsed[i].clone())
+        .collect()
+}
+
+/// 名前を変えた要素を指す、ほかのファイルの名前を書き換える（ADR-0021。F-AI-2）。
+///
+/// # 引数
+///
+/// - `files`：プロジェクトのモデルのファイル
+/// - `parsed`：ファイルごとの解析結果（名前を変える前のもの）
+/// - `at`：名前を変える要素のあるファイルの番号
+/// - `element`：名前を変える要素の修飾名
+/// - `name`：新しい名前
+///
+/// # 戻り値
+///
+/// 参照を書き換えたファイルの番号と、新しいテキスト。その要素を指すファイルが無ければ空。
+///
+/// # 例
+///
+/// ```text
+/// // a.sysml「package P { part def A; }」、b.sysml「package Q { import P::*; part x : A; }」で P::A を B に変えるとき
+/// renamed_elsewhere(files, parsed, 0, "P::A", "B") → [(1, "package Q { import P::*; part x : B; }")]
+/// ```
+fn renamed_elsewhere(
+    files: &[VersionedFile<'_>],
+    parsed: &[Option<ParseResult>],
+    at: usize,
+    element: &str,
+    name: &str,
+) -> Vec<(usize, String)> {
+    let Some(own) = parsed[at].as_ref() else {
+        return Vec::new();
+    };
+    let Some(start) = (0..own.entries.len())
+        .find(|&i| !own.entries[i].name.is_empty() && qualified_name(&own.entries, i) == element)
+        .map(|i| own.entries[i].start)
+    else {
+        return Vec::new();
+    };
+    (0..files.len())
+        .filter(|&j| j != at && parsed[j].is_some())
+        .filter_map(|j| {
+            // 名前を変える要素のあるファイルを、ほかのファイルの 1 番にする
+            let others = others_of(parsed, j, Some(at));
+            edit::rename_elsewhere(files[j].text, others, 1, start, name).map(|text| (j, text))
+        })
+        .collect()
 }
 
 /// 契約の編集の意図を、コアの編集の意図にする。あわせて、どのファイルに書くかを決める要素（その要素のあるファイルに書く）の修飾名を返す。
@@ -371,6 +454,186 @@ mod tests {
             .collect()
     }
 
+    /// ファイル（パスとテキスト）を並べたプロジェクトに、意図を当てる。版は「v」とファイルの番号。
+    fn run_on(texts: &[(&str, &str)], request: EditRequest) -> Result<EditProposal, String> {
+        let versions: Vec<String> = (0..texts.len()).map(|i| format!("v{i}")).collect();
+        let files: Vec<VersionedFile<'_>> = texts
+            .iter()
+            .zip(&versions)
+            .map(|((path, text), version)| VersionedFile {
+                path,
+                text,
+                version,
+            })
+            .collect();
+        propose(
+            &Workspace {
+                files: &files,
+                project_file: None,
+                plugin_files: &BTreeMap::new(),
+            },
+            &request,
+        )
+    }
+
+    /// 提案の差分を、ファイルごとに当てたあとのテキスト（パス → テキスト）。変わらないファイルは入らない。
+    fn applied_all(proposal: &EditProposal, texts: &[(&str, &str)]) -> BTreeMap<String, String> {
+        proposal
+            .changes
+            .iter()
+            .map(|change| {
+                let old = texts
+                    .iter()
+                    .find(|(path, _)| *path == change.file)
+                    .expect("プロジェクトのファイル")
+                    .1;
+                let one = EditProposal {
+                    changes: vec![change.clone()],
+                    problems: Vec::new(),
+                };
+                (change.file.clone(), applied(&one, old))
+            })
+            .collect()
+    }
+
+    // --- ファイルをまたぐ名前の変更（ADR-0021・F-AI-2） ---
+
+    #[test]
+    fn rename_also_rewrites_references_in_other_files() {
+        // Arrange（同値分割：修飾名・import した名前・特殊化の相手。参照の無いファイルは変えない）
+        let texts = [
+            ("lib.sysml", "package Lib {\n    part def Wheel;\n}\n"),
+            ("car.sysml", "package Car {\n    part w : Lib::Wheel;\n}\n"),
+            (
+                "bike.sysml",
+                "package Bike {\n    import Lib::*;\n    part def Big :> Wheel;\n    part f : Wheel;\n}\n",
+            ),
+            ("none.sysml", "package None {\n    part def Wheel2;\n}\n"),
+        ];
+        // Act
+        let got = run_on(
+            &texts,
+            EditRequest::Rename {
+                element: "Lib::Wheel".into(),
+                name: "Tire".into(),
+            },
+        )
+        .unwrap();
+        // Assert（変わるファイルごとに、そのファイルの版を前提にした差分を返す。当てたあとに参照切れは無い）
+        let after = applied_all(&got, &texts);
+        assert_eq!(
+            got.changes
+                .iter()
+                .map(|c| (c.file.as_str(), c.base_version.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("lib.sysml", "v0"),
+                ("car.sysml", "v1"),
+                ("bike.sysml", "v2")
+            ]
+        );
+        assert_eq!(after["lib.sysml"], "package Lib {\n    part def Tire;\n}\n");
+        assert_eq!(
+            after["car.sysml"],
+            "package Car {\n    part w : Lib::Tire;\n}\n"
+        );
+        assert_eq!(
+            after["bike.sysml"],
+            "package Bike {\n    import Lib::*;\n    part def Big :> Tire;\n    part f : Tire;\n}\n"
+        );
+        assert_eq!(messages(&got), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn rename_leaves_another_element_with_the_same_name_in_other_files() {
+        // Arrange（境界値：ほかのファイルに、同じ名前の別の要素と、それを指す参照がある）
+        let texts = [
+            ("lib.sysml", "package Lib {\n    part def Wheel;\n}\n"),
+            (
+                "own.sysml",
+                "package Own {\n    part def Wheel;\n    part mine : Wheel;\n    part theirs : Lib::Wheel;\n}\n",
+            ),
+        ];
+        // Act
+        let got = run_on(
+            &texts,
+            EditRequest::Rename {
+                element: "Lib::Wheel".into(),
+                name: "Tire".into(),
+            },
+        )
+        .unwrap();
+        // Assert（Own の Wheel と、それを指す mine の型は変えない）
+        assert_eq!(
+            applied_all(&got, &texts)["own.sysml"],
+            "package Own {\n    part def Wheel;\n    part mine : Wheel;\n    part theirs : Lib::Tire;\n}\n"
+        );
+    }
+
+    #[test]
+    fn rename_of_a_feature_or_a_package_rewrites_references_in_other_files() {
+        // Arrange（同値分割：特性を修飾名で指す・package の名前を import と修飾名で指す。新しい名前は引用名で書く）
+        let texts = [
+            (
+                "lib.sysml",
+                "package Lib {\n    part def Wheel { attribute size; }\n}\n",
+            ),
+            (
+                "car.sysml",
+                "package Car {\n    import Lib::*;\n    part w : Lib::Wheel { attribute :>> size; }\n}\n",
+            ),
+        ];
+        // Act
+        let feature = run_on(
+            &texts,
+            EditRequest::Rename {
+                element: "Lib::Wheel::size".into(),
+                name: "外径".into(),
+            },
+        )
+        .unwrap();
+        let package = run_on(
+            &texts,
+            EditRequest::Rename {
+                element: "Lib".into(),
+                name: "Parts".into(),
+            },
+        )
+        .unwrap();
+        // Assert
+        assert_eq!(
+            applied_all(&feature, &texts)["car.sysml"],
+            "package Car {\n    import Lib::*;\n    part w : Lib::Wheel { attribute :>> '外径'; }\n}\n"
+        );
+        assert_eq!(
+            applied_all(&package, &texts)["car.sysml"],
+            "package Car {\n    import Parts::*;\n    part w : Parts::Wheel { attribute :>> size; }\n}\n"
+        );
+        assert_eq!(messages(&package), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn refused_rename_changes_no_file() {
+        // Arrange（異常系：既に使われている名前）
+        let texts = [
+            (
+                "lib.sysml",
+                "package Lib {\n    part def Wheel;\n    part def Tire;\n}\n",
+            ),
+            ("car.sysml", "package Car {\n    part w : Lib::Wheel;\n}\n"),
+        ];
+        // Act
+        let got = run_on(
+            &texts,
+            EditRequest::Rename {
+                element: "Lib::Wheel".into(),
+                name: "Tire".into(),
+            },
+        );
+        // Assert
+        assert_eq!(got, Err("「Tire」は既に使われています".to_owned()));
+    }
+
     // --- 正常系 ---
 
     #[test]
@@ -381,7 +644,7 @@ mod tests {
             name: "Quick".into(),
         })
         .unwrap();
-        // Assert（書くのは要素のあるファイル。ほかのファイルの参照切れは、当てたあとも残る）
+        // Assert（Fast を指す参照はほかのファイルに無いので、書くのは要素のあるファイルだけ。もともとの参照切れは、当てたあとも残る）
         assert_eq!(got.changes.len(), 1);
         assert_eq!(
             (

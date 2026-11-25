@@ -93,7 +93,7 @@ node cli/src/main.ts export <フォルダ> --format drawio --file shop.sysml --v
 | --- | --- | --- |
 | `addElement` | `kind`・`name`・`parent` | `parent`（入れる先の要素の修飾名。ふつうは package）の中身の最後に、要素を足す |
 | `addRelation` | `kind`・`from`・`to` | 関係を足す（`satisfy`・`verify`・`frame`・`derivation`・`composition`・`flow`）。「出る側」の要素のあるファイルに書く |
-| `rename` | `element`・`name` | 名前を変え、そのファイルの中の参照も直す。ほかのファイルの参照はまだ直さない（当てたあとの問題一覧に出る） |
+| `rename` | `element`・`name` | 名前を変え、その要素を指す参照も直す。ほかのファイルに書いた参照も直すので、差分（`changes`）が複数のファイルになることがある |
 | `delete` | `element` | 要素を消す |
 | `setDoc` | `element`・`doc` | 説明を書き換える。空なら説明を消す |
 | `replaceText` | `file`・`text` | 既にあるモデルのファイルを、丸ごと書き換える |

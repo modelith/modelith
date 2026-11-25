@@ -204,7 +204,7 @@ export const TOOLS: Tool[] = [
       "Propose one change to the model without writing anything. Returns a proposalId, the text edits per file (changes), and the problems the project would have after the change. " +
       "Show the changes to the user, then call apply_edit with the proposalId to write them. Elements are named by qualified name (see list_elements). " +
       "Set type to one of: addElement (kind, name, parent), addRelation (kind, from, to), rename (element, name), delete (element), setDoc (element, doc), replaceText (file, text). " +
-      "A rename does not yet update references in other files; check the returned problems.",
+      "A rename also updates references written in other files, so changes can cover several files.",
     params: EDIT_PARAMS,
     run: ({ core, project, proposals }, args) => {
       const proposal = propose(core, project, editRequest(args));
@@ -247,7 +247,7 @@ export const TOOLS: Tool[] = [
       "Make one change to the model and write it to the model files in one step, without a separate confirmation (the server was started with --write-directly). " +
       "Returns the text edits per file (changes), the written files, and the problems of the project after the change. Elements are named by qualified name (see list_elements). " +
       "Set type to one of: addElement (kind, name, parent), addRelation (kind, from, to), rename (element, name), delete (element), setDoc (element, doc), replaceText (file, text). " +
-      "A rename does not yet update references in other files; check the returned problems. Use propose_edit to see a change without writing it.",
+      "A rename also updates references written in other files, so several files can be written. Use propose_edit to see a change without writing it.",
     params: EDIT_PARAMS,
     writes: true,
     direct: true,

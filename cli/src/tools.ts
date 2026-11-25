@@ -1,5 +1,6 @@
 // AI のクライアントに出す道具（要求 F-AI-1：読む・確かめる、F-AI-2：書く、F-AI-3：図を書き出す）。
 // 書くのは 2 段階（メンテナの判断、2026-11-20）：propose_edit は何も書かずに差分を返し、apply_edit がその提案を書き込む。
+// 確かめずに書く設定（`modelith mcp <フォルダ> --write-directly`。ADR-0024 の 4）を選んだときだけ、1 回で書く edit も出す。
 // ここは判断だけを持つ（I/O・MCP のライブラリ・wasm に頼らない）。コア・プロジェクト・書く口・提案を覚える口は引数で受け取る。
 // 説明の文は AI のクライアントが読むので、英語で書く（ADR-0027：元の言語は英語）。
 
@@ -29,6 +30,8 @@ export interface Tool {
   params: Record<string, ToolParam>;
   /** ファイルを書き換える道具なら true（省いたら、読むだけ）。 */
   writes?: boolean;
+  /** 確かめずに書く設定を選んだときだけ出す道具なら true（省いたら、いつも出す）。 */
+  direct?: boolean;
   /** 道具を動かす。結果は JSON にできる値。利用者に伝える失敗は ToolError を投げる。 */
   run(ctx: ToolContext, args: Record<string, string | undefined>): unknown;
 }
@@ -90,7 +93,21 @@ function matches(value: string, wanted: string | undefined): boolean {
   return wanted === undefined || value === wanted;
 }
 
-/** 道具の一覧（この順に AI のクライアントに示す）。 */
+/** 編集の意図の引数（propose_edit と edit で同じ）。 */
+const EDIT_PARAMS: Record<string, ToolParam> = {
+  type: { description: "The kind of change: addElement, addRelation, rename, delete, setDoc or replaceText.", required: true },
+  kind: { description: "addElement: the element kind, for example \"part def\" or \"attribute\". addRelation: satisfy, verify, frame, derivation, composition or flow." },
+  name: { description: "addElement and rename: the (new) name." },
+  parent: { description: "addElement: the qualified name of the element to add into, usually a package." },
+  from: { description: "addRelation: the qualified name of the element the relation goes out of (for satisfy, the element that satisfies)." },
+  to: { description: "addRelation: the qualified name of the element the relation goes into (for satisfy, the requirement)." },
+  element: { description: "rename, delete and setDoc: the qualified name of the element." },
+  doc: { description: "setDoc: the documentation text. An empty text removes the documentation." },
+  file: { description: "replaceText: the path of an existing model file (from list_files)." },
+  text: { description: "replaceText: the whole new text of the file." },
+};
+
+/** 道具の一覧（この順に AI のクライアントに示す）。確かめずに書く設定のときだけ出す道具も含む（出す道具は toolsFor で選ぶ）。 */
 export const TOOLS: Tool[] = [
   {
     name: "list_files",
@@ -188,25 +205,10 @@ export const TOOLS: Tool[] = [
       "Show the changes to the user, then call apply_edit with the proposalId to write them. Elements are named by qualified name (see list_elements). " +
       "Set type to one of: addElement (kind, name, parent), addRelation (kind, from, to), rename (element, name), delete (element), setDoc (element, doc), replaceText (file, text). " +
       "A rename does not yet update references in other files; check the returned problems.",
-    params: {
-      type: { description: "The kind of change: addElement, addRelation, rename, delete, setDoc or replaceText.", required: true },
-      kind: { description: "addElement: the element kind, for example \"part def\" or \"attribute\". addRelation: satisfy, verify, frame, derivation, composition or flow." },
-      name: { description: "addElement and rename: the (new) name." },
-      parent: { description: "addElement: the qualified name of the element to add into, usually a package." },
-      from: { description: "addRelation: the qualified name of the element the relation goes out of (for satisfy, the element that satisfies)." },
-      to: { description: "addRelation: the qualified name of the element the relation goes into (for satisfy, the requirement)." },
-      element: { description: "rename, delete and setDoc: the qualified name of the element." },
-      doc: { description: "setDoc: the documentation text. An empty text removes the documentation." },
-      file: { description: "replaceText: the path of an existing model file (from list_files)." },
-      text: { description: "replaceText: the whole new text of the file." },
-    },
+    params: EDIT_PARAMS,
     run: ({ core, project, proposals }, args) => {
       const proposal = propose(core, project, editRequest(args));
-      const files = proposal.changes.map((change) => ({
-        path: change.file,
-        baseVersion: change.baseVersion,
-        text: applyEdits(textOf(project, change.file), change.edits),
-      }));
+      const files = proposedFiles(project, proposal);
       // 何も変わらない提案は、書き込むものが無いので覚えない
       return files.length ? { proposalId: proposals.add({ files }), ...proposal } : proposal;
     },
@@ -238,7 +240,39 @@ export const TOOLS: Tool[] = [
       return { written: pending.files.map((f) => f.path), problems: [...unreadableReports(after), ...core.problems(after)] };
     },
   },
+  {
+    name: "edit",
+    title: "Edit the model",
+    description:
+      "Make one change to the model and write it to the model files in one step, without a separate confirmation (the server was started with --write-directly). " +
+      "Returns the text edits per file (changes), the written files, and the problems of the project after the change. Elements are named by qualified name (see list_elements). " +
+      "Set type to one of: addElement (kind, name, parent), addRelation (kind, from, to), rename (element, name), delete (element), setDoc (element, doc), replaceText (file, text). " +
+      "A rename does not yet update references in other files; check the returned problems. Use propose_edit to see a change without writing it.",
+    params: EDIT_PARAMS,
+    writes: true,
+    direct: true,
+    run: async ({ core, project, writer }, args) => {
+      // 今読んだテキストから作って、そのまま書く（提案を覚えない）
+      const proposal = propose(core, project, editRequest(args));
+      const files = proposedFiles(project, proposal);
+      for (const f of files) await writer.write(f.path, f.text);
+      return { ...proposal, written: files.map((f) => f.path) };
+    },
+  },
 ];
+
+/**
+ * AI のクライアントに出す道具を選ぶ。1 回で書く道具（edit）は、確かめずに書く設定を選んだときだけ出す（ADR-0024 の 4）。
+ *
+ * @param direct 確かめずに書く設定を選んだか（`modelith mcp <フォルダ> --write-directly`）
+ * @returns 出す道具（TOOLS の順）
+ * @example
+ * toolsFor(false).map((t) => t.name) // → […, "propose_edit", "apply_edit"]（edit は無い）
+ * toolsFor(true).map((t) => t.name)  // → […, "propose_edit", "apply_edit", "edit"]
+ */
+export function toolsFor(direct: boolean): Tool[] {
+  return TOOLS.filter((t) => direct || !t.direct);
+}
 
 /** 対象にできる要素の種類と、その図の ID。 */
 const SUBJECT_VIEWS: Record<string, SubjectView> = {
@@ -347,4 +381,23 @@ function textOf(project: ProjectInput, path: string): string {
   const file = project.files.find((f) => f.path === path);
   if (!file) throw new ToolError(`The file ${path} was not found. It may have been removed. Call propose_edit again.`);
   return file.text;
+}
+
+/**
+ * 提案の差分を当てた、ファイルごとの新しいテキストを作る。
+ *
+ * @param project 今読んだプロジェクト
+ * @param proposal 提案（ファイルごとの差分）
+ * @returns 変わるファイルごとの、パス・提案したときの版・当てたあとのテキスト。何も変わらない提案なら空
+ * @example
+ * // a.sysml の "package P;" の終わりに " " を足す提案
+ * proposedFiles(project, proposal) // → [{ path: "a.sysml", baseVersion: "…", text: "package P; " }]
+ * proposedFiles(project, { changes: [], problems: [] }) // → []
+ */
+function proposedFiles(project: ProjectInput, proposal: ReturnType<Core["propose"]>): { path: string; baseVersion: string; text: string }[] {
+  return proposal.changes.map((change) => ({
+    path: change.file,
+    baseVersion: change.baseVersion,
+    text: applyEdits(textOf(project, change.file), change.edits),
+  }));
 }

@@ -10,7 +10,7 @@ import type { EditProposal, ElementDetail, ElementSummary, ProblemReport } from 
 import { fsProjectReader, fsProjectWriter } from "./fs-project.ts";
 import { callTool, createServer } from "./mcp-server.ts";
 import { memoryProposals } from "./proposals.ts";
-import { TOOLS } from "./tools.ts";
+import { TOOLS, toolsFor } from "./tools.ts";
 import { loadWasmCore, parseResult } from "./wasm-core.ts";
 import { loadWebRenderer } from "./web-render.ts";
 
@@ -39,16 +39,26 @@ async function json<T>(name: string, args: Record<string, string> = {}): Promise
   return JSON.parse(text) as T;
 }
 
-beforeEach(async () => {
-  folder = mkdtempSync(join(tmpdir(), "modelith-mcp-"));
-  write("req.sysml", "package Req {\n    requirement def <'R1'> Safe { doc /* 安全であること */ }\n}\n");
-  write("app/brake.sysml", "package App {\n    part def Brake { port cmd : Cmd; }\n    port def Cmd;\n    satisfy Req::Safe by Brake;\n    view overview : GeneralView { expose App::Brake; }\n    part x : Nope;\n}\n");
-  const server = createServer(TOOLS, {
+/**
+ * 一時フォルダのプロジェクトを読む MCP のサーバを作り、クライアントをつなぐ（前のクライアントは閉じる）。
+ *
+ * @param direct 確かめずに書く設定（--write-directly）で動かすか
+ */
+async function connect(direct: boolean): Promise<void> {
+  await client?.close();
+  const server = createServer(toolsFor(direct), {
     core, reader: fsProjectReader(folder), writer: fsProjectWriter(folder), proposals: memoryProposals(), renderer, version: "0.0.0-test",
   });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   client = new Client({ name: "test", version: "0" });
   await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
+}
+
+beforeEach(async () => {
+  folder = mkdtempSync(join(tmpdir(), "modelith-mcp-"));
+  write("req.sysml", "package Req {\n    requirement def <'R1'> Safe { doc /* 安全であること */ }\n}\n");
+  write("app/brake.sysml", "package App {\n    part def Brake { port cmd : Cmd; }\n    port def Cmd;\n    satisfy Req::Safe by Brake;\n    view overview : GeneralView { expose App::Brake; }\n    part x : Nope;\n}\n");
+  await connect(false);
 });
 
 afterEach(async () => {
@@ -359,5 +369,49 @@ describe("callTool・parseResult", () => {
     const got = await callTool(TOOLS[0]!, { core, reader, writer: fsProjectWriter(folder), proposals: memoryProposals(), renderer }, {});
     // Assert
     expect(got).toEqual({ isError: true, content: [{ type: "text", text: "The project could not be read or written (permission denied)." }] });
+  });
+});
+
+describe("MCP のサーバ：確かめずに書く設定（--write-directly）", () => {
+  /** ファイルの今の中身を読む。 */
+  const read = (path: string): string => readFileSync(join(folder, path), "utf8");
+
+  it("F-AI-2: 設定を選ばなければ、edit は出さず、呼んでも書かない（異常系）", async () => {
+    // Arrange
+    const before = read("app/brake.sysml");
+    // Act
+    const { tools } = await client.listTools();
+    const called = await client.callTool({ name: "edit", arguments: { type: "addElement", kind: "part def", name: "Nope", parent: "App" } }).then((r) => r.isError === true, () => true);
+    // Assert
+    expect(tools.map((t) => t.name)).not.toContain("edit");
+    expect(called).toBe(true);
+    expect(read("app/brake.sysml")).toBe(before);
+  });
+
+  it("F-AI-2: 設定を選ぶと、edit を書く道具として出し、1 回で書いて、差分・書いたファイル・問題一覧を返す（正常系）", async () => {
+    // Arrange
+    await connect(true);
+    const before = read("app/brake.sysml");
+    // Act（見つからない型 Nope を、定義として足す）
+    const { tools } = await client.listTools();
+    const got = await json<EditProposal & { written: string[] }>("edit", { type: "addElement", kind: "part def", name: "Nope", parent: "App" });
+    // Assert
+    expect(tools.filter((t) => t.annotations?.readOnlyHint !== true).map((t) => t.name)).toEqual(["apply_edit", "edit"]);
+    expect(got.written).toEqual(["app/brake.sysml"]);
+    expect(got.changes.map((c) => c.file)).toEqual(["app/brake.sysml"]);
+    expect(got.problems).toEqual([]);
+    expect(read("app/brake.sysml")).toBe(before.replace("    part x : Nope;\n", "    part x : Nope;\n    part def Nope;\n"));
+  });
+
+  it("F-AI-2: 断られた編集は、理由を返し、何も書かない（異常系）", async () => {
+    // Arrange
+    await connect(true);
+    const before = read("app/brake.sysml");
+    // Act
+    const got = await call("edit", { type: "delete", element: "App::Gone" });
+    // Assert
+    expect(got.isError).toBe(true);
+    expect(got.text).toContain("The edit was refused");
+    expect(read("app/brake.sysml")).toBe(before);
   });
 });

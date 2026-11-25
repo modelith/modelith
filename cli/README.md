@@ -34,10 +34,15 @@ The server offers these tools.
 Changes are made in two steps, so that you can see them before they are written. `apply_edit` writes nothing if a file
 changed after the proposal.
 
+If you want the AI client to make many changes in a row, start the server with `--write-directly`
+(`modelith mcp /path/to/project --write-directly`). The server then also offers `edit`, which makes one change and writes
+it in one step. Only the person who starts the server can choose this; a project file cannot turn it on. Use it in a
+folder under version control, so that you can undo what was written.
+
 ## What it reads and writes
 
 - It reads only inside the project folder you give it, and does not follow symbolic links.
-- It writes only existing model files inside that folder, and only through `apply_edit`.
+- It writes only existing model files inside that folder, and only through `apply_edit` (and `edit`, when started with `--write-directly`).
 - Modelith itself sends your model nowhere. The model is seen only by the AI client you connect.
 
 ## Export a diagram

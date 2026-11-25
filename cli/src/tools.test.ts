@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Refused, type Core, type EditProposal, type EditRequest, type ElementSummary, type ProblemReport, type ProjectInput } from "./core.ts";
 import { versionOf } from "./edits.ts";
 import { memoryProposals } from "./proposals.ts";
-import { diagramRequest, editRequest, TOOLS, ToolError, unreadableReports, type Tool, type ToolContext } from "./tools.ts";
+import { diagramRequest, editRequest, TOOLS, ToolError, toolsFor, unreadableReports, type Tool, type ToolContext } from "./tools.ts";
 
 const RANGE = { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } };
 
@@ -83,14 +83,24 @@ function tool(name: string): Tool {
 describe("道具の一覧", () => {
   it("F-AI-1・F-AI-2・F-AI-3: 読む・確かめる 5 つ、図を書き出す 1 つ、提案・書き込みの 2 つの道具を、説明と引数つきで出す（正常系）", () => {
     // Act
-    const names = TOOLS.map((t) => t.name);
-    const required = TOOLS.flatMap((t) => Object.entries(t.params).filter(([, p]) => p.required).map(([n]) => `${t.name}.${n}`));
+    const tools = toolsFor(false);
+    const names = tools.map((t) => t.name);
+    const required = tools.flatMap((t) => Object.entries(t.params).filter(([, p]) => p.required).map(([n]) => `${t.name}.${n}`));
     // Assert
     expect(names).toEqual(["list_files", "list_elements", "get_element", "list_diagrams", "list_problems", "export_diagram", "propose_edit", "apply_edit"]);
     expect(required).toEqual(["get_element.qualifiedName", "export_diagram.format", "propose_edit.type", "apply_edit.proposalId"]);
     // 書くのは apply_edit だけ
-    expect(TOOLS.filter((t) => t.writes).map((t) => t.name)).toEqual(["apply_edit"]);
+    expect(tools.filter((t) => t.writes).map((t) => t.name)).toEqual(["apply_edit"]);
     expect(TOOLS.every((t) => t.title && t.description)).toBe(true);
+  });
+
+  it("F-AI-2: 確かめずに書く設定のときだけ、1 回で書く edit を足して出す（提案と同じ引数）", () => {
+    // Act
+    const direct = toolsFor(true);
+    // Assert
+    expect(direct.map((t) => t.name)).toEqual([...toolsFor(false).map((t) => t.name), "edit"]);
+    expect(direct.filter((t) => t.writes).map((t) => t.name)).toEqual(["apply_edit", "edit"]);
+    expect(tool("edit").params).toBe(tool("propose_edit").params);
   });
 });
 
@@ -368,5 +378,40 @@ describe("export_diagram", () => {
     const run = () => tool("export_diagram").run(ctx(project, { core: withNope }), { format: "svg", diagram: "Shop::nope" });
     // Assert
     expect(run).toThrow(new ToolError("The diagram was not found."));
+  });
+});
+
+describe("edit（確かめずに書く設定）", () => {
+  it("F-AI-2: 1 回で書き、差分・書いたファイル・当てたあとの問題一覧を返す。提案は覚えない（正常系）", async () => {
+    // Arrange
+    const { written, writer } = recorder();
+    const proposals = memoryProposals();
+    // Act
+    const got = await tool("edit").run(ctx(project, { writer, proposals }), { type: "rename", element: "Shop::Cart", name: "X" });
+    // Assert
+    expect(written).toEqual([["shop.sysml", "Xbc"]]);
+    expect(got).toMatchObject({ written: ["shop.sysml"], changes: [{ file: "shop.sysml" }] });
+    expect((got as EditProposal).problems.map((p) => p.diagnostic.message)).toEqual(["after"]);
+    expect(got).not.toHaveProperty("proposalId");
+  });
+
+  it("何も変わらない編集は、何も書かない（境界値）", async () => {
+    // Arrange
+    const { written, writer } = recorder();
+    // Act
+    const got = await tool("edit").run(ctx(project, { writer }), { type: "rename", element: "Shop::Cart", name: "same" });
+    // Assert
+    expect(written).toEqual([]);
+    expect(got).toMatchObject({ written: [], changes: [] });
+  });
+
+  it("断られた編集は、理由を返し、何も書かない（異常系）", async () => {
+    // Arrange
+    const { written, writer } = recorder();
+    // Act
+    const run = async () => tool("edit").run(ctx(project, { writer }), { type: "rename", element: "Nope", name: "X" });
+    // Assert
+    await expect(run()).rejects.toThrow(new ToolError("The edit was refused: 見つかりません"));
+    expect(written).toEqual([]);
   });
 });

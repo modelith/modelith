@@ -4,7 +4,7 @@
 コードを含まないチェックルールのプラグインは [チェックルール（v0 のプラグイン）](check-rules.md) を見る。
 
 型の定義元は plugin-sdk（`modelith-plugin-protocol` の `PluginManifest`・`HostMessage`・`PluginMessage`・`ModelSnapshot`）で、
-TypeScript では `@modelith/plugin-sdk`、JSON Schema では plugin-sdk の `schema/plugin-manifest.schema.json`・`host-message.schema.json`・`plugin-message.schema.json` を使う。
+TypeScript では `modelith-plugin-sdk`、JSON Schema では plugin-sdk の `schema/plugin-manifest.schema.json`・`host-message.schema.json`・`plugin-message.schema.json` を使う。
 `apiVersion` が `"0"` の間は互換を約束しない。
 
 この版で使えるのは、コマンド・モデルのチェック（診断）・テキストの変更・インポート・エクスポート・プラグイン用の保存場所（`storage`）。
@@ -86,7 +86,7 @@ CLI（`modelith check`）は TypeScript のプラグインを動かさない（�
 
 プラグインは、サンドボックス化した iframe（`sandbox="allow-scripts"`、独自のオリジンを持たない）の中の **Worker** で、**従来型のスクリプト**として動く（ESM のモジュールとしては読まない）。
 
-- `import`・`export` を書いたファイルはそのままでは動かない。依存（`@modelith/plugin-sdk` を含む）ごと 1 つのファイルにまとめる。
+- `import`・`export` を書いたファイルはそのままでは動かない。依存（`modelith-plugin-sdk` を含む）ごと 1 つのファイルにまとめる。
   例：`esbuild src/main.ts --bundle --format=iife --target=es2022 --outfile=main.js`
 - 相対パスの `import()`・`importScripts()` は使えない（読み込む元の場所が無い）。
 - プラグインのコードより先に、ホストが `EventSource`・`Worker`・`SharedWorker` を取り除く。
@@ -96,7 +96,7 @@ CLI（`modelith check`）は TypeScript のプラグインを動かさない（�
 `connectToHost(self)` で、ホストとやり取りする口を作る。メッセージは `type` で種類を区別する JSON（型は `HostMessage`・`PluginMessage`）。
 
 ```ts
-import { connectToHost, type ModelSnapshot } from "@modelith/plugin-sdk";
+import { connectToHost, type ModelSnapshot } from "modelith-plugin-sdk";
 
 const host = connectToHost(self);
 let version = 0;

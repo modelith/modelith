@@ -10,7 +10,7 @@ Modelith とその関連成果物のバージョンの付け方と、各バー�
 | 系統 | 対象 | 表記の例 |
 | --- | --- | --- |
 | **アプリ** | Modelith 本体（Web アプリ・CLI・コアのクレート）。リポジトリ内のすべてで同じ番号を使う | `0.1.0` |
-| **プラグイン SDK** | `modelith-plugin-protocol`（crate）と `@modelith/plugin-sdk`（npm）。両者で同じ番号を使う | `0.1.0` |
+| **プラグイン SDK** | `modelith-plugin-protocol`（crate）と `modelith-plugin-sdk`（npm）。両者で同じ番号を使う | `0.1.0` |
 | **ファイル形式** | 図の配置ファイル（`*.layout.json`）の `formatVersion` | `1` |
 
 - アプリと SDK は別々に番号が進む。アプリがどの範囲の SDK（プラグイン API）に対応するかはリリースノートに書く。

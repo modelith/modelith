@@ -10,12 +10,17 @@ with synchronized text and diagram editing.
 This package is part of the Modelith project. Its source is in the
 [`cli/` folder of modelith/modelith](https://github.com/modelith/modelith/tree/dev/cli).
 
+## Preview versions
+
+There is no stable release of this package yet. Until there is one, use the preview with `modelith-cli@next`
+(plain `npx modelith-cli` does not run). The commands below are written that way.
+
 ## Use with an AI client
 
 Register the server with your client. For Claude Code:
 
 ```bash
-claude mcp add modelith -- npx modelith-cli mcp /path/to/project
+claude mcp add modelith -- npx modelith-cli@next mcp /path/to/project
 ```
 
 The server offers these tools.
@@ -48,9 +53,9 @@ folder under version control, so that you can undo what was written.
 ## Export a diagram
 
 ```bash
-npx modelith-cli export /path/to/project --format svg --diagram Shop::overview > overview.svg
-npx modelith-cli export /path/to/project --format svg --subject Shop::Cart > cart.svg
-npx modelith-cli export /path/to/project --format drawio --file shop.sysml --view structure --out shop.drawio
+npx modelith-cli@next export /path/to/project --format svg --diagram Shop::overview > overview.svg
+npx modelith-cli@next export /path/to/project --format svg --subject Shop::Cart > cart.svg
+npx modelith-cli@next export /path/to/project --format drawio --file shop.sysml --view structure --out shop.drawio
 ```
 
 ## Requirements

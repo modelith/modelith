@@ -3,7 +3,7 @@
 //! 各段は、前の段の宣言の本体、その型の定義の本体、型の定義が特殊化した定義の本体、前の段が部分集合・再定義した相手の順に探す。
 //! 探す先がファイルの外（標準ライブラリなど）にあり、中身を確かめられないときは、見つからないとは言わない。
 
-use crate::project::text::ref_segs;
+use crate::project::text::{is_qualified, ref_segs};
 use std::collections::HashSet;
 
 use super::Builder;
@@ -220,7 +220,7 @@ impl Builder<'_> {
                 _ => Vec::new(),
             };
         }
-        if reference.contains("::") {
+        if is_qualified(reference) {
             return self.lookup(reference, ctx).into_iter().collect();
         }
         let nm = crate::project::text::unquote(reference);
@@ -338,7 +338,7 @@ impl Builder<'_> {
                 .into_iter()
                 .collect();
         }
-        let plain = !s.target.contains('.') && !s.target.contains("::");
+        let plain = ref_segs(&s.target).len() == 1 && !is_qualified(&s.target);
         match e.pe {
             Some(pe) if s.op == "redefines" && plain => {
                 self.inherited_named(pe, crate::project::text::unquote(&s.target), depth + 1)

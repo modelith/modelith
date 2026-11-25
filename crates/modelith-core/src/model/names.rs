@@ -6,7 +6,7 @@
 //! 別名（`alias B for A;`、AliasMember、8.2.2.5）は、書いた名前空間の中身と同じように見え、指す先に置き換わる。
 
 use super::Builder;
-use crate::project::text::unquote;
+use crate::project::text::{is_qualified, path_segs, unquote};
 use crate::project::{Alias, ParseResult};
 
 /// 解析結果の中で、参照（修飾名・特徴の連鎖）を、書いた場所から解決する（`project` の後処理が使う）。
@@ -89,9 +89,10 @@ impl Builder<'_> {
         if depth > MAX_ALIAS_DEPTH {
             return None;
         }
-        let mut segs = path.split("::").map(unquote);
+        let all = path_segs(path);
+        let mut segs = all.iter().copied();
         let first = segs.next().unwrap_or("");
-        if !path.contains("::") {
+        if all.len() == 1 {
             return self.find_first_at(first, ctx, depth);
         }
         let mut cur = self.visible_named(first, ctx, depth)?;
@@ -270,8 +271,8 @@ impl Builder<'_> {
     /// def_of("Nope::A", Some(H の番号)) → None
     /// ```
     pub(crate) fn def_of(&self, path: &str, ctx: Option<usize>) -> Option<usize> {
-        if !path.contains("::") {
-            return self.def_named(path, ctx);
+        if !is_qualified(path) {
+            return self.def_named(unquote(path), ctx);
         }
         self.lookup(path, ctx).filter(|&i| self.e(i).is_def)
     }

@@ -2688,3 +2688,83 @@ fn a_filter_that_cannot_be_read_is_reported_and_not_applied() {
     );
     assert!(m.problems.iter().all(|p| p.kind == Some("unsupported")));
 }
+
+#[test]
+fn quoted_name_that_contains_colons_is_one_name() {
+    // Arrange（#324。同値分割：型・定義の特殊化・別名・修飾した型。引用名の中の `::` は段の区切りではない）
+    let text = "package P { part def 'has::colons'; part y : 'has::colons'; part def Z :> 'has::colons'; \
+                alias T for 'has::colons'; part w : T; }\n\
+                package Q { part v : P::'has::colons'; }";
+    // Act
+    let (p, m) = run(text);
+    // Assert
+    assert_eq!(m.problems, []);
+    let edges: Vec<(&str, &str, &str)> = m
+        .edges
+        .iter()
+        .map(|e| (e.kind, e.from.as_str(), e.to.as_str()))
+        .collect();
+    assert!(p.entries.iter().any(|e| e.name == "has::colons"));
+    assert_eq!(
+        edges,
+        [
+            ("defined", "y", "has::colons"),
+            ("defined", "w", "has::colons"),
+            ("defined", "v", "has::colons"),
+            ("specialize", "Z", "has::colons"),
+        ]
+    );
+}
+
+#[test]
+fn missing_quoted_name_with_colons_is_reported_as_one_name() {
+    // Arrange（異常系：無い型。引用名の中の `::` を修飾とみなさない）
+    let (_, m) = run(
+        "package P { part y : 'no::such'; part def Z :> 'no::such'; alias T for 'no::such'; import 'no::such'::*; }",
+    );
+    // Act
+    let messages: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    // Assert
+    assert_eq!(
+        messages,
+        [
+            "型「no::such」が見つかりません（y）",
+            "引き継ぐ定義「no::such」が見つかりません（Z）",
+            "別名「T」の指す先「no::such」が見つかりません（alias）",
+            "インポートする相手「no::such」が見つかりません（import）",
+        ]
+    );
+}
+
+#[test]
+fn relations_and_views_resolve_a_quoted_name_that_contains_colons() {
+    // Arrange（#324。同値分割：満たす・依存・図に出す要素・連鎖の最初の段と後ろの段）
+    let text = "package P { requirement def 'r::1'; part def 'a::b' { part 'c::d'; } part x : 'a::b'; part z :> x.'c::d'; \
+                satisfy 'r::1' by x; dependency from x to 'a::b'; \
+                view v { expose P::'a::b'; expose 'r::1'; } }";
+    // Act
+    let (_, m) = run(text);
+    let edges: Vec<(&str, &str, &str)> = m
+        .edges
+        .iter()
+        .filter(|e| e.kind != "defined")
+        .map(|e| (e.kind, e.from.as_str(), e.to.as_str()))
+        .collect();
+    // Assert
+    assert_eq!(m.problems, []);
+    assert!(edges.contains(&("satisfy", "x", "r::1")), "{edges:?}");
+    assert!(edges.contains(&("dependency", "x", "a::b")), "{edges:?}");
+}
+
+#[test]
+fn missing_relation_target_with_colons_is_shown_without_quotes_in_views() {
+    // Arrange（異常系：図に出す要素が無い）
+    let (_, m) = run("package P { view v { expose 'no::such'; } }");
+    // Act
+    let messages: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    // Assert
+    assert_eq!(
+        messages,
+        ["図「v」に出す要素「no::such」が見つかりません（expose）"]
+    );
+}

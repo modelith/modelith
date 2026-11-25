@@ -208,25 +208,158 @@ pub fn representation_body(raw: &str) -> String {
     }
 }
 
-/// 修飾名の最後の部分（`A::B` → `B`）。
+/// 修飾名（`A::B::C`）の最後の段。引用名の中の `::` では分けない（#324）。引用符は外さない。
 ///
 /// # 引数
 ///
-/// - `s`：修飾名（`::` で区切った名前）
+/// - `s`：修飾名（引用名を含んでよい）
 ///
 /// # 戻り値
 ///
-/// 最後の `::` より後ろ。`::` が無ければ `s` 全体。
+/// 最後の `::`（引用名の外）より後ろ。`::` が無ければ `s` のまま。
 ///
 /// # 例
 ///
 /// ```text
-/// last_segment("A::B::C") → "C"
-/// last_segment("A")       → "A"
-/// last_segment("A::")     → ""
+/// last_segment("A::B::C")     → "C"
+/// last_segment("A")           → "A"
+/// last_segment("A::")         → ""
+/// last_segment("P::'a::b'")   → "'a::b'"
 /// ```
 pub fn last_segment(s: &str) -> &str {
-    s.rsplit("::").next().unwrap_or(s)
+    path_cuts(s).last().map_or(s, |&at| &s[at + 2..])
+}
+
+/// 修飾名の中の、段を分ける `::`（引用名の外にあるもの）の位置。
+///
+/// # 引数
+///
+/// - `s`：修飾名（引用名を含んでよい）
+///
+/// # 戻り値
+///
+/// 段を分ける `::` の始まりのバイト位置を、前から順に。
+///
+/// # 例
+///
+/// ```text
+/// path_cuts("A::B::C")   → [1, 4]
+/// path_cuts("P::'a::b'") → [1]      // 引用名の中の :: は数えない
+/// path_cuts("A")         → []
+/// ```
+fn path_cuts(s: &str) -> Vec<usize> {
+    let mut out = Vec::new();
+    let (mut quoted, mut escaped, mut skip) = (false, false, false);
+    for (i, c) in s.char_indices() {
+        if skip {
+            skip = false;
+            continue;
+        }
+        match c {
+            _ if escaped => escaped = false,
+            '\\' if quoted => escaped = true,
+            '\'' => quoted = !quoted,
+            ':' if !quoted && s[i + 1..].starts_with(':') => {
+                out.push(i);
+                skip = true;
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// 修飾名（`A::B`）を段に分け、各段の引用符を外す。引用名の中の `::` では分けない（#324）。
+///
+/// # 引数
+///
+/// - `s`：修飾名（引用名を含んでよい）
+///
+/// # 戻り値
+///
+/// 段（引用符を外したもの）の並び。`s` が空なら空の段 1 つ（`str::split` と同じ）。
+///
+/// # 例
+///
+/// ```text
+/// path_segs("A::B")        → ["A", "B"]
+/// path_segs("P::'a::b'")   → ["P", "a::b"]
+/// path_segs("'a::b'")      → ["a::b"]
+/// path_segs("")            → [""]
+/// ```
+pub fn path_segs(s: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    for at in path_cuts(s) {
+        out.push(unquote(&s[start..at]));
+        start = at + 2;
+    }
+    out.push(unquote(&s[start..]));
+    out
+}
+
+/// 修飾名か（段が 2 つ以上あるか）。引用名の中の `::` は数えない（#324）。
+///
+/// # 引数
+///
+/// - `s`：名前か修飾名
+///
+/// # 戻り値
+///
+/// 引用名の外に `::` があれば `true`。
+///
+/// # 例
+///
+/// ```text
+/// is_qualified("A::B")   → true
+/// is_qualified("A")      → false
+/// is_qualified("'a::b'") → false
+/// ```
+pub fn is_qualified(s: &str) -> bool {
+    !path_cuts(s).is_empty()
+}
+
+/// 修飾名を、画面の文に書く形にする（`::` を含む名前を引用名のまま持つ修飾名から、引用符を外す）。
+///
+/// # 引数
+///
+/// - `s`：修飾名（`path_seg` でつないだもの）
+///
+/// # 戻り値
+///
+/// 各段の引用符を外し、`::` でつないだ文字列。
+///
+/// # 例
+///
+/// ```text
+/// shown_path("P::A")       → "P::A"
+/// shown_path("P::'a::b'")  → "P::a::b"
+/// ```
+pub fn shown_path(s: &str) -> String {
+    path_segs(s).join("::")
+}
+
+/// 修飾名の文字列に入れる段。名前に `::` があれば引用名のまま、無ければ引用符を外す（#324）。
+/// こうすると、ふつうの名前の修飾名はこれまでと同じ文字列になり、`::` を含む名前だけが段の区切りと見分けられる。
+///
+/// # 引数
+///
+/// - `token`：名前のトークンの文字列（基本名か引用名）
+///
+/// # 戻り値
+///
+/// 修飾名に入れる文字列。
+///
+/// # 例
+///
+/// ```text
+/// path_seg("A")        → "A"
+/// path_seg("'a b'")    → "a b"
+/// path_seg("'a::b'")   → "'a::b'"
+/// ```
+pub fn path_seg(token: &str) -> &str {
+    let plain = unquote(token);
+    if plain.contains("::") { token } else { plain }
 }
 
 /// 引用名の引用符を外す。`\'` などのエスケープは解かない。
@@ -253,6 +386,7 @@ pub fn unquote(s: &str) -> &str {
 }
 
 /// 特徴の連鎖（`a.b.c`）を段に分け、各段の引用符を外す。引用名の中の `.` では分けない（8.2.2.3・8.2.2.6。#230）。
+/// 最初の段は修飾名でもよいので、修飾名（`'P 1'::A`）と、`::` を含む引用名（`'a::b'`）は書いたまま返す（`lookup` が段に分けて引用符を外す。#324）。
 ///
 /// # 引数
 ///
@@ -269,6 +403,8 @@ pub fn unquote(s: &str) -> &str {
 /// ref_segs("'a 1'.p")    → ["a 1", "p"]
 /// ref_segs("'x.y'.z")    → ["x.y", "z"]
 /// ref_segs("")           → [""]
+/// ref_segs("'a::b'.'c::d'") → ["'a::b'", "c::d"]   // 最初の段だけ、引用符を残す
+/// ref_segs("'P 1'::A.x") → ["'P 1'::A", "x"]
 /// ```
 pub fn ref_segs(s: &str) -> Vec<&str> {
     let mut out = Vec::new();
@@ -279,14 +415,21 @@ pub fn ref_segs(s: &str) -> Vec<&str> {
             '\\' if quoted => escaped = true,
             '\'' => quoted = !quoted,
             '.' if !quoted => {
-                out.push(unquote(&s[start..i]));
+                out.push(&s[start..i]);
                 start = i + 1;
             }
             _ => {}
         }
     }
-    out.push(unquote(&s[start..]));
-    out
+    out.push(&s[start..]);
+    // 最初の段だけは修飾名でもよい。修飾名と、`::` を含む引用名は、段の区切りを見分けられるよう引用符を残す（#324）
+    out.iter()
+        .enumerate()
+        .map(|(n, seg)| {
+            let keep = n == 0 && (is_qualified(seg) || unquote(seg).contains("::"));
+            if keep { seg } else { unquote(seg) }
+        })
+        .collect()
 }
 
 /// 頭の修飾（暫定コアの MOD_RE に、alpha.7 で `constant`・`variant`・`snapshot`・`timeslice` を足したもの）。
@@ -618,6 +761,42 @@ pub fn first_word(head: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_helpers_do_not_split_inside_a_quoted_name() {
+        // 同値クラス: 基本名だけ・引用名（:: なし）・:: を含む引用名・エスケープした引用符、境界値: 空・末尾の ::
+        assert_eq!(path_segs("A::B"), ["A", "B"]);
+        assert_eq!(path_segs("'P 1'::'a b'"), ["P 1", "a b"]);
+        assert_eq!(path_segs("P::'a::b'::c"), ["P", "a::b", "c"]);
+        assert_eq!(path_segs("'it\\'s::x'::y"), ["it\\'s::x", "y"]);
+        assert_eq!(path_segs(""), [""]);
+        assert_eq!(last_segment("A::B::C"), "C");
+        assert_eq!(last_segment("P::'a::b'"), "'a::b'");
+        assert_eq!(last_segment("A::"), "");
+        assert_eq!(last_segment("A"), "A");
+        assert!(is_qualified("A::B"));
+        assert!(!is_qualified("'a::b'"));
+        assert!(!is_qualified("A"));
+    }
+
+    #[test]
+    fn path_seg_keeps_quotes_only_for_a_name_that_contains_colons() {
+        // 同値クラス: 基本名・引用名（:: なし）・:: を含む引用名
+        assert_eq!(path_seg("A"), "A");
+        assert_eq!(path_seg("'a b'"), "a b");
+        assert_eq!(path_seg("'a::b'"), "'a::b'");
+        assert_eq!(shown_path("P::'a::b'"), "P::a::b");
+        assert_eq!(shown_path("P::A"), "P::A");
+    }
+
+    #[test]
+    fn ref_segs_keeps_the_first_step_as_written_when_it_is_a_path() {
+        // 同値クラス: 最初の段が修飾名・:: を含む引用名・ふつうの引用名、後ろの段の :: を含む引用名（#324）
+        assert_eq!(ref_segs("'a::b'.'c::d'"), ["'a::b'", "c::d"]);
+        assert_eq!(ref_segs("'P 1'::A.x"), ["'P 1'::A", "x"]);
+        assert_eq!(ref_segs("X::R.a"), ["X::R", "a"]);
+        assert_eq!(ref_segs("'a b'.c"), ["a b", "c"]);
+    }
 
     #[test]
     fn ref_segs_splits_outside_quotes_and_unquotes_each_step() {

@@ -2794,3 +2794,83 @@ fn flow_end_may_be_a_port_of_the_type_of_a_usage() {
         1
     );
 }
+
+// ---- 同じ場所の同じ名前（F-EDIT-5・#326） ----
+
+/// 問題一覧のうち、同じ名前を知らせる文。
+fn duplicate_msgs(m: &Model) -> Vec<&str> {
+    m.problems
+        .iter()
+        .filter(|p| p.msg.contains("既に使われています"))
+        .map(|p| p.msg.as_str())
+        .collect()
+}
+
+#[test]
+fn second_element_with_the_same_name_in_the_same_owner_is_reported() {
+    // Arrange（package の直下に同じ名前の定義が 2 つ）
+    let text = "package P { part def A; part def A; }";
+    // Act
+    let (_, m) = run(text);
+    // Assert（2 つめの位置で、エラーとして知らせる）
+    let found: Vec<_> = m
+        .problems
+        .iter()
+        .filter(|p| p.msg.contains("既に使われています"))
+        .collect();
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        found[0].msg,
+        "「A」という名前は、「P」の中で既に使われています。どちらかの名前を変えてください"
+    );
+    assert_eq!(found[0].pos, text.rfind("part def A").expect("2 つめ"));
+    assert_eq!(found[0].kind, None);
+}
+
+#[test]
+fn every_element_after_the_first_with_the_same_name_is_reported() {
+    // Arrange（同値分割：3 つ・定義と使用・定義の中の特性・package の外）
+    let three = "package P { part def A; part def A; part def A; }";
+    let def_and_usage = "package P { part def A; part A : A; }";
+    let features = "package P { part def B { attribute m; attribute m; } }";
+    let top = "package P; package P;";
+    // Act・Assert
+    assert_eq!(duplicate_msgs(&run(three).1).len(), 2);
+    assert_eq!(duplicate_msgs(&run(def_and_usage).1).len(), 1);
+    assert_eq!(
+        duplicate_msgs(&run(features).1),
+        ["「m」という名前は、「B」の中で既に使われています。どちらかの名前を変えてください"]
+    );
+    assert_eq!(
+        duplicate_msgs(&run(top).1),
+        ["「P」という名前は、同じ場所で既に使われています。どちらかの名前を変えてください"]
+    );
+}
+
+#[test]
+fn same_name_is_not_reported_when_it_does_not_clash() {
+    // Arrange（境界値：別の持ち主・引き継いだ名前・名前を借りた宣言・名前の無い宣言）
+    for text in [
+        "package P { part def A; } package Q { part def A; }",
+        "package P { part def A { part x; } part def B :> A { part x; } }",
+        "package P { part def A { attribute m; } part def B :> A { attribute :>> m; attribute :>> m; } }",
+        "package P { action def F { action y; } part def H { action x : F; perform x.y; perform x.y; } }",
+        "package P { part def A; part : A; part : A; }",
+    ] {
+        // Act
+        let (_, m) = run(text);
+        // Assert
+        assert!(duplicate_msgs(&m).is_empty(), "{text}: {:?}", m.problems);
+    }
+}
+
+#[test]
+fn same_name_in_another_file_is_not_reported() {
+    // Arrange（同じ名前の package を 2 つのファイルに分けて書き、同じ名前の定義もある）
+    let focus = "package P { part def A; }";
+    let other = "package P { part def A; part def B; part def B; }";
+    // Act
+    let m = run_files(focus, &[other]);
+    // Assert（ほかのファイルの中の重なりは、そのファイルを表示したときに知らせる）
+    assert!(duplicate_msgs(&m).is_empty(), "{:?}", m.problems);
+}

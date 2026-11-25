@@ -1658,3 +1658,21 @@ describe("メタクラスのライブラリの型（Systems Library の SysML・
     expect(ps).toEqual([]);
   });
 });
+
+describe("同じ名前空間の中の名前は区別できること（KerML 8.3.2.1.4 Namespace の validateNamespaceDistinguishability）", () => {
+  it("同じ持ち主の直下に同じ名前の要素が 2 つあれば、2 つめを問題にする（以前は何も出なかった。#326）", () => {
+    // Arrange
+    const text = "package P { part def A; part def A; }";
+    // Act
+    const ps = problems(text);
+    // Assert
+    expect(ps).toEqual(["「A」という名前は、「P」の中で既に使われています。どちらかの名前を変えてください"]);
+  });
+
+  it("別の持ち主の同じ名前と、名前を書かずに再定義した特性（:>> m）は問題にしない", () => {
+    // Arrange（:>> m の名前は、再定義する特性から借りたもの。8.2.2.6.2 の OwnedRedefinition）
+    const text = "package P { part def A { attribute m; } part def B :> A { attribute :>> m; attribute :>> m; } part def C { attribute m; } }";
+    // Act・Assert
+    expect(problems(text)).toEqual([]);
+  });
+});

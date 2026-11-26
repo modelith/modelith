@@ -20,6 +20,7 @@ import { CC, curLayout, nodeByKey, phaseLabel } from "./views";
 import type { Pos } from "../render/layout";
 import { isPackageName, packageNameFor } from "./new-package";
 import { renamedMessage } from "./rename-text";
+import { t } from "../l10n";
 
 /**
  * 定義の中で、まだ使われていない子の名前を作る。base が使われていれば、後ろに 2 から順に番号を付ける。
@@ -77,18 +78,18 @@ const ctxKey = (): string | undefined => CC().ctx?.key;
  */
 async function askPackageName(): Promise<string | null> {
   const r = await ask(
-    "パッケージを作成します",
-    "要素はパッケージ（package）の中に配置します。このファイルにはまだパッケージが無いため、名前を付けて作成し、その中に配置します。",
+    t("app-package-create-title"),
+    t("app-package-create-text"),
     [
-      { id: "cancel", label: "やめる" },
-      { id: "ok", label: "作成して配置", kind: "primary" },
+      { id: "cancel", label: t("app-dialog-cancel") },
+      { id: "ok", label: t("app-package-create-confirm"), kind: "primary" },
     ],
-    { value: packageNameFor(shownDocName()), label: "パッケージ名" },
+    { value: packageNameFor(shownDocName()), label: t("app-package-name-label") },
   );
   if (r?.id !== "ok") return null;
   const name = r.value.trim();
   if (!isPackageName(name)) {
-    toast("パッケージ名は、英字か _ で始め、英字・数字・_ だけで付けてください");
+    toast(t("app-package-name-invalid"));
     return null;
   }
   return name;
@@ -118,7 +119,7 @@ export const OPS = {
     if (kind === "occurrence def" && S.view === "seq") {
       S.seqCtx = name;
       setText(r.text, { changeAt: r.at, flash: r.flash });
-      toast(`シナリオ「${name}」を追加しました。上のパレットの「ライフラインを追加」から登場する部品を置いてください`);
+      toast(t("app-scenario-added", { name }));
       return;
     }
     curLayout().pos[name] = pos;
@@ -129,7 +130,7 @@ export const OPS = {
     // 作成した図に置いたときは、その図にも入れる（F-VIEW-8）
     const added = S.P.entries.find((e) => e.kind === kind && e.name === name);
     if (added && editableView()) await addToView(added, undefined, { quiet: true });
-    toast(`${kindLabel(kind)}「${name}」を追加しました`);
+    toast(t("app-node-added", { kind: kindLabel(kind), name }));
     startRename();
   },
 
@@ -143,7 +144,7 @@ export const OPS = {
   async addUsage(type: string, pos: Pos): Promise<void> {
     const c = CC();
     if (!c.ctx) {
-      toast("追加先がありません");
+      toast(t("app-usage-no-target"));
       return;
     }
     const r = await perform({ op: "addUsage", ctx: c.ctx.key, type });
@@ -154,7 +155,7 @@ export const OPS = {
     S.sel = (S.view === "ibd" ? "u:" : "l:") + nm;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     if (S.view === "ibd") commitLayout();
-    toast(`${c.ctx.name} に部品「${nm}」（${type}）を追加しました`);
+    toast(t("app-usage-added", { owner: c.ctx.name, name: nm, type }));
   },
 
   /**
@@ -174,7 +175,7 @@ export const OPS = {
     const r = await perform({ op: "setAttribute", key: n.key, ...(attr === null ? {} : { attr }), name, type, value, ctx: ctxKey() });
     if (!r) return false;
     setText(r.text, { changeAt: r.at, flash: r.flash });
-    toast(attr === null ? `「${n.name}」に属性「${name.trim()}」を足しました` : `属性「${name.trim()}」を書き換えました`);
+    toast(attr === null ? t("app-attribute-added", { owner: n.name, name: name.trim() }) : t("app-attribute-changed", { name: name.trim() }));
     return true;
   },
 
@@ -191,7 +192,7 @@ export const OPS = {
     const r = await perform({ op: "removeAttribute", key: n.key, attr, ctx: ctxKey() });
     if (!r) return false;
     setText(r.text, { changeAt: r.at, flash: r.flash });
-    toast(`属性「${attr}」を消しました`);
+    toast(t("app-attribute-removed", { name: attr }));
     return true;
   },
 
@@ -279,7 +280,7 @@ export const OPS = {
     S.sel = null;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
-    toast(n.note ? "メモを削除しました" : `「${n.flow ? flowName(n) : n.state ? stateName(n) : n.name}」を削除しました`);
+    toast(n.note ? t("app-note-deleted") : t("app-node-deleted", { name: n.flow ? flowName(n) : n.state ? stateName(n) : n.name }));
   },
 
   /**
@@ -290,14 +291,14 @@ export const OPS = {
    */
   async deleteEdge(ed: ModelEdge): Promise<void> {
     if (ed.kind === "annotate") {
-      toast("メモの線だけは削除できません。メモを選んで削除してください");
+      toast(t("app-note-edge-cannot-delete"));
       return;
     }
     const r = await perform({ op: "deleteEdge", id: ed.id, ctx: ctxKey() });
     if (!r) return;
     S.selEdge = null;
     setText(r.text, { changeAt: r.at, flash: r.flash });
-    toast("関係を削除しました");
+    toast(t("app-edge-deleted"));
   },
 
   /**
@@ -312,15 +313,15 @@ export const OPS = {
     const wire = S.wire;
     const portOf = (sp: { pin: string | null } | null | undefined): string | null => (sp?.pin?.startsWith("port:") ? sp.pin.slice(5) : null);
     const r = await perform({ op: "connect", rel, from: a.key, to: b.key, fromPort: wire ? portOf(wire.from) : null, toPort: wire ? portOf(wire.to) : null, ctx: ctxKey() });
-    const what = {
-      comp: `「${a.name} が ${b.name} を${kindLabel(KW_FOR[b.kind] ?? "part")}として持つ」`,
-      satisfy: `「${a.name} が ${b.name} を満たす」`,
-      verify: `「${a.name} で ${b.name} を検証する」`,
-      frame: `「${a.name} が関心事 ${b.name} を扱う」`,
-      derive: `「${a.name} を ${b.name} から導出する」`,
-      flow: `「${a.name} から ${b.name} への流れ」`,
-      succession: `「${flowName(a)} の後に ${flowName(b)}」の順序`,
-      transition: `「${stateName(a)} から ${stateName(b)} へ」の遷移`,
+    const added = {
+      comp: t("app-connected-comp", { from: a.name, to: b.name, kind: kindLabel(KW_FOR[b.kind] ?? "part") }),
+      satisfy: t("app-connected-satisfy", { from: a.name, to: b.name }),
+      verify: t("app-connected-verify", { from: a.name, to: b.name }),
+      frame: t("app-connected-frame", { from: a.name, to: b.name }),
+      derive: t("app-connected-derive", { from: a.name, to: b.name }),
+      flow: t("app-connected-flow", { from: a.name, to: b.name }),
+      succession: t("app-connected-succession", { from: flowName(a), to: flowName(b) }),
+      transition: t("app-connected-transition", { from: stateName(a), to: stateName(b) }),
     }[rel];
     if (!r) return;
     const before = new Set([...S.M.edges, ...CC().edges].map((e) => e.id));
@@ -336,7 +337,7 @@ export const OPS = {
         commitLayout();
       }
     }
-    toast(`${what}を追加しました`);
+    toast(added);
   },
 };
 
@@ -365,7 +366,7 @@ export const MSGOPS = {
     render();
     highlight();
     renderInspector();
-    toast(`メッセージ「${nm}」を追加しました`);
+    toast(t("app-message-added", { name: nm }));
   },
 
   /**
@@ -431,7 +432,7 @@ export const PHASEOPS = {
       return;
     }
     setText(r.text, { changeAt: r.at, flash: r.flash });
-    toast(value ? `${n.name} を「${phaseLabel(value)}」にしました` : `${n.name} のフェーズ指定を外しました`);
+    toast(value ? t("app-phase-set", { name: n.name, phase: phaseLabel(value) }) : t("app-phase-cleared", { name: n.name }));
   },
 
   /**
@@ -448,7 +449,7 @@ export const PHASEOPS = {
     const r = await perform({ op: "initPhases", newPackage });
     if (!r) return;
     setText(r.text, { changeAt: r.at, flash: r.flash });
-    toast("フェーズの定義を追加しました。要素を選んでフェーズを設定できます");
+    toast(t("app-phases-initialized"));
   },
 };
 
@@ -538,12 +539,12 @@ export function alignSel(mode: AlignMode): void {
   const L = curLayout().pos;
   const ns = selNodes().filter((n) => L[n.key]);
   if (ns.length < 2) {
-    toast("2 個以上選ぶと整列できます");
+    toast(t("app-align-need-two"));
     return;
   }
   align(mode, ns, L);
   commitLayout();
-  toast(`${ns.length} 個を整列しました`);
+  toast(t("app-aligned", { count: String(ns.length) }));
 }
 
 /**
@@ -564,7 +565,7 @@ export async function deleteSel(): Promise<void> {
   clearSel();
   setText(r.text, { changeAt: r.at, flash: r.flash });
   commitLayout();
-  toast(`${ns.length} 個の定義をテキストから削除しました`);
+  toast(t("app-deleted-many", { count: String(ns.length) }));
 }
 
 /**
@@ -584,5 +585,5 @@ export async function setPhaseSel(value: string): Promise<void> {
   const r = await perform({ op: "setPhase", keys: ns.map((n) => n.key), value, ctx: ctxKey() });
   if (!r) return;
   setText(r.text, { changeAt: r.at, flash: r.flash });
-  toast(`${ns.length} 個を「${phaseLabel(value)}」にしました`);
+  toast(t("app-phase-set-many", { count: String(ns.length), phase: phaseLabel(value) }));
 }

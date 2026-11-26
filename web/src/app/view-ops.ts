@@ -10,6 +10,7 @@ import { closeViewTabs, openModelView, saveTabs } from "./panels";
 import { S } from "./state";
 import { commitLayout, setText, settled, toast } from "./sync";
 import { CC, curLayout, curView, modelView } from "./views";
+import { t } from "../l10n";
 
 /**
  * 自動の図から、保存する図の描き方を決める。「振る舞い」の図は、状態遷移の図（StateTransitionView）が状態定義 1 つの遷移を描くので、
@@ -76,30 +77,30 @@ function suggestName(base: string): string {
 export async function createDiagram(): Promise<void> {
   const pkg = S.P.entries.find((e) => e.kind === "package" && inOpenFile(e));
   if (!pkg) {
-    toast("図を置くパッケージがありません。先に要素を追加してパッケージを作ってください");
+    toast(t("app-diagram-no-package"));
     return;
   }
   const c = CC();
   const asIs = !S.modelView && c.nodes.length > 0;
   const options: AskOption[] = [
-    ...(asIs ? [{ id: "current", label: `今の図のまま（${curView().label}）`, note: "表示中の図の要素と配置のまま作成します" }] : []),
-    ...DIAGRAM_KINDS.map((k) => ({ id: k.id, label: k.label, note: k.note, confirm: k.def ? "次へ" : "作成" })),
+    ...(asIs ? [{ id: "current", label: t("app-diagram-as-is", { label: curView().label }), note: t("app-diagram-as-is-note") }] : []),
+    ...DIAGRAM_KINDS.map((k) => ({ id: k.id, label: k.label, note: k.note, confirm: k.def ? t("app-diagram-next") : t("app-diagram-create") })),
   ];
   let option = options[0]?.id ?? "general";
-  let value = suggestName(asIs ? curView().diagramName : "新しい図");
+  let value = suggestName(asIs ? curView().diagramName : t("app-diagram-default-name"));
   // 描く対象は、図の種類ごとに一度だけ選ぶ（名前を断られて尋ね直しても、新しく作った定義を重ねない）
   const picked = new Map<string, string[]>();
   for (;;) {
     const r = await ask(
-      "新しい図を作成",
-      "図の名前と種類を選んでください。作成した図は、サイドバーの「図」と＋メニューの「作成した図」からいつでも開けます。",
+      t("app-diagram-create-title"),
+      t("app-diagram-create-text"),
       [
-        { id: "cancel", label: "やめる" },
-        { id: "ok", label: "作成", kind: "primary" },
+        { id: "cancel", label: t("app-dialog-cancel") },
+        { id: "ok", label: t("app-diagram-create"), kind: "primary" },
       ],
-      { value, label: "図の名前" },
+      { value, label: t("app-diagram-name-label") },
       undefined,
-      { label: "図の種類", value: option, options },
+      { label: t("app-diagram-kind-label"), value: option, options },
     );
     if (r?.id !== "ok") return;
     // コアが名前を断ったら（既にある図・パッケージ・要素と同じ名前など）、入れた名前と種類のまま尋ね直す（#266）
@@ -120,7 +121,7 @@ export async function createDiagram(): Promise<void> {
     setText(ins.text, { changeAt: ins.at, flash: ins.flash });
     await settled();
     openModelView(name);
-    toast(kind.def ? `図「${name}」を作成しました` : `空の図「${name}」を作成しました。モデルのツリーから要素を入れてください`);
+    toast(kind.def ? t("app-diagram-created", { name }) : t("app-diagram-created-empty", { name }));
     return;
   }
 }
@@ -146,7 +147,7 @@ async function saveCurrent(name: string): Promise<boolean> {
   commitLayout();
   await settled();
   openModelView(name);
-  toast(`図「${name}」を作成しました。サイドバーの「図」からいつでも開けます`);
+  toast(t("app-diagram-created-as-is", { name }));
   return true;
 }
 
@@ -170,12 +171,12 @@ async function pickTarget(name: string, kind: DiagramKind): Promise<string[] | n
   if (!def) return [];
   const found = targetCandidates(S.M.nodes, def.kind);
   const options: AskOption[] = [
-    ...found.map((n) => ({ id: `n:${n.key}`, label: n.name, note: `この${def.label}の${kind.label}にします` })),
-    { id: "new", label: `新しい${def.label}を作る`, note: `新しい${def.label}を足して、その${kind.label}にします。名前はあとから変えられます`, confirm: "作って作成" },
+    ...found.map((n) => ({ id: `n:${n.key}`, label: n.name, note: t("app-diagram-target-existing-note", { def: def.label, kind: kind.label }) })),
+    { id: "new", label: t("app-diagram-target-new", { def: def.label }), note: t("app-diagram-target-new-note", { def: def.label, kind: kind.label }), confirm: t("app-diagram-target-new-confirm") },
   ];
-  const r = await ask(`図「${name}」に描く${def.label}`, `${kind.label}に描く${def.label}を選んでください。`, [
-    { id: "cancel", label: "やめる" },
-    { id: "ok", label: "作成", kind: "primary" },
+  const r = await ask(t("app-diagram-target-title", { name, def: def.label }), t("app-diagram-target-text", { kind: kind.label, def: def.label }), [
+    { id: "cancel", label: t("app-dialog-cancel") },
+    { id: "ok", label: t("app-diagram-create"), kind: "primary" },
   ], undefined, undefined, { label: def.label, value: options[0]?.id ?? "new", options });
   if (r?.id !== "ok") return null;
   if (r.option.startsWith("n:")) return [r.option.slice(2)];
@@ -198,10 +199,10 @@ export async function renameDiagram(name: string): Promise<void> {
   let to = name;
   let ins: Awaited<ReturnType<typeof perform>> = null;
   while (!ins) {
-    const r = await ask("図の名前を変更", `図「${name}」の新しい名前を入力してください。`, [
-      { id: "cancel", label: "やめる" },
-      { id: "ok", label: "変更", kind: "primary" },
-    ], { value, label: "図の名前" });
+    const r = await ask(t("app-diagram-rename-title"), t("app-diagram-rename-text", { name }), [
+      { id: "cancel", label: t("app-dialog-cancel") },
+      { id: "ok", label: t("app-diagram-rename-confirm"), kind: "primary" },
+    ], { value, label: t("app-diagram-name-label") });
     if (r?.id !== "ok") return;
     value = r.value;
     to = r.value.trim();
@@ -214,7 +215,7 @@ export async function renameDiagram(name: string): Promise<void> {
   setText(ins.text, { changeAt: ins.at, flash: ins.flash });
   commitLayout();
   saveTabs();
-  toast(`図の名前を「${to}」に変えました`);
+  toast(t("app-diagram-renamed", { name: to }));
 }
 
 /**
@@ -224,9 +225,9 @@ export async function renameDiagram(name: string): Promise<void> {
  * @param name 図の名前
  */
 export async function deleteDiagram(name: string): Promise<void> {
-  const r = await ask("図を削除", `図「${name}」を削除しますか。図に出していた要素は、モデルに残ります。`, [
-    { id: "cancel", label: "やめる" },
-    { id: "ok", label: "削除", kind: "danger" },
+  const r = await ask(t("app-diagram-delete-title"), t("app-diagram-delete-text", { name }), [
+    { id: "cancel", label: t("app-dialog-cancel") },
+    { id: "ok", label: t("app-diagram-delete-confirm"), kind: "danger" },
   ]);
   if (r?.id !== "ok") return;
   const ins = await perform({ op: "deleteView", view: name });
@@ -235,7 +236,7 @@ export async function deleteDiagram(name: string): Promise<void> {
   setText(ins.text, { changeAt: ins.at, flash: ins.flash });
   commitLayout();
   closeViewTabs(name);
-  toast(`図「${name}」を削除しました（モデルの要素は残っています）`);
+  toast(t("app-diagram-deleted", { name }));
 }
 
 /**
@@ -256,11 +257,11 @@ export async function addToView(e: Entry, pos?: [number, number], opts: { quiet?
   const n = S.M.nodeOf.get(e);
   if (!mv || !editableView()) return false;
   if (!n) {
-    toast(`「${e.name}」は、この図には出せません`);
+    toast(t("app-view-cannot-show", { name: e.name }));
     return false;
   }
   if (mv.nodeKeys.includes(n.key)) {
-    if (!opts.quiet) toast(`「${e.name}」は既にこの図にあります`);
+    if (!opts.quiet) toast(t("app-view-already-has", { name: e.name }));
     return false;
   }
   const r = await perform({ op: "addToView", view: mv.name, key: n.key });
@@ -268,7 +269,7 @@ export async function addToView(e: Entry, pos?: [number, number], opts: { quiet?
   if (pos) curLayout().pos[n.key] = clearOfOthers(n, pos);
   setText(r.text, { changeAt: r.at, flash: r.flash });
   commitLayout();
-  if (!opts.quiet) toast(`「${e.name}」をこの図に入れました`);
+  if (!opts.quiet) toast(t("app-view-added", { name: e.name }));
   return true;
 }
 
@@ -307,5 +308,5 @@ export async function removeFromView(n: ModelNode): Promise<void> {
   S.sel = null;
   setText(r.text, { changeAt: r.at, flash: r.flash });
   commitLayout();
-  toast(`「${n.name}」をこの図から外しました（モデルには残っています）`);
+  toast(t("app-view-removed", { name: n.name }));
 }

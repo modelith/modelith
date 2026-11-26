@@ -16,6 +16,7 @@ import { packageBoxes, SEQ, seqGeom } from "../render/svg";
 import { commitLayout, toast } from "./sync";
 import { CC, curLayout, curView, edgeById, nodeByKey, viewContent, visibleNodes } from "./views";
 import type { Pos, Side } from "../render/layout";
+import { t } from "../l10n";
 
 /**
  * 図の枠の要素（#wrap）を返す。
@@ -369,7 +370,7 @@ function onPointerUp(ev: PointerEvent): void {
       render();
       highlight();
       renderInspector();
-      toast(hit.length ? `${hit.length} 個を選択しました` : "選択範囲に要素がありません");
+      toast(hit.length ? t("app-selected-count", { count: String(hit.length) }) : t("app-selection-empty"));
     }
     return;
   }

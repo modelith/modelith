@@ -12,6 +12,7 @@ import { goToGap } from "./gap-guide";
 import { isNarrow } from "./panels";
 import { gapScreen } from "./trace-gap";
 import { CC, curView, viewContent } from "./views";
+import { t } from "../l10n";
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -36,7 +37,7 @@ async function copyProblems(which?: number): Promise<void> {
     await navigator.clipboard.writeText(problemsText(rows));
   } catch (e) {
     console.error(e);
-    toast("コピーできませんでした。ブラウザがクリップボードへの書き込みを許していません");
+    toast(t("app-problems-copy-failed"));
     return;
   }
   toast(copiedText(rows.length));
@@ -62,7 +63,7 @@ function caretToNode(): void {
   renderInspector();
   if (!key || !best) return;
   const v = curView();
-  if (!viewContent(S.M, v).nodes.some((n) => n.key === key)) toast(`「${best.name}」は「${v.diagramName}」には出ていません`);
+  if (!viewContent(S.M, v).nodes.some((n) => n.key === key)) toast(t("app-caret-not-in-view", { name: best.name, diagram: v.diagramName }));
   else centerOn(key, true);
 }
 
@@ -77,7 +78,7 @@ export function initEditor(): void {
   ed.addEventListener("input", () => {
     S.text = ed.value;
     highlight();
-    setSync("busy", "編集中…");
+    setSync("busy", t("app-sync-editing"));
     clearTimeout(timer);
     timer = setTimeout(() => {
       timer = undefined;

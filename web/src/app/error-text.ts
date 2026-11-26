@@ -2,22 +2,24 @@
 // ブラウザのエラー（DOMException）の message は英語で、次の操作も分からないので、name ごとに決めた文に置き換える。
 // 元の英語の内容は、呼び出す側がブラウザのコンソールに残す。
 
+import { t } from "../l10n";
+
 /** 分からないエラーのときに見せる文。 */
-export const UNKNOWN_ERROR_TEXT = "予期しない問題が起きました。もう一度試してください";
+export const UNKNOWN_ERROR_TEXT = t("app-error-unknown");
 
 /** ファイルを書き換えられないときの文（他のアプリが使っている・書き換えられない状態）。 */
-const IN_USE = "ファイルが他のアプリで使われているか、書き換えられない状態です。他のアプリを閉じてから、もう一度試してください";
+const IN_USE = t("app-error-in-use");
 
 /** ブラウザのエラーの名前（DOMException の name）ごとの文。何が起きたかと、次の操作を書く。 */
 const BROWSER_ERROR_TEXT: ReadonlyMap<string, string> = new Map([
-  ["NotAllowedError", "フォルダやファイルを編集する許可がありません。もう一度開いて、ブラウザの確認で許可してください"],
-  ["NotFoundError", "ファイルが見つかりません。移動したか、削除された可能性があります"],
-  ["QuotaExceededError", "保存する場所の空きが足りません。空きを作ってから、もう一度試してください"],
-  ["TypeMismatchError", "ファイルとフォルダの種類が合いません。同じ名前のファイルやフォルダが無いか確かめてください"],
-  ["AbortError", "操作が取り消されました"],
+  ["NotAllowedError", t("app-error-not-allowed")],
+  ["NotFoundError", t("app-error-not-found")],
+  ["QuotaExceededError", t("app-error-quota-exceeded")],
+  ["TypeMismatchError", t("app-error-type-mismatch")],
+  ["AbortError", t("app-error-aborted")],
   ["NoModificationAllowedError", IN_USE],
   ["InvalidStateError", IN_USE],
-  ["NotReadableError", "ファイルを読み込めません。他のアプリで使われていないか確かめて、もう一度試してください"],
+  ["NotReadableError", t("app-error-not-readable")],
 ]);
 
 /** JavaScript に組み込みの Error の名前。プログラムの誤りやブラウザの API の断りで、message は英語なので見せない。 */
@@ -57,5 +59,5 @@ export function errorText(e: unknown): string {
  */
 export function saveErrorText(e: unknown): string {
   const text = errorText(e);
-  return e instanceof Error && e.name === "NotFoundError" ? `${text}。「名前を付けて保存」で保存し直せます` : text;
+  return e instanceof Error && e.name === "NotFoundError" ? t("app-error-save-again", { reason: text }) : text;
 }

@@ -1,6 +1,8 @@
 // 問題一覧のコピー（F-EDIT-13）。行を「ファイル名:行: メッセージ」の文にする。判断だけの純粋関数。
 // 一覧の行を集めるのは sync.ts、クリップボードに書くのは editor.ts。
 
+import { t } from "../l10n";
+
 /** コピーする問題の 1 行。 */
 export interface CopyRow {
   /** ファイル名（フォルダからのパス）。ファイルに属さない行（プラグインについての行）は null。 */
@@ -46,4 +48,4 @@ export const problemsText = (rows: readonly CopyRow[]): string => rows.map(probl
  * copiedText(1)  // → "問題を 1 件コピーしました"
  * copiedText(12) // → "問題を 12 件コピーしました"
  */
-export const copiedText = (n: number): string => `問題を ${n} 件コピーしました`;
+export const copiedText = (n: number): string => t("app-problems-copied", { count: String(n) });

@@ -3,6 +3,7 @@
 import type { ModelNode, ViewKind } from "../core";
 import type { Layout } from "../render/layout";
 import type { Tab } from "./state";
+import { t } from "../l10n";
 
 /** 「新しい図を作成」で選べる図の種類（F-VIEW-8）。`def` は描く対象の定義の種類（一般の図は対象を選ばない）。 */
 export interface DiagramKind {
@@ -15,11 +16,11 @@ export interface DiagramKind {
 
 /** 図の種類の一覧（「今の図のまま」は表示中の図で決まるので、ここには入れない）。 */
 export const DIAGRAM_KINDS: DiagramKind[] = [
-  { id: "general", label: "一般の図（ブロック定義図・要求図）", note: "空の図から始めます。モデルのツリーから要素を入れて並べます", def: null },
-  { id: "interconnection", label: "内部ブロック図", note: "ブロックの中の部品と、そのつながりを描きます", def: { kind: "part def", label: "ブロック" } },
-  { id: "actionFlow", label: "アクティビティ図", note: "アクション定義の流れを描きます", def: { kind: "action def", label: "アクション定義" } },
-  { id: "stateTransition", label: "状態遷移図", note: "状態定義の状態と遷移を描きます", def: { kind: "state def", label: "状態定義" } },
-  { id: "sequence", label: "シーケンス図", note: "シナリオの中のメッセージのやり取りを描きます", def: { kind: "occurrence def", label: "シナリオ" } },
+  { id: "general", label: t("app-diagram-kind-general"), note: t("app-diagram-kind-general-note"), def: null },
+  { id: "interconnection", label: t("app-diagram-kind-interconnection"), note: t("app-diagram-kind-interconnection-note"), def: { kind: "part def", label: t("app-diagram-def-block") } },
+  { id: "actionFlow", label: t("app-diagram-kind-action-flow"), note: t("app-diagram-kind-action-flow-note"), def: { kind: "action def", label: t("app-diagram-def-action") } },
+  { id: "stateTransition", label: t("app-diagram-kind-state-transition"), note: t("app-diagram-kind-state-transition-note"), def: { kind: "state def", label: t("app-diagram-def-state") } },
+  { id: "sequence", label: t("app-diagram-kind-sequence"), note: t("app-diagram-kind-sequence-note"), def: { kind: "occurrence def", label: t("app-diagram-def-scenario") } },
 ];
 
 /**

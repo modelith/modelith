@@ -7,6 +7,7 @@ import { openModal } from "./modal";
 import { LEVEL_LABEL, levelRows, type LevelRow } from "./notice-levels";
 import { changeProjectFile, projectLevels, ruleSets } from "./plugin-panel";
 import { coreClient } from "./sync";
+import { t } from "../l10n";
 
 /** 開いているダイアログを閉じる操作（閉じていれば null）。 */
 let closeDialog: (() => void) | null = null;
@@ -33,7 +34,7 @@ function hideLevelsDialog(): void {
  * // → '<label class="lvrow"><span>まだ扱えない書き方</span><select data-kind="unsupported"><option value="">既定（情報）</option>…<option value="off" selected>出さない</option></select></label>'
  */
 function rowHtml(r: LevelRow, editable: boolean): string {
-  const options = [`<option value="">${esc(r.defaultLabel)}</option>`, ...CHOICES.map((l) => `<option value="${l}"${r.value === l ? " selected" : ""}>${LEVEL_LABEL[l]}</option>`)];
+  const options = [`<option value="">${esc(r.defaultLabel)}</option>`, ...CHOICES.map((l) => `<option value="${l}"${r.value === l ? " selected" : ""}>${esc(LEVEL_LABEL[l])}</option>`)];
   return `<label class="lvrow"><span>${esc(r.label)}</span><select data-kind="${esc(r.kind)}"${editable ? "" : " disabled"}>${options.join("")}</select></label>`;
 }
 
@@ -44,8 +45,8 @@ async function renderLevels(): Promise<void> {
   const levels = projectLevels();
   const rows = levelRows(await coreClient().problemKinds(), ruleSets(), levels ?? {});
   $("#levelsText").textContent = levels
-    ? "問題一覧に出す知らせの重さを、種類ごとに選びます。選んだ重さはプロジェクトの設定（modelith.json）に保存し、チームの全員とコマンドラインのチェックに使われます。構文エラーと見つからない型の重さは変えられません。"
-    : "知らせの重さは、プロジェクトの設定（modelith.json）に保存します。フォルダを開いて「プロジェクトにする」を選ぶと、変えられるようになります。";
+    ? t("app-levels-text")
+    : t("app-levels-text-no-project");
   $("#levelsList").innerHTML = rows.map((r) => rowHtml(r, levels !== null)).join("");
 }
 
@@ -57,7 +58,7 @@ async function renderLevels(): Promise<void> {
  */
 async function chooseLevel(kind: string, value: string): Promise<void> {
   const level = (CHOICES as readonly string[]).includes(value) ? (value as ProblemLevel) : null;
-  await changeProjectFile((text) => coreClient().updateProjectLevel(text, kind, level), "知らせの重さを変更しました");
+  await changeProjectFile((text) => coreClient().updateProjectLevel(text, kind, level), t("app-levels-changed"));
 }
 
 /**

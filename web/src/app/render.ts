@@ -12,6 +12,7 @@ import { gapRelOptions } from "./trace-gap";
 import { S, type EndSpec } from "./state";
 import { CV, SEQ, seqGeom, seqMarkup, svgMarkup } from "../render/svg";
 import { CC, curLayout, curView, edgeById, nodeByKey, viewContent, visibleNodes } from "./views";
+import { t } from "../l10n";
 
 /**
  * 表示中のビューの図を描き直す。空のときの案内を出し分け、シーケンス図ならライフラインとメッセージを、
@@ -25,7 +26,7 @@ export function render(): void {
   // 図にこのファイルの要素が無くても、別の図に切り替えずに案内する（F-VIEW-17）
   const nothing = nothingInFile(content, S.M.nodes.filter((n) => !n.file).length);
   empty.hidden = !content.empty && !nothing;
-  if (nothing) empty.innerHTML = `<span>${esc(NOTHING_IN_FILE)}</span>${S.view === "all" ? "" : `<br><button type="button" data-open-all>「すべて」の図を開く</button>`}`;
+  if (nothing) empty.innerHTML = `<span>${esc(NOTHING_IN_FILE)}</span>${S.view === "all" ? "" : `<br><button type="button" data-open-all>${esc(t("app-nothing-open-all"))}</button>`}`;
   else empty.textContent = content.empty ?? "";
   if (content.seq) {
     const sm = seqMarkup(CV, content, { interactive: true, sel: S.sel, selSet: S.selSet, selEdge: S.selEdge });

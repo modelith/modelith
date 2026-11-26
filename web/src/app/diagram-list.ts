@@ -10,6 +10,7 @@ import { S } from "./state";
 import { viewIcon } from "../render/svg";
 import { createDiagram, deleteDiagram, renameDiagram } from "./view-ops";
 import { baseViewOf } from "./views";
+import { t } from "../l10n";
 
 /**
  * 作成した図 1 つの行の HTML を作る。表示中の図には印を付ける。
@@ -26,7 +27,7 @@ export function diagramRow(v: ModelView, current: string | null): string {
   return (
     `<div class="ti${sel ? " sel" : ""}" role="treeitem" aria-selected="${sel}" tabindex="${sel ? 0 : -1}" data-mv="${esc(v.name)}" style="--d:0" title="${esc(savedViewHint(v.std))}">` +
     `<span class="car"></span>${viewIcon(baseViewOf(v))}<span class="nm">${esc(v.name)}</span><span class="ty">${esc(stdViewLabel(v.std))}</span>` +
-    `<span class="acts"><button data-rename-mv="${esc(v.name)}" title="名前を変更">名前</button><button data-delete-mv="${esc(v.name)}" title="削除">削除</button></span></div>`
+    `<span class="acts"><button data-rename-mv="${esc(v.name)}" title="${esc(t("app-diagram-row-rename-hint"))}">${esc(t("app-diagram-row-rename"))}</button><button data-delete-mv="${esc(v.name)}" title="${esc(t("app-diagram-row-delete"))}">${esc(t("app-diagram-row-delete"))}</button></span></div>`
   );
 }
 
@@ -36,7 +37,7 @@ export function renderDiagramList(): void {
   if (!el) return;
   el.innerHTML = S.M.views.length
     ? S.M.views.map((v) => diagramRow(v, S.modelView)).join("")
-    : `<div class="tree-empty">作成した図はまだありません。上の「新しい図を作成…」で作れます</div>`;
+    : `<div class="tree-empty">${esc(t("app-diagram-list-empty"))}</div>`;
   if (!el.querySelector('.ti[tabindex="0"]')) el.querySelector<HTMLElement>(".ti")?.setAttribute("tabindex", "0");
 }
 
@@ -89,10 +90,10 @@ export function initDiagramList(): void {
     closeCtx();
     openCtx(ev.clientX, ev.clientY, [
       { head: name },
-      { label: "開く", act: () => openModelView(name) },
+      { label: t("app-diagram-menu-open"), act: () => openModelView(name) },
       { sep: true },
-      { label: "名前を変更", act: () => void renameDiagram(name) },
-      { label: "削除", act: () => void deleteDiagram(name) },
+      { label: t("app-diagram-menu-rename"), act: () => void renameDiagram(name) },
+      { label: t("app-diagram-menu-delete"), act: () => void deleteDiagram(name) },
     ]);
   });
 }

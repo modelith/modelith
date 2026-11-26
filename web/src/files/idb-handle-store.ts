@@ -1,6 +1,7 @@
 // フォルダのハンドルを IndexedDB に保存する（HandleStore のブラウザ実装）。
 // ハンドルは構造化複製できるが localStorage には入らないため IndexedDB を使う。
 
+import { t } from "../l10n";
 import { channelName } from "../channel";
 import type { HandleStore } from "./local-folder";
 
@@ -23,7 +24,7 @@ function openDb(): Promise<IDBDatabase> {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => {
       newer ||= isNewerDb(req.error);
-      reject(req.error ?? new Error("IndexedDB を開けません"));
+      reject(req.error ?? new Error(t("files-idb-open-failed")));
     };
   });
 }
@@ -73,7 +74,7 @@ function run<T>(mode: IDBTransactionMode, op: (s: IDBObjectStore) => IDBRequest)
       new Promise<T>((resolve, reject) => {
         const req = op(db.transaction(STORE, mode).objectStore(STORE));
         req.onsuccess = () => resolve(req.result as T);
-        req.onerror = () => reject(req.error ?? new Error("IndexedDB の操作に失敗しました"));
+        req.onerror = () => reject(req.error ?? new Error(t("files-idb-failed")));
       }),
   );
 }

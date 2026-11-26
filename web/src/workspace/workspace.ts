@@ -1,6 +1,7 @@
 // ワークスペース：開いているファイル（文書）と未保存の変更、保存・競合・外部での変更・下書きを受け持つ（ADR-0010）。
 // プロバイダのインタフェースにだけ依存し、DOM やブラウザの API を知らない。
 
+import { t } from "../l10n";
 import {
   ConflictError,
   hasFolderEdits,
@@ -638,7 +639,7 @@ export class Workspace {
     const doc = this.get(key);
     const f = this.folderState;
     if (!doc) return;
-    if (!f) throw new Error("フォルダが開かれていません");
+    if (!f) throw new Error(t("workspace-no-folder"));
     const ref = await f.source.createFile(f.ref, path, doc.text);
     const { version } = await this.readable(ref).read(ref);
     f.entries = await f.source.list(f.ref);
@@ -881,8 +882,8 @@ export class Workspace {
    */
   async deleteFolder(): Promise<void> {
     const f = this.folderState;
-    if (!f) throw new Error("フォルダが開かれていません");
-    if (!hasFolderEdits(f.source)) throw new Error("このフォルダは削除できません");
+    if (!f) throw new Error(t("workspace-no-folder"));
+    if (!hasFolderEdits(f.source)) throw new Error(t("workspace-folder-cannot-remove"));
     const docs = this.docs.filter((d) => this.folderPath(d.key) !== null);
     await f.source.removeFolder(f.ref);
     for (const d of docs) this.close(d.key);
@@ -926,11 +927,11 @@ export class Workspace {
    */
   async makeProject(text: string): Promise<void> {
     const f = this.folderState;
-    if (!f) throw new Error("フォルダが開かれていません");
+    if (!f) throw new Error(t("workspace-no-folder"));
     const source = f.source;
-    if (!hasFolderFiles(source)) throw new Error("このフォルダには設定ファイルを書けません");
+    if (!hasFolderFiles(source)) throw new Error(t("workspace-folder-cannot-write-settings"));
     // 開いた後に他のアプリで作られていても、上書きしない
-    if ((await source.readInFolder(f.ref, PROJECT_FILE)) !== null) throw new Error(`このフォルダは既にプロジェクトです（${PROJECT_FILE} があります）`);
+    if ((await source.readInFolder(f.ref, PROJECT_FILE)) !== null) throw new Error(t("workspace-already-project", { file: PROJECT_FILE }));
     await source.writeInFolder(f.ref, PROJECT_FILE, text);
     await this.refreshFolder();
   }
@@ -947,7 +948,7 @@ export class Workspace {
    */
   async createFile(path: string, text: string): Promise<Doc> {
     const f = this.folderState;
-    if (!f) throw new Error("フォルダが開かれていません");
+    if (!f) throw new Error(t("workspace-no-folder"));
     const ref = await f.source.createFile(f.ref, path, text);
     f.entries = await f.source.list(f.ref);
     await this.readModelFiles();
@@ -965,8 +966,8 @@ export class Workspace {
    */
   async createFolder(path: string): Promise<void> {
     const f = this.folderState;
-    if (!f) throw new Error("フォルダが開かれていません");
-    if (!hasFolderEdits(f.source)) throw new Error("このフォルダにはフォルダを作れません");
+    if (!f) throw new Error(t("workspace-no-folder"));
+    if (!hasFolderEdits(f.source)) throw new Error(t("workspace-folder-cannot-create-folder"));
     await f.source.createFolder(f.ref, path);
     await this.refreshFolder();
   }
@@ -1003,9 +1004,9 @@ export class Workspace {
    */
   async renameEntry(from: string, to: string): Promise<void> {
     const f = this.folderState;
-    if (!f) throw new Error("フォルダが開かれていません");
+    if (!f) throw new Error(t("workspace-no-folder"));
     const source = f.source;
-    if (!hasFolderEdits(source)) throw new Error("このフォルダでは名前を変えられません");
+    if (!hasFolderEdits(source)) throw new Error(t("workspace-folder-cannot-rename"));
     const docs = this.docsIn(from);
     const isFile = modelFiles(f.entries).some((r) => r.path === from);
     const layoutFrom = childPath(parentPath(from), layoutNameFor(from.slice(from.lastIndexOf("/") + 1)));
@@ -1013,7 +1014,7 @@ export class Workspace {
     const files = isFile && layoutFrom !== layoutTo && hasFolderFiles(source) ? source : null;
     // 新しい名前の配置ファイルが既にあれば、何も動かす前に断る（動かした後では、モデルだけが動いて別の配置と組になるため。#225）
     if (files && (await files.readInFolder(f.ref, layoutTo)) !== null) {
-      throw new Error(`図の配置のファイル「${layoutTo}」が既にあるため、「${to}」にできません。別の名前にしてください`);
+      throw new Error(t("workspace-layout-taken", { layout: layoutTo, to }));
     }
     await source.moveInFolder(f.ref, from, to);
     if (files && (await files.readInFolder(f.ref, layoutFrom)) !== null) await source.moveInFolder(f.ref, layoutFrom, layoutTo);
@@ -1040,12 +1041,12 @@ export class Workspace {
    */
   async removeEntry(path: string): Promise<void> {
     const f = this.folderState;
-    if (!f) throw new Error("フォルダが開かれていません");
+    if (!f) throw new Error(t("workspace-no-folder"));
     const source = f.source;
-    if (!hasFolderTrees(source)) throw new Error("このフォルダでは削除できません");
+    if (!hasFolderTrees(source)) throw new Error(t("workspace-folder-cannot-remove-entries"));
     const docs = this.docsIn(path);
     const isFile = modelFiles(f.entries).some((r) => r.path === path);
-    if (!(await source.removeInFolder(f.ref, path))) throw new Error(`「${path}」が見つかりません`);
+    if (!(await source.removeInFolder(f.ref, path))) throw new Error(t("files-not-found", { path }));
     if (isFile) await source.removeInFolder(f.ref, childPath(parentPath(path), layoutNameFor(path.slice(path.lastIndexOf("/") + 1))));
     for (const doc of docs) this.close(doc.key);
     await this.refreshFolder();
@@ -1250,7 +1251,7 @@ export class Workspace {
    */
   private readable(ref: FileRef) {
     const p = this.providers.get(ref.provider);
-    if (!p || !isReadable(p)) throw new Error(`「${ref.name}」を読めるストレージがありません`);
+    if (!p || !isReadable(p)) throw new Error(t("workspace-no-storage", { name: ref.name }));
     return p;
   }
 

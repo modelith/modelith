@@ -21,13 +21,15 @@ ensure_dependencies() {
 }
 
 stage_static() {
-  step "[static] 禁止ファイル・ShellCheck・リリースノートの形・プラグインの型のコピー・関数の doc コメント"
+  step "[static] 禁止ファイル・ShellCheck・リリースノートの形・プラグインの型のコピー・関数の doc コメント・文言の辞書"
   scripts/check-forbidden-files.sh
   node web/tools/release-notes-cli.ts check
   # プラグインとの契約の TypeScript の型は plugin-sdk のコピー。Cargo.toml で固定したコミットと同じかを確かめる（ADR-0004）
   node web/tools/plugin-protocol-cli.ts check
   # 関数の doc コメント（programming-principles §4、ADR-0008）。書き足し終えた領域から順に対象に加える
   node web/tools/doc-comments-cli.ts web/tools web/src cli/src crates
+  # 文言の辞書（ADR-0027）。辞書の形と、コードが使うキーを確かめる。3 つめからの引数は、文を辞書に移し終えたフォルダ（文の直書きを止める。移し終えたら足す）
+  node web/tools/l10n-cli.ts web/src/locales/ja.ftl web/src web/src/l10n web/src/files web/src/workspace
   shellcheck -x scripts/*.sh scripts/lib/*.sh .claude/hooks/*.sh
   step "[static] rust: fmt / $([[ $MODE == fast ]] && echo check || echo clippy)"
   cargo fmt --all -- --check

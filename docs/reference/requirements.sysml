@@ -523,6 +523,11 @@ package ModelithRequirements {
             doc /* 予定：0.4.0。画面の言語を、ブラウザの言語の設定から自動で選ぶ（辞書のある言語が無ければ英語）。「設定」で「自動」か言語を 1 つ選び直せ、選んだ言語はこのブラウザに残る。
                    言語は画面の文言だけを変え、モデルのテキスト・要素の名前・ファイル名は変えない */
         }
+        requirement def <'F-L10N-3'> DictionaryReq {
+            doc /* 画面の文言を、言語ごとの辞書（Fluent の .ftl）に置き、コードはキーと値を渡して文を受け取る。辞書を足せば、コードを変えずに言語を増やせる。
+                   0.3.0 の間は日本語の辞書だけで、画面の言葉は変わらない。移し終えたフォルダのコードに文を直接書くと、検査で止まる。
+                   値に書かれたタグは文字として入り、値の前後に見えない記号を入れない */
+        }
         requirement def <'F-L10N-2'> LocalizedProblemsReq {
             doc /* 予定：0.4.0。問題一覧と設定ファイルのエラーの文が、選んだ言語で出る。画面・CLI・MCP で同じ問題には同じ文が出る。
                    問題の種類のコードと値は言語によらず同じで、AI とプラグインはコードで判断できる。CLI と MCP の言語は、引数か OS の言語の設定（LC_ALL・LC_MESSAGES・LANG）で決まり、無ければ英語 */
@@ -638,6 +643,7 @@ package ModelithRequirements {
         #derivation dependency from BugReportReq to FeedbackNeed;
         #derivation dependency from LanguageChoiceReq to LanguageNeed;
         #derivation dependency from LocalizedProblemsReq to LanguageNeed;
+        #derivation dependency from DictionaryReq to LanguageNeed;
         #derivation dependency from TextToDiagramReq to EditBothWaysNeed;
         #derivation dependency from DiagramToTextReq to EditBothWaysNeed;
         #derivation dependency from NewPackageGuideReq to EditBothWaysNeed;
@@ -793,7 +799,7 @@ package ModelithRequirements {
             doc /* 利用状況とエラーの送信（予定：0.3.0。ADR-0026） */
         }
         part def Messages {
-            doc /* 問題の文を言語ごとの辞書で作る層（予定：0.3.0。crates/modelith-messages。コアは言語を知らない。ADR-0027） */
+            doc /* 文言を言語ごとの辞書で作る層。画面の文言は web/src/l10n（辞書は web/src/locales）。問題の文は crates/modelith-messages（予定：0.3.0。コアは言語を知らない）。ADR-0027 */
         }
 
         part def Modelith {
@@ -935,6 +941,7 @@ package ModelithRequirements {
         satisfy BugReportReq by AppShell;
         satisfy LanguageChoiceReq by AppShell;
         satisfy LocalizedProblemsReq by Messages;
+        satisfy DictionaryReq by Messages;
     }
 
     // =================================================================
@@ -1620,6 +1627,13 @@ package ModelithRequirements {
                    web/tools/licenses.test.ts：同梱する第三者の部品のライセンスの選び方と書式 */
             objective {
                 verify CliDistributionReq;
+            }
+        }
+        verification def DictionaryTest {
+            doc /* web/src/l10n/translator.test.ts：辞書から文を作る（値の差し込み・見えない記号を入れない・値のタグと波かっこを文字として入れる・先の辞書に無いキーは次の辞書・数での複数形の選び分け・無いキーと足りない値の知らせ）。
+                   web/tools/l10n.test.ts と scripts/check.sh の静的検査（web/tools/l10n-cli.ts）：辞書のキーと値の名前の形、コードが使うキーが辞書にあること、使われていないキーが無いこと、移し終えたフォルダに文が直接書かれていないこと（コメントは見ない） */
+            objective {
+                verify DictionaryReq;
             }
         }
         verification def CliCheckTest {

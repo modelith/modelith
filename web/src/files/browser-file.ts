@@ -2,6 +2,7 @@
 // ファイルは読み込みダイアログで選び、保存はダウンロードになる。上書きはできない（Writable を実装しない）。
 // 配置ファイル（ADR-0005）は、開くときにモデルと一緒に選んでもらい、保存のときはモデルと一緒にダウンロードする。
 
+import { t } from "../l10n";
 import { isModelFile, type FileContent, type FilePicker, type FileRef, type Readable, type SaveAsTarget, type SiblingFiles } from "./types";
 
 /** 選ばれたファイル（ブラウザの File のうち使う部分）。 */
@@ -19,7 +20,7 @@ export interface BrowserFileIo {
 
 export class BrowserFileProvider implements Readable, FilePicker, SaveAsTarget, SiblingFiles {
   readonly id = "browser";
-  readonly label = "ダウンロード";
+  readonly label = t("files-provider-download");
   /** 読み込んだ・保存した内容。上書きできないので、この写しが「ファイル」の内容になる。 */
   private readonly contents = new Map<string, string>();
   /** モデルと一緒に選んだ・ダウンロードしたファイル（モデルの id → 名前 → 内容）。 */
@@ -64,7 +65,7 @@ export class BrowserFileProvider implements Readable, FilePicker, SaveAsTarget, 
    */
   async read(ref: FileRef): Promise<FileContent> {
     const text = this.contents.get(ref.id);
-    if (text === undefined) throw new Error(`ファイル「${ref.name}」は開かれていません`);
+    if (text === undefined) throw new Error(t("files-not-open", { name: ref.name }));
     return { text, version: "0" };
   }
 

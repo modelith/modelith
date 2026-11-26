@@ -65,5 +65,5 @@ docs/                  文書（要求仕様・設計判断・開発の手順）
 | [設計判断（ADR）](docs/adr/) | なぜそう作るか |
 | [アーキテクチャ](docs/explanation/architecture.md) | 全体の構成と、この先の段階 |
 | [ブランチ戦略](docs/development/branching-strategy.md)・[テスト](docs/development/testing.md)・[リリース手順](docs/development/releasing.md) | 開発の進め方 |
-| [画面の言葉の手引き](docs/development/ui-writing.md) | 画面の文言の書き方 |
+| [画面の言葉の手引き](docs/development/ui-writing.md)・[文言の辞書](docs/development/l10n.md) | 画面の文言の書き方と、置き場所 |
 | [CLAUDE.md](CLAUDE.md) | AI エージェント向けの作業ガイド |

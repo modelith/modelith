@@ -67,5 +67,5 @@ docs/                  documents (requirements, design decisions, development pr
 | [Design decisions (ADR)](docs/adr/) | Why it is built that way |
 | [Architecture](docs/explanation/architecture.md) | The overall structure and the stages ahead |
 | [Branching strategy](docs/development/branching-strategy.md), [testing](docs/development/testing.md), [release procedure](docs/development/releasing.md) | How development proceeds |
-| [UI writing guide](docs/development/ui-writing.md) | How to write the words on screen |
+| [UI writing guide](docs/development/ui-writing.md), [message dictionaries](docs/development/l10n.md) | How to write the words on screen, and where they live |
 | [CLAUDE.md](CLAUDE.md) | Working guide for AI agents |

@@ -1,5 +1,6 @@
 // ファイル操作の抽象（ADR-0010）。ストレージ（ローカル・ダウンロード・将来のクラウド）ごとにプロバイダを作り、
 // できることごとに分けた小さなインタフェースを実装する。ワークスペースと UI はこの型だけに依存する。
+import { t } from "../l10n";
 
 /** ファイルの参照。id はプロバイダが決める不透明な値で、パスを前提にしない。 */
 export interface FileRef {
@@ -37,7 +38,7 @@ export class ConflictError extends Error {
    * @param ref 上書きしようとしたファイル
    */
   constructor(readonly ref: FileRef) {
-    super(`${ref.path} は読み込んだ後に変更されています`);
+    super(t("files-conflict", { path: ref.path }));
     this.name = "ConflictError";
   }
 }

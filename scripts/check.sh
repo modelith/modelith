@@ -28,9 +28,8 @@ stage_static() {
   node web/tools/plugin-protocol-cli.ts check
   # 関数の doc コメント（programming-principles §4、ADR-0008）。書き足し終えた領域から順に対象に加える
   node web/tools/doc-comments-cli.ts web/tools web/src cli/src crates
-  # 文言の辞書（ADR-0027）。辞書の形と、コードが使うキーを確かめる。3 つめからの引数は、文を辞書に移し終えたフォルダ（文の直書きを止める。移し終えたら足す）
-  node web/tools/l10n-cli.ts web/src/locales/ja web/src web/src/l10n web/src/files web/src/workspace web/src/render web/src/core \
-    web/index.html web/src/main.ts web/src/app/stage.ts
+  # 文言の辞書（ADR-0027）。辞書の形と、コードが使うキーを確かめる。3 つめからの引数は、文の直書きを止める場所（画面のコードのすべてと、画面の骨組み）
+  node web/tools/l10n-cli.ts web/src/locales/ja web/src web/src web/index.html
   shellcheck -x scripts/*.sh scripts/lib/*.sh .claude/hooks/*.sh
   step "[static] rust: fmt / $([[ $MODE == fast ]] && echo check || echo clippy)"
   cargo fmt --all -- --check

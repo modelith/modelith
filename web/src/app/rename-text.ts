@@ -1,5 +1,7 @@
 // 名前を変えたときの知らせの文（F-EDIT-3。#266）。
 
+import { t } from "../l10n";
+
 /**
  * 文字列の中に、部分の文字列がいくつあるか（重ならない数え方）。
  *
@@ -30,6 +32,7 @@ function occurrences(s: string, part: string): number {
  * // → "「NewPart」を「Lamp」に変更しました"
  */
 export function renamedMessage(oldName: string, newName: string, before: string, after: string): string {
-  const head = `「${oldName}」を「${newName}」に変更しました`;
-  return occurrences(after, newName) - occurrences(before, newName) > 1 ? `${head}。このファイルの中で使っている箇所も変えました` : head;
+  return occurrences(after, newName) - occurrences(before, newName) > 1
+    ? t("app-inspect-renamed-with-uses", { oldName, newName })
+    : t("app-inspect-renamed", { oldName, newName });
 }

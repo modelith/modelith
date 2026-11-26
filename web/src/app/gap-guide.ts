@@ -2,6 +2,7 @@
 // 図の要素かテキストの行へ移り、図ではインスペクタに足りない関係と直し方を示す。判断は trace-gap.ts にある。
 
 import type { ModelNode, Problem } from "../core";
+import { t } from "../l10n";
 import { $, esc } from "./dom";
 import { isNarrow, openTarget, openTab, renderSub, saveTabs, setTab } from "./panels";
 import { centerOn, highlight, render, scrollEditorTo } from "./render";
@@ -176,26 +177,28 @@ export function gapGuideHtml(n: ModelNode): string | null {
   if (!f || f.key !== n.key) return null;
   const gaps = gapProblems();
   const found = findGap(gaps, gapKeyAt, f);
-  const open = `<div class="gapguide" role="group" aria-label="トレースの抜けの案内" tabindex="-1">`;
+  const open = `<div class="gapguide" role="group" aria-label="${esc(t("app-inspect-gap-guide-label"))}" tabindex="-1">`;
   if ("resolved" in found) {
     return (
       open +
-      `<div class="gapnav"><b>${found.total ? `この要素のトレースの抜けは解消しました（残り ${found.total} 件）` : "トレースの抜けはすべて解消しました"}</b></div>` +
-      (found.total ? `<div class="acts"><button data-gap="next">次の抜けへ</button></div>` : "") +
+      `<div class="gapnav"><b>${esc(found.total ? t("app-inspect-gap-resolved-remaining", { count: String(found.total) }) : t("app-inspect-gap-all-resolved"))}</b></div>` +
+      (found.total ? `<div class="acts"><button data-gap="next">${esc(t("app-inspect-gap-next"))}</button></div>` : "") +
       `</div>`
     );
   }
   const g = gaps[found.index];
-  const t = gapGuide(gapKind(g?.msg ?? ""), g?.msg ?? "");
+  const guide = gapGuide(gapKind(g?.msg ?? ""), g?.msg ?? "");
+  const prev = esc(t("app-inspect-gap-prev"));
+  const next = esc(t("app-inspect-gap-next"));
   const nav =
     found.total > 1
-      ? `<button class="gapstep" data-gap="prev" aria-label="前の抜けへ" title="前の抜けへ">‹</button><button class="gapstep" data-gap="next" aria-label="次の抜けへ" title="次の抜けへ">›</button>`
+      ? `<button class="gapstep" data-gap="prev" aria-label="${prev}" title="${prev}">‹</button><button class="gapstep" data-gap="next" aria-label="${next}" title="${next}">›</button>`
       : "";
   return (
     open +
-    `<div class="gapnav"><span class="gapmark" aria-hidden="true">△</span><b>トレースの抜け</b><span class="gapcount">${gapCountLabel(found.index, found.total)}</span>${nav}</div>` +
-    `<p class="gaplack">${esc(t.lack)}</p><p class="gapfix">${esc(t.fix)}</p>` +
-    `<div class="acts">${t.target ? `<button class="primary" data-act="connect">関係を追加</button>` : ""}<button data-act="goto">テキストで見る</button></div>` +
+    `<div class="gapnav"><span class="gapmark" aria-hidden="true">△</span><b>${esc(t("app-inspect-gap-title"))}</b><span class="gapcount">${esc(gapCountLabel(found.index, found.total))}</span>${nav}</div>` +
+    `<p class="gaplack">${esc(guide.lack)}</p><p class="gapfix">${esc(guide.fix)}</p>` +
+    `<div class="acts">${guide.target ? `<button class="primary" data-act="connect">${esc(t("app-inspect-add-relation"))}</button>` : ""}<button data-act="goto">${esc(t("app-inspect-show-in-text"))}</button></div>` +
     `</div>`
   );
 }

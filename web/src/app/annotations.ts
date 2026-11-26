@@ -1,6 +1,7 @@
 // 要素に付けたメモ（comment、8.2.2.4）と、別の言語での表し方（rep、TextualRepresentation、8.2.2.4）を、インスペクタに出す形にする。
 
 import type { Entry } from "../core";
+import { t } from "../l10n";
 import { esc } from "./dom";
 
 /**
@@ -19,6 +20,17 @@ export function notesOf(e: Entry, entries: readonly Entry[]): Entry[] {
 }
 
 /**
+ * メモの呼び方。名前のあるメモは、名前を後ろに添える。
+ *
+ * @param name メモの名前（無ければ空文字列）
+ * @returns 呼び方
+ * @example
+ * noteTitle("")     // → "メモ"
+ * noteTitle("注意") // → "メモ 注意"
+ */
+export const noteTitle = (name: string): string => (name ? t("app-inspect-note-named", { name }) : t("app-inspect-note"));
+
+/**
  * インスペクタに出す、要素のメモと別の言語での表し方の HTML を作る。本文の改行はそのまま見せる。
  *
  * @param e 選んだ要素
@@ -32,9 +44,9 @@ export function notesOf(e: Entry, entries: readonly Entry[]): Entry[] {
  * annotationsHtml(B, entries) // → ""（どちらも無い）
  */
 export function annotationsHtml(e: Entry, entries: readonly Entry[]): string {
-  const notes = notesOf(e, entries).map((c) => `<div class="note"><small>メモ${c.name ? " " + esc(c.name) : ""}</small><p>${esc(c.body ?? "")}</p></div>`);
+  const notes = notesOf(e, entries).map((c) => `<div class="note"><small>${esc(noteTitle(c.name))}</small><p>${esc(c.body ?? "")}</p></div>`);
   const reps = (e.reps ?? []).map(
-    (r) => `<div class="note"><small>別の言語での表し方（${esc(r.language)}）${r.name ? "・" + esc(r.name) : ""}</small><pre>${esc(r.body)}</pre></div>`,
+    (r) => `<div class="note"><small>${esc(r.name ? t("app-inspect-rep-named", { language: r.language, name: r.name }) : t("app-inspect-rep", { language: r.language }))}</small><pre>${esc(r.body)}</pre></div>`,
   );
   const items = [...notes, ...reps];
   return items.length ? `<div class="notes">${items.join("")}</div>` : "";

@@ -1,6 +1,7 @@
 // 接続点とポートの操作。接続点は配置情報、ポートはテキストの宣言として持つ。
 
 import type { ModelNode, Port, PortDir } from "../core";
+import { t } from "../l10n";
 import { pruneShapes } from "./edge-shape";
 import { perform } from "./intent";
 import { pinsOf, type Pin } from "../render/geometry";
@@ -9,7 +10,7 @@ import { S, type EndSpec } from "./state";
 import { commitLayout, setText, toast } from "./sync";
 import { CC, curLayout, nodeByKey } from "./views";
 
-export const DIR_LABEL: Record<PortDir, string> = { in: "入力", out: "出力", inout: "双方向" };
+export const DIR_LABEL: Record<PortDir, string> = { in: t("app-inspect-dir-in"), out: t("app-inspect-dir-out"), inout: t("app-inspect-dir-inout") };
 
 /**
  * すべてのビューの配置にある、線の端（`@ends`）の 1 つずつについて処理を呼ぶ。
@@ -119,11 +120,11 @@ export const PINOPS = {
     // この接続点につながる線（「部品.ポート」に書き換える端）
     const flows = new Map<string, { id: string; from?: boolean; to?: boolean }>();
     forEachEnds((_v, k, val) => {
-      const [kind, f, t] = endNodes(k);
+      const [kind, f, to] = endNodes(k);
       if (kind !== "flow") return;
       const fe = flows.get(k) ?? { id: k };
       if (f === n.key && val[0] === pin.id) fe.from = true;
-      if (t === n.key && val[1] === pin.id) fe.to = true;
+      if (to === n.key && val[1] === pin.id) fe.to = true;
       if (fe.from || fe.to) flows.set(k, fe);
     });
     const r = await perform({ op: "makePort", key: n.key, name, dir, type, flows: [...flows.values()], ctx: CC().ctx?.key });
@@ -139,15 +140,15 @@ export const PINOPS = {
     }
     (curLayout().pins[n.key] ||= {})[newId] = [pin.side, pin.t];
     forEachEnds((_v, k, val) => {
-      const [, f, t] = endNodes(k);
+      const [, f, to] = endNodes(k);
       if (f === n.key && val[0] === pin.id) val[0] = newId;
-      if (t === n.key && val[1] === pin.id) val[1] = newId;
+      if (to === n.key && val[1] === pin.id) val[1] = newId;
     });
     S.selPin = { node: n.key, pin: newId };
     S.portForm = false;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
-    toast(`${n.name} にポート「${name}」を追加しました` + (flows.size ? "（つながっていた線を、このポートにつなぎ直しました）" : ""));
+    toast(flows.size ? t("app-inspect-port-added-rewired", { owner: n.name, name }) : t("app-inspect-port-added", { owner: n.name, name }));
   },
 
   /**
@@ -162,7 +163,7 @@ export const PINOPS = {
     const r = await perform({ op: "setPortDir", key: n.key, port: port.name, dir, ctx: CC().ctx?.key });
     if (!r) return;
     setText(r.text, { changeAt: r.at, flash: r.flash });
-    toast(`ポート「${port.name}」を${DIR_LABEL[dir]}にしました`);
+    toast(t("app-inspect-port-dir-set", { name: port.name, dir: DIR_LABEL[dir] }));
   },
 
   /**
@@ -181,7 +182,7 @@ export const PINOPS = {
     S.selPin = null;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
-    toast(`ポート「${port.name}」を削除しました`);
+    toast(t("app-inspect-port-deleted", { name: port.name }));
   },
 
   /**
@@ -194,14 +195,14 @@ export const PINOPS = {
   removeAnchor(n: ModelNode, pinId: string): void {
     for (const v of Object.values(S.layout)) delete v.pins[n.key]?.[pinId];
     forEachEnds((v, k, val) => {
-      const [, f, t] = endNodes(k);
+      const [, f, to] = endNodes(k);
       if (f === n.key && val[0] === pinId) val[0] = null;
-      if (t === n.key && val[1] === pinId) val[1] = null;
+      if (to === n.key && val[1] === pinId) val[1] = null;
       if (!val[0] && !val[1]) delete v.ends[k];
     });
     S.selPin = null;
     commitLayout();
-    toast("接続点を外しました（線は自動の位置に戻ります）");
+    toast(t("app-inspect-anchor-removed"));
   },
 };
 

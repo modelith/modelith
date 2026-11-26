@@ -2,6 +2,7 @@
 // プラグインが大量の・巨大なメッセージを送っても画面が動き続けるよう、コアに確かめてもらう前の入口で捨てる。
 // 期限は、ホストがタイマーで数え、ここでは文と判断だけを決める。
 
+import { t } from "../l10n";
 import type { PendingRequest } from "./messages";
 
 /** 入口で使う上限。 */
@@ -101,13 +102,13 @@ export function messageUnits(data: unknown, limit: number): number {
 export function intake(state: IntakeState, data: unknown, limits: MessageLimits): Intake {
   const reason =
     state.queued >= limits.maxQueued
-      ? `届いたメッセージが多すぎるため、使いませんでした（待ちの上限 ${limits.maxQueued} 件）`
+      ? t("plugins-intake-queue-full", { max: String(limits.maxQueued) })
       : messageUnits(data, limits.maxUnits) > limits.maxUnits
-        ? `大きすぎるメッセージが届いたため、使いませんでした（上限 ${Math.round(limits.maxUnits / (1024 * 1024))} MB）`
+        ? t("plugins-intake-too-large", { max: String(Math.round(limits.maxUnits / (1024 * 1024))) })
         : null;
   if (reason === null) return { kind: "accept", state: { ...state, queued: state.queued + 1 } };
   const dropped = state.dropped + 1;
-  if (dropped >= limits.maxDropped) return { kind: "halt", state: { ...state, dropped }, notice: `届いたメッセージが多すぎるため、停止を指示しました（使わなかったメッセージ ${dropped} 件）` };
+  if (dropped >= limits.maxDropped) return { kind: "halt", state: { ...state, dropped }, notice: t("plugins-intake-halt", { dropped: String(dropped) }) };
   return { kind: "drop", state: { ...state, dropped }, notice: reason };
 }
 
@@ -125,25 +126,22 @@ export function intake(state: IntakeState, data: unknown, limits: MessageLimits)
  * notifyAllowance([0, 0, 0, 0, 0], 1000, 5)           // → { allowed: true, recent: [1000] }（1 秒たてば数え直す）
  */
 export function notifyAllowance(recent: readonly number[], now: number, perSecond: number): { allowed: boolean; recent: number[] } {
-  const inWindow = recent.filter((t) => now - t < NOTIFY_WINDOW_MS);
+  const inWindow = recent.filter((at) => now - at < NOTIFY_WINDOW_MS);
   if (inWindow.length >= perSecond) return { allowed: false, recent: inWindow };
   return { allowed: true, recent: [...inWindow, now] };
 }
-
-/** 知らせを捨てたことの文の頭（数が変わるたびに、一覧の前の行を置き換えるための目印）。 */
-export const DROPPED_NOTIFY_PREFIX = "知らせが多すぎるため、";
 
 /**
  * 知らせを捨てたことを一覧に出す文。
  *
  * @param count これまでに捨てた知らせの数（1 以上）
  * @param perSecond 1 秒あたりの上限
- * @returns 一覧の文（DROPPED_NOTIFY_PREFIX で始まる）
+ * @returns 一覧の文（数が変わるたびに、ホストが一覧の前の行と置き換える）
  * @example
  * droppedNotifyNotice(3, 5) // → "知らせが多すぎるため、3 件を表示しませんでした（1 秒に 5 件まで）"
  */
 export function droppedNotifyNotice(count: number, perSecond: number): string {
-  return `${DROPPED_NOTIFY_PREFIX}${count} 件を表示しませんでした（1 秒に ${perSecond} 件まで）`;
+  return t("plugins-dropped-notify", { count: String(count), perSecond: String(perSecond) });
 }
 
 /**
@@ -157,7 +155,7 @@ export function droppedNotifyNotice(count: number, perSecond: number): string {
  * droppedDiagnosticsNote("レビューの記録", 20, 1000) // → "プラグイン「レビューの記録」の問題が多すぎるため、20 件を示していません（上限 1000 件）"
  */
 export function droppedDiagnosticsNote(name: string, dropped: number, max: number): string {
-  return `プラグイン「${name}」の問題が多すぎるため、${dropped} 件を示していません（上限 ${max} 件）`;
+  return t("plugins-dropped-diagnostics", { name, dropped: String(dropped), max: String(max) });
 }
 
 /**
@@ -177,7 +175,7 @@ export function overdueRequests(pending: ReadonlyMap<number, { since: number; re
 }
 
 /**
- * 頼んだことが期限までに終わらないときの、一覧の文（トーストでは頭にプラグインの名前を付ける）。
+ * 頼んだことが期限までに終わらないときの、一覧の文（トーストの文は stuckToast）。
  *
  * @param request 頼んだこと。null なら起動（ready 待ち）
  * @param timeoutMs 期限（ミリ秒）
@@ -187,6 +185,41 @@ export function overdueRequests(pending: ReadonlyMap<number, { since: number; re
  * stuckNotice(null, 10_000)                                     // → "起動が 10 秒たっても終わりません。「停止」で止められます"
  */
 export function stuckNotice(request: PendingRequest | null, timeoutMs: number): string {
-  const what = request === null ? "起動" : `${{ command: "コマンド", import: "インポート", export: "エクスポート" }[request.kind]}「${request.title}」`;
-  return `${what}が ${Math.round(timeoutMs / 1000)} 秒たっても終わりません。「停止」で止められます`;
+  const seconds = String(Math.round(timeoutMs / 1000));
+  if (request === null) return t("plugins-stuck-start", { seconds });
+  const values = { title: request.title, seconds };
+  switch (request.kind) {
+    case "command":
+      return t("plugins-stuck-command", values);
+    case "import":
+      return t("plugins-stuck-import", values);
+    case "export":
+      return t("plugins-stuck-export", values);
+  }
+}
+
+/**
+ * 頼んだことが期限までに終わらないときの、トーストの文。一覧の文（stuckNotice）の頭にプラグインの名前を付け、「停止」がどこにあるかを添える。
+ *
+ * @param name プラグインの名前
+ * @param request 頼んだこと。null なら起動（ready 待ち）
+ * @param timeoutMs 期限（ミリ秒）
+ * @returns トーストの文
+ * @example
+ * stuckToast("要求の ID の補完", { kind: "command", title: "ID を付ける" }, 30_000)
+ * // → "プラグイン「要求の ID の補完」のコマンド「ID を付ける」が 30 秒たっても終わりません。プラグインの一覧の「停止」で止められます"
+ * stuckToast("要求の ID の補完", null, 10_000) // → "プラグイン「要求の ID の補完」の起動が 10 秒たっても終わりません。プラグインの一覧の「停止」で止められます"
+ */
+export function stuckToast(name: string, request: PendingRequest | null, timeoutMs: number): string {
+  const seconds = String(Math.round(timeoutMs / 1000));
+  if (request === null) return t("plugins-stuck-start-toast", { name, seconds });
+  const values = { name, title: request.title, seconds };
+  switch (request.kind) {
+    case "command":
+      return t("plugins-stuck-command-toast", values);
+    case "import":
+      return t("plugins-stuck-import-toast", values);
+    case "export":
+      return t("plugins-stuck-export-toast", values);
+  }
 }

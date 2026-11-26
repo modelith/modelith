@@ -1,5 +1,6 @@
 // v1 のプラグインの、一覧とメニューに出す言葉と項目（ADR-0018 §3）。入出力を持たない。
 
+import { t } from "../l10n";
 import type { Command, Exporter, Importer, Permission } from "./generated/protocol";
 import { acceptOf } from "./transfer";
 
@@ -25,13 +26,13 @@ export type RunState = "checking" | "asking" | "starting" | "running" | "stopped
 
 /** 状態の画面の言葉。止めたときは「止まった」と言い切らない（Chromium では数秒動き続けるため。ADR-0018 §3.1）。 */
 export const RUN_STATE_LABEL: Record<RunState, string> = {
-  checking: "確認中",
-  asking: "許可の確認中",
-  starting: "起動中",
-  running: "実行中",
-  stopped: "停止",
-  failed: "エラーあり",
-  denied: "許可されていません",
+  checking: t("plugins-run-state-checking"),
+  asking: t("plugins-run-state-asking"),
+  starting: t("plugins-run-state-starting"),
+  running: t("plugins-run-state-running"),
+  stopped: t("plugins-run-state-stopped"),
+  failed: t("plugins-run-state-failed"),
+  denied: t("plugins-run-state-denied"),
 };
 
 /** メニューに出す項目 1 つ（コマンド・インポート・エクスポート）。 */
@@ -58,7 +59,7 @@ export interface CommandItem {
 export function commandItems(plugins: readonly { id: string; name: string; state: RunState; commands: readonly Command[] }[]): CommandItem[] {
   return plugins
     .filter((p) => p.state === "running")
-    .flatMap((p) => p.commands.map((c) => ({ plugin: p.id, command: c.id, label: c.title, tooltip: `プラグイン「${p.name}」のコマンド` })));
+    .flatMap((p) => p.commands.map((c) => ({ plugin: p.id, command: c.id, label: c.title, tooltip: t("plugins-command-tooltip", { name: p.name }) })));
 }
 
 /**
@@ -70,7 +71,7 @@ export function commandItems(plugins: readonly { id: string; name: string; state
  * stopNotice("要求の ID の補完") // → "プラグイン「要求の ID の補完」に停止を指示しました。完全に止まるまで数秒かかることがあります"
  */
 export function stopNotice(name: string): string {
-  return `プラグイン「${name}」に停止を指示しました。完全に止まるまで数秒かかることがあります`;
+  return t("plugins-stop-requested", { name });
 }
 
 /** メニューの項目を作るために要る、動かしているプラグインの情報。 */
@@ -92,7 +93,7 @@ export function importItems(plugins: readonly MenuPlugin[]): (CommandItem & { ac
     .flatMap((p) =>
       p.importers.map((i) => {
         const accept = acceptOf(i.extensions);
-        return { plugin: p.id, command: i.id, label: `${i.label}…`, tooltip: `プラグイン「${p.name}」で、ファイル（${accept || "すべて"}）をインポートして新しいファイルとして開きます`, accept };
+        return { plugin: p.id, command: i.id, label: `${i.label}…`, tooltip: accept ? t("plugins-import-tooltip", { name: p.name, accept }) : t("plugins-import-tooltip-any", { name: p.name }), accept };
       }),
     );
 }
@@ -111,6 +112,6 @@ export function exportItems(plugins: readonly MenuPlugin[]): CommandItem[] {
   return plugins
     .filter((p) => p.state === "running")
     .flatMap((p) =>
-      p.exporters.map((x) => ({ plugin: p.id, command: x.id, label: x.label, tooltip: `プラグイン「${p.name}」で、モデル（作成した図を表示中なら、その図）を ${x.extension} のファイルにエクスポートしてダウンロードします` })),
+      p.exporters.map((x) => ({ plugin: p.id, command: x.id, label: x.label, tooltip: t("plugins-export-tooltip", { name: p.name, extension: x.extension }) })),
     );
 }

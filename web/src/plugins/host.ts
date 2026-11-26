@@ -12,10 +12,11 @@ import { download } from "../app/export";
 import { S } from "../app/state";
 import { coreClient, onAnalyzedVersion, renderProblems, setText, toast, updateSync } from "../app/sync";
 import { modelView } from "../app/views";
+import { t } from "../l10n";
 import type { PluginDataStore } from "./browser-store";
 import { API_VERSION, type HostMessage, type Permission } from "./generated/protocol";
 import {
-  DROPPED_NOTIFY_PREFIX, droppedNotifyNotice, intake, MAX_NOTIFIES_PER_SECOND, MESSAGE_LIMITS, notifyAllowance, overdueRequests, READY_TIMEOUT_MS, REQUEST_TIMEOUT_MS, stuckNotice,
+  droppedNotifyNotice, intake, MAX_NOTIFIES_PER_SECOND, MESSAGE_LIMITS, notifyAllowance, overdueRequests, READY_TIMEOUT_MS, REQUEST_TIMEOUT_MS, stuckNotice, stuckToast,
   type IntakeState,
 } from "./limits";
 import { addNotice, decideMessage, flashRange, messageJson, STALE_PLUGIN_EDIT, type HostAction, type PendingRequest } from "./messages";
@@ -68,6 +69,8 @@ interface Entry {
   notifies: number[];
   /** 頻度の上限を超えて捨てた知らせの数。 */
   droppedNotifies: number;
+  /** 知らせを捨てたことを示す、一覧の今の行（数が変わるたびに置き換える）。まだ出していなければ null。 */
+  droppedNotice: string | null;
   /** 頼んだことの期限を見張るタイマー。 */
   watchdog: ReturnType<typeof setTimeout> | undefined;
   /** 起動（ready）の期限のタイマー。 */
@@ -78,7 +81,7 @@ interface Entry {
 const FRESH_INTAKE: IntakeState = { queued: 0, dropped: 0 };
 
 /** 開いているファイルが無いときに、コマンドやエクスポートを頼まれたときの知らせ（F-FILE-14）。 */
-const NO_OPEN_FILE = "開いているファイルがありません。ファイルを開いてから実行してください";
+const NO_OPEN_FILE = t("plugins-no-open-file");
 
 /** 許可を覚える localStorage のキー（形は trust.ts の TrustStore）。 */
 const TRUST_KEY = "modelith-plugin-trust";
@@ -125,7 +128,7 @@ export function initScriptHost(e: HostEnv): void {
  * hostEnv() // → e
  */
 function hostEnv(): HostEnv {
-  if (!env) throw new Error("プラグインのホストがまだ初期化されていません");
+  if (!env) throw new Error(t("plugins-host-not-ready"));
   return env;
 }
 
@@ -137,7 +140,7 @@ function hostEnv(): HostEnv {
  * @returns 合わせ終わったら解決する Promise（許可の確認の答えも待つ）
  */
 export function syncScriptPlugins(plugins: readonly ScriptPlugin[]): Promise<void> {
-  syncing = syncing.then(() => applyPlugins(plugins)).catch((e: unknown) => toast(`プラグインを起動できませんでした：${e instanceof Error ? e.message : String(e)}`));
+  syncing = syncing.then(() => applyPlugins(plugins)).catch((e: unknown) => toast(t("plugins-start-failed", { reason: e instanceof Error ? e.message : String(e) })));
   return syncing;
 }
 
@@ -162,7 +165,7 @@ async function applyPlugins(plugins: readonly ScriptPlugin[]): Promise<void> {
       sha256 = await sha256Hex(plugin.code);
     } catch {
       if (old) halt(old);
-      replace(plugin, "", "failed", ["このページは安全な接続（https）で開かれていないため、プラグインを確かめられません"]);
+      replace(plugin, "", "failed", [t("plugins-insecure-page")]);
       continue;
     }
     if (old && old.sha256 === sha256 && old.plugin.version === plugin.version && samePermissions(old.plugin.permissions, plugin.permissions)) {
@@ -189,7 +192,7 @@ async function applyPlugins(plugins: readonly ScriptPlugin[]): Promise<void> {
 function replace(plugin: ScriptPlugin, sha256: string, state: RunState, notices: string[]): Entry {
   const e: Entry = {
     plugin, sha256, state, notices, sandbox: null, pending: new Map(), nextRequest: 1, queue: Promise.resolve(), run: 0,
-    intake: FRESH_INTAKE, notifies: [], droppedNotifies: 0, watchdog: undefined, readyTimer: undefined,
+    intake: FRESH_INTAKE, notifies: [], droppedNotifies: 0, droppedNotice: null, watchdog: undefined, readyTimer: undefined,
   };
   entries.set(plugin.id, e);
   return e;
@@ -280,14 +283,14 @@ function start(e: Entry): void {
     message: (data) => enqueue(e, run, data),
     error: (message) => {
       if (e.run !== run) return;
-      notice(e, `プラグインの中でエラーが発生しました：${message || "（詳細は不明です）"}`);
+      notice(e, t("plugins-error-inside", { message: message || t("plugins-error-no-detail") }));
       if (e.state === "starting") setState(e, "failed");
     },
   });
   setState(e, "starting");
   e.readyTimer = setTimeout(() => {
     if (e.run !== run || e.state !== "starting") return;
-    reportStuck(e, stuckNotice(null, READY_TIMEOUT_MS));
+    reportStuck(e, null, READY_TIMEOUT_MS);
   }, READY_TIMEOUT_MS);
   const activate: HostMessage = { type: "activate", apiVersion: API_VERSION, pluginId: e.plugin.id };
   e.sandbox.post(e.plugin.settings === undefined ? activate : { ...activate, settings: e.plugin.settings });
@@ -323,7 +326,7 @@ function enqueue(e: Entry, run: number, data: unknown): void {
   if (verdict.kind === "halt") {
     halt(e);
     setState(e, "failed");
-    toast(`プラグイン「${e.plugin.name}」に停止を指示しました（届いたメッセージが多すぎるため）`);
+    toast(t("plugins-halted-toast", { name: e.plugin.name }));
     return notice(e, verdict.notice);
   }
   if (verdict.kind === "drop") return notice(e, verdict.notice);
@@ -367,7 +370,9 @@ function notice(e: Entry, text: string): void {
  * @param e プラグインの状態
  */
 function noticeDroppedNotifies(e: Entry): void {
-  e.notices = addNotice(e.notices.filter((n) => !n.startsWith(DROPPED_NOTIFY_PREFIX)), droppedNotifyNotice(e.droppedNotifies, MAX_NOTIFIES_PER_SECOND));
+  const text = droppedNotifyNotice(e.droppedNotifies, MAX_NOTIFIES_PER_SECOND);
+  e.notices = addNotice(e.notices.filter((n) => n !== e.droppedNotice), text);
+  e.droppedNotice = text;
   changed();
 }
 
@@ -375,11 +380,12 @@ function noticeDroppedNotifies(e: Entry): void {
  * 頼んだこと・起動が期限までに終わらないことを、トーストと一覧で知らせる（勝手には止めない。一覧の「停止」で止められる。F-PLUG-8）。
  *
  * @param e プラグインの状態
- * @param text 一覧の文（stuckNotice）。トーストでは頭にプラグインの名前を付け、「停止」がどこにあるかを添える
+ * @param request 頼んだこと。null なら起動（ready 待ち）
+ * @param timeoutMs 期限（ミリ秒）。トーストでは頭にプラグインの名前を付け、「停止」がどこにあるかを添える（stuckToast）
  */
-function reportStuck(e: Entry, text: string): void {
-  toast(`プラグイン「${e.plugin.name}」の${text.replace("「停止」", "プラグインの一覧の「停止」")}`);
-  notice(e, text);
+function reportStuck(e: Entry, request: PendingRequest | null, timeoutMs: number): void {
+  toast(stuckToast(e.plugin.name, request, timeoutMs));
+  notice(e, stuckNotice(request, timeoutMs));
 }
 
 /**
@@ -392,7 +398,7 @@ function reportStuck(e: Entry, text: string): void {
  */
 async function receive(e: Entry, run: number, data: unknown): Promise<void> {
   const json = messageJson(data);
-  if (json === null) return notice(e, "JSON にできないメッセージが届いたため、使いませんでした");
+  if (json === null) return notice(e, t("plugins-message-not-json"));
   const result = await coreClient().checkPluginMessage(json, e.plugin.permissions);
   if (e.run !== run) return;
   await act(e, decideMessage(result, e.pending));
@@ -429,17 +435,17 @@ async function act(e: Entry, a: HostAction): Promise<void> {
     case "imported": {
       settle(e, a.requestId);
       const doc = hostEnv().openImported(a.fileName, a.text);
-      toast(`「${a.title}」でインポートした結果を、新しいファイル「${doc}」として開きました（プラグイン「${name}」）。保存するまでファイルには書き込みません`);
+      toast(t("plugins-imported-toast", { title: a.title, doc, name }));
       return;
     }
     case "exported":
       settle(e, a.requestId);
       download(a.fileName, base64ToBytes(a.base64), a.mediaType);
-      toast(`「${a.title}」でエクスポートした「${a.fileName}」をダウンロードしました（プラグイン「${name}」）`);
+      toast(t("plugins-exported-toast", { title: a.title, fileName: a.fileName, name }));
       return;
     case "requestFailed":
       settle(e, a.requestId);
-      toast(`プラグイン「${name}」の${a.notice}`);
+      toast(t("plugins-request-failed-toast", { name, notice: a.notice }));
       return notice(e, a.notice);
     case "storageGet":
     case "storageSet":
@@ -451,7 +457,7 @@ async function act(e: Entry, a: HostAction): Promise<void> {
         e.droppedNotifies++;
         return noticeDroppedNotifies(e);
       }
-      toast(`プラグイン「${name}」：${a.message}`);
+      toast(t("plugins-notify-toast", { name, message: a.message }));
       if (a.level !== "info") notice(e, a.message);
       return;
     }
@@ -478,15 +484,15 @@ async function useStorage(e: Entry, a: Extract<HostAction, { kind: "storageGet" 
     if (a.kind === "storageGet") return reply(storedValue(json, a.key));
     const updated = storageUpdate(json, a.key, a.value, PLUGIN_STORAGE_LIMIT);
     if ("refused" in updated) {
-      toast(`プラグイン「${e.plugin.name}」：${updated.refused}`);
+      toast(t("plugins-storage-refused-toast", { name: e.plugin.name, reason: updated.refused }));
       notice(e, updated.refused);
       return reply();
     }
     await data.write(e.plugin.id, updated.json);
     reply();
   } catch (err) {
-    console.warn("プラグイン用の保存場所を使えませんでした:", err);
-    const text = `プラグイン用の保存場所を使えませんでした：${errorText(err)}`;
+    console.warn("could not use the plugin storage:", err);
+    const text = t("plugins-storage-failed", { reason: errorText(err) });
     notice(e, text);
     reply();
   }
@@ -510,7 +516,7 @@ function applyEdits(e: Entry, version: number, edits: readonly { start: number; 
   const next = applyTextEdits(S.text, edits);
   if (next === S.text) return;
   setText(next, { changeAt: edits[0]?.start ?? 0, flash: flashRange(edits) });
-  toast(label ? `「${label}」を適用しました（プラグイン「${e.plugin.name}」）` : `プラグイン「${e.plugin.name}」の変更を適用しました`);
+  toast(label ? t("plugins-edits-applied-label", { label, name: e.plugin.name }) : t("plugins-edits-applied", { name: e.plugin.name }));
 }
 
 /**
@@ -542,7 +548,7 @@ function runCommand(id: string, command: string): void {
   if (!hostEnv().hasOpenDoc()) return toast(NO_OPEN_FILE);
   const e = entries.get(id);
   const c = e?.plugin.commands.find((x) => x.id === command);
-  if (!e || !c || e.state !== "running") return toast("プラグインがまだ準備できていないため、コマンドを実行できません");
+  if (!e || !c || e.state !== "running") return toast(t("plugins-not-ready-command"));
   const requestId = track(e, { kind: "command", title: c.title });
   e.sandbox?.post({ type: "runCommand", requestId, command });
 }
@@ -558,14 +564,14 @@ function runCommand(id: string, command: string): void {
 async function runImport(id: string, importer: string): Promise<void> {
   const e = entries.get(id);
   const imp = e?.plugin.importers.find((x) => x.id === importer);
-  if (!e || !imp || e.state !== "running") return toast("プラグインがまだ準備できていないため、インポートできません");
+  if (!e || !imp || e.state !== "running") return toast(t("plugins-not-ready-import"));
   const item = importItems([{ ...e.plugin, state: e.state }]).find((x) => x.command === importer);
   const file = await pickFile(item?.accept ?? "");
   if (!file) return;
-  if (file.size > MAX_TRANSFER_BYTES) return toast(`「${file.name}」は大きすぎるためインポートできません（${sizeText(file.size)}。上限 ${sizeText(MAX_TRANSFER_BYTES)}）`);
+  if (file.size > MAX_TRANSFER_BYTES) return toast(t("plugins-import-file-too-large", { fileName: file.name, size: sizeText(file.size), max: sizeText(MAX_TRANSFER_BYTES) }));
   const run = e.run;
   const base64 = bytesToBase64(new Uint8Array(await file.arrayBuffer()));
-  if (e.run !== run || e.state !== "running") return toast("プラグインが停止したため、インポートできませんでした");
+  if (e.run !== run || e.state !== "running") return toast(t("plugins-import-stopped"));
   const requestId = track(e, { kind: "import", title: imp.label });
   e.sandbox?.post({ type: "import", requestId, importer, fileName: file.name, base64 });
 }
@@ -581,7 +587,7 @@ function runExport(id: string, exporter: string): void {
   if (!hostEnv().hasOpenDoc()) return toast(NO_OPEN_FILE);
   const e = entries.get(id);
   const x = e?.plugin.exporters.find((y) => y.id === exporter);
-  if (!e || !x || e.state !== "running") return toast("プラグインがまだ準備できていないため、エクスポートできません");
+  if (!e || !x || e.state !== "running") return toast(t("plugins-not-ready-export"));
   const requestId = track(e, { kind: "export", title: x.label, extension: x.extension });
   const view = modelView()?.name;
   e.sandbox?.post(view === undefined ? { type: "export", requestId, exporter } : { type: "export", requestId, exporter, view });
@@ -638,7 +644,7 @@ function reportOverdue(e: Entry): void {
     const request = e.pending.get(id);
     if (!request) continue;
     request.reported = true;
-    reportStuck(e, stuckNotice(request, REQUEST_TIMEOUT_MS));
+    reportStuck(e, request, REQUEST_TIMEOUT_MS);
   }
   watch(e);
 }
@@ -679,15 +685,15 @@ function clearDiagnostics(id: string): void {
 function renderCommands(): void {
   const plugins = [...entries.values()].map((e) => ({ ...e.plugin, state: e.state }));
   const sections: [string, string, CommandItem[]][] = [
-    ["プラグインのコマンド", "command", commandItems(plugins)],
-    ["プラグインでインポート", "import", importItems(plugins)],
-    ["プラグインでエクスポート", "export", exportItems(plugins)],
+    [t("plugins-menu-commands"), "command", commandItems(plugins)],
+    [t("plugins-menu-import"), "import", importItems(plugins)],
+    [t("plugins-menu-export"), "export", exportItems(plugins)],
   ];
   const html = sections
     .filter(([, , items]) => items.length)
     .map(
       ([head, kind, items]) =>
-        `<div class="phead">${head}</div>` +
+        `<div class="phead">${esc(head)}</div>` +
         items.map((i) => `<button data-plugin="${esc(i.plugin)}" data-kind="${kind}" data-item="${esc(i.command)}" title="${esc(i.tooltip)}">${esc(i.label)}</button>`).join(""),
     )
     .join("");

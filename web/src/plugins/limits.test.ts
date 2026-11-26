@@ -1,7 +1,7 @@
 // v1 のプラグインから届くメッセージの上限（F-PLUG-7）と、答えを待つ期限（F-PLUG-8）の判断の単体テスト。
 import { describe, expect, it } from "vitest";
 import {
-  droppedDiagnosticsNote, droppedNotifyNotice, intake, MAX_MESSAGE_UNITS, MESSAGE_LIMITS, messageUnits, notifyAllowance, overdueRequests, stuckNotice, type MessageLimits,
+  droppedDiagnosticsNote, droppedNotifyNotice, intake, MAX_MESSAGE_UNITS, MESSAGE_LIMITS, messageUnits, notifyAllowance, overdueRequests, stuckNotice, stuckToast, type MessageLimits,
 } from "./limits";
 
 /** テスト用の小さな上限。 */
@@ -186,6 +186,18 @@ describe("stuckNotice・droppedDiagnosticsNote（文）", () => {
     const got = stuckNotice(null, 10_000);
     // Assert
     expect(got).toBe("起動が 10 秒たっても終わりません。「停止」で止められます");
+  });
+
+  it.each([
+    ["コマンド", { kind: "command" as const, title: "ID を付ける" }, "プラグイン「補完」のコマンド「ID を付ける」が 30 秒たっても終わりません。プラグインの一覧の「停止」で止められます"],
+    ["インポート", { kind: "import" as const, title: "ReqIF" }, "プラグイン「補完」のインポート「ReqIF」が 30 秒たっても終わりません。プラグインの一覧の「停止」で止められます"],
+    ["エクスポート", { kind: "export" as const, title: "表", extension: ".csv" }, "プラグイン「補完」のエクスポート「表」が 30 秒たっても終わりません。プラグインの一覧の「停止」で止められます"],
+    ["起動", null, "プラグイン「補完」の起動が 30 秒たっても終わりません。プラグインの一覧の「停止」で止められます"],
+  ])("%sが終わらないときのトーストの文（プラグインの名前と、「停止」の場所を添える）", (_, request, expected) => {
+    // Arrange・Act
+    const got = stuckToast("補完", request, 30_000);
+    // Assert
+    expect(got).toBe(expected);
   });
 
   it("診断を捨てたことの文", () => {

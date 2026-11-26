@@ -8,6 +8,7 @@ use super::super::{
     describe_manifest, element_kinds, load_plugin, load_plugin_files,
 };
 use super::{DIR, ID, load_files, load_yaml, manifest, one_rule};
+use crate::Message;
 
 /// 読み込みの問題を「パス:行:列 文」の形にする（位置が無ければ「パス 文」）。
 fn problems(plugin: &super::LoadedPlugin) -> Vec<String> {
@@ -26,7 +27,7 @@ fn rule_problems(target: &str, require: &str) -> Vec<String> {
     load_yaml(&one_rule(target, require))
         .problems
         .into_iter()
-        .map(|p| p.message)
+        .map(|p| p.message.render())
         .collect()
 }
 
@@ -172,7 +173,7 @@ fn missing_plugin_tells_which_plugin_to_add() {
 #[test]
 fn unreadable_manifest_is_reported_with_the_reason() {
     // Arrange
-    let read = |_: &str| Err(ReadError::Other("UTF-8 ではありません".to_owned()));
+    let read = |_: &str| Err(ReadError::Other(Message::verbatim("UTF-8 ではありません")));
     // Act
     let plugin = load_plugin(ID, read);
     // Assert
@@ -543,7 +544,7 @@ fn unknown_key_at_each_level_is_reported() {
     let messages: Vec<String> = cases
         .iter()
         .flat_map(|c| load_yaml(c).problems)
-        .map(|p| p.message)
+        .map(|p| p.message.render())
         .collect();
     // Assert
     assert_eq!(messages.len(), cases.len(), "{messages:?}");
@@ -565,7 +566,7 @@ fn missing_field_and_unknown_severity_are_explained() {
     let got: Vec<String> = [missing.to_owned(), fatal]
         .iter()
         .flat_map(|y| load_yaml(y).problems)
-        .map(|p| p.message)
+        .map(|p| p.message.render())
         .collect();
     // Assert
     assert!(
@@ -594,7 +595,7 @@ fn rule_problems_of(yaml: &str) -> Vec<String> {
     load_yaml(yaml)
         .problems
         .into_iter()
-        .map(|p| p.message)
+        .map(|p| p.message.render())
         .collect()
 }
 
@@ -731,7 +732,7 @@ fn describe_serde_error_puts_the_meaning_first() {
     // Act
     let got: Vec<String> = raws
         .iter()
-        .map(|r| describe_serde_error(r, "JSON"))
+        .map(|r| describe_serde_error(r, "JSON").render())
         .collect();
     // Assert
     assert_eq!(
@@ -823,7 +824,7 @@ fn load_plugin_files_without_files_is_not_installed() {
 #[test]
 fn unreadable_manifest_counts_as_installed() {
     // Arrange（異常系: ファイルはあるが読めない）
-    let read = |_: &str| Err(ReadError::Other("権限がありません".to_owned()));
+    let read = |_: &str| Err(ReadError::Other(Message::verbatim("権限がありません")));
     // Act
     let plugin = load_plugin(ID, read);
     // Assert
@@ -883,8 +884,9 @@ fn describe_manifest_reports_broken_json_and_bad_ids_with_place() {
     let broken = "{\n  \"id\": ";
     let bad_id = r#"{"id":"../x","name":"n","version":"0.1.0","apiVersion":"0","runtime":"rules","license":"MIT"}"#;
     // Act
-    let a = describe_manifest("m.json", broken).map_err(|p| (p.place.is_some(), p.message));
-    let b = describe_manifest("m.json", bad_id).map_err(|p| p.message);
+    let a =
+        describe_manifest("m.json", broken).map_err(|p| (p.place.is_some(), p.message.render()));
+    let b = describe_manifest("m.json", bad_id).map_err(|p| p.message.render());
     // Assert
     assert!(
         matches!(a, Err((true, ref m)) if m.starts_with("書式にエラーがあるため読み込めません（JSON：")),

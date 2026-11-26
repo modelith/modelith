@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry as Slot;
 
 use super::{ActionFlow, Builder, Edge, FlowNode, Lane, Port, flow_label, has_word};
+use crate::Message;
 use crate::project::text::ref_segs;
 use crate::project::{ACTION_FLOW_KINDS, Entry, Rel, RelKind, Span};
 
@@ -348,7 +349,10 @@ impl Builder<'_> {
             }
             self.problem(
                 pos,
-                format!("{what}の相手「{}」が見つかりません（{rel}）", end.reference),
+                Message::verbatim(format!(
+                    "{what}の相手「{}」が見つかりません（{rel}）",
+                    end.reference
+                )),
                 None,
             );
         }

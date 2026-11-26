@@ -3,6 +3,7 @@
 use super::ops::{Found, append_package, keyword_problem, messages, tokens};
 use super::text::{Splice, indent_at, insert_into, insert_splice, remove_range};
 use super::{Change, Doc, Refusal};
+use crate::Message;
 use crate::project::{Entry, Expose, RelKind, Scope, text::is_basic_name};
 use crate::syntax::{SyntaxKind, is_keyword};
 
@@ -33,7 +34,7 @@ fn message_at(d: &Doc<'_>, c: usize, id: &str) -> Result<(usize, Vec<usize>), Re
         .iter()
         .enumerate()
         .position(|(i, &ri)| matches!(&d.p.rels[ri].kind, RelKind::Message { name, .. } if format!("msg|{i}|{name}") == id))
-        .ok_or_else(|| "操作するメッセージが見つかりません。テキストが先に変わった可能性があります".to_owned())?;
+        .ok_or_else(|| Message::verbatim("操作するメッセージが見つかりません。テキストが先に変わった可能性があります"))?;
     Ok((i, ms))
 }
 
@@ -165,13 +166,13 @@ pub(super) fn update_message(
 ) -> Result<Change, Refusal> {
     let name = name.trim();
     if let Some(why) = super::ops::bad_name_reason(name) {
-        return Err(why.to_owned());
+        return Err(why);
     }
     let c = d.context(ctx)?;
     let (i, ms) = message_at(d, c, id)?;
     let ri = ms[i];
     let RelKind::Message { a, b, .. } = &d.p.rels[ri].kind else {
-        return Err("メッセージではありません".to_owned());
+        return Err(Message::verbatim("メッセージではありません"));
     };
     let (s, e) = message_span(d, ri);
     let then = if starts_with_then(&d.text[s..e]) {
@@ -226,7 +227,7 @@ pub(super) fn move_message(d: &Doc<'_>, ctx: &str, id: &str, dir: i8) -> Result<
     let j = i
         .checked_add_signed(dir.into())
         .filter(|&j| j < ms.len())
-        .ok_or_else(|| "これ以上は動かせません".to_owned())?;
+        .ok_or_else(|| Message::verbatim("これ以上は動かせません"))?;
     let ((a0, a1), (b0, b1)) = {
         let (x, y) = (message_span(d, ms[i]), message_span(d, ms[j]));
         if x.0 < y.0 { (x, y) } else { (y, x) }
@@ -285,7 +286,7 @@ pub(super) fn set_phase(d: &Doc<'_>, found: &[Found], value: &str) -> Result<Cha
     let en =
         d.m.phase_enum
             .as_deref()
-            .ok_or_else(|| "フェーズの定義がありません".to_owned())?;
+            .ok_or_else(|| Message::verbatim("フェーズの定義がありません"))?;
     let tok = format!("{en}::{value}");
     let decl = format!("@Phase {{ stage = {tok}; }}");
     if let [one] = found {
@@ -315,10 +316,12 @@ pub(super) fn set_phase(d: &Doc<'_>, found: &[Found], value: &str) -> Result<Cha
             });
         }
         if value.is_empty() {
-            return Err("パッケージから継承しているため、ここでは外せません".to_owned());
+            return Err(Message::verbatim(
+                "パッケージから継承しているため、ここでは外せません",
+            ));
         }
         if d.phase_of(one.entry) == Some(value) {
-            return Err("すでにパッケージから継承しています".to_owned());
+            return Err(Message::verbatim("すでにパッケージから継承しています"));
         }
         let (text, s, e) = insert_into(d.text, d.target(one.entry), &decl);
         return Ok(Change {
@@ -328,7 +331,7 @@ pub(super) fn set_phase(d: &Doc<'_>, found: &[Found], value: &str) -> Result<Cha
         });
     }
     if value.is_empty() {
-        return Err("フェーズを選んでください".to_owned());
+        return Err(Message::verbatim("フェーズを選んでください"));
     }
     let splices: Vec<Splice> = found
         .iter()
@@ -401,7 +404,7 @@ pub(super) fn init_phases(d: &Doc<'_>, new_package: Option<&str>) -> Result<Chan
     let (text, start, open) = match (d.first_package(), new_package) {
         (Some(p), _) => {
             let e = d.e(p);
-            let open = e.open.ok_or_else(|| "このファイルの書き方では、フェーズを足せません（最初の package が { } で囲まれていません）".to_owned())?;
+            let open = e.open.ok_or_else(|| Message::verbatim("このファイルの書き方では、フェーズを足せません（最初の package が { } で囲まれていません）"))?;
             (d.text.to_owned(), d.b(e.start), d.b(open))
         }
         (None, Some(name)) => {
@@ -410,7 +413,9 @@ pub(super) fn init_phases(d: &Doc<'_>, new_package: Option<&str>) -> Result<Chan
             (text, t.start, open)
         }
         (None, None) => {
-            return Err("フェーズを書き込むパッケージがありません".to_owned());
+            return Err(Message::verbatim(
+                "フェーズを書き込むパッケージがありません",
+            ));
         }
     };
     let i1 = format!("{}    ", indent_at(&text, start));
@@ -488,7 +493,9 @@ impl Doc<'_> {
             .copied()
             .find(|&c| self.e(c).name == port)
             .ok_or_else(|| {
-                format!("ポート「{port}」が見つかりません。テキストが先に変わった可能性があります")
+                Message::verbatim(format!(
+                    "ポート「{port}」が見つかりません。テキストが先に変わった可能性があります"
+                ))
             })
     }
 }
@@ -574,20 +581,24 @@ pub(super) fn make_port(
     ctx: Option<&str>,
 ) -> Result<Change, Refusal> {
     if !is_basic_name(name) {
-        return Err("ポート名は英字か _ で始め、英字・数字・_ だけで付けてください".to_owned());
+        return Err(Message::verbatim(
+            "ポート名は英字か _ で始め、英字・数字・_ だけで付けてください",
+        ));
     }
     if let Some(why) = keyword_problem(name) {
         return Err(why);
     }
     if !matches!(dir, "in" | "out" | "inout") {
-        return Err(format!("ポートの向き「{dir}」は扱えません"));
+        return Err(Message::verbatim(format!(
+            "ポートの向き「{dir}」は扱えません"
+        )));
     }
     let host = d.port_host(f.entry);
     if d.e(host).children.iter().any(|&c| d.e(c).name == name) {
-        return Err(format!(
+        return Err(Message::verbatim(format!(
             "「{name}」は {} の中で既に使われています",
             d.e(host).name
-        ));
+        )));
     }
     let ty = if ty.is_empty() {
         String::new()
@@ -667,7 +678,9 @@ pub(super) fn set_port_dir(
     dir: &str,
 ) -> Result<Change, Refusal> {
     if !matches!(dir, "in" | "out" | "inout") {
-        return Err(format!("ポートの向き「{dir}」は扱えません"));
+        return Err(Message::verbatim(format!(
+            "ポートの向き「{dir}」は扱えません"
+        )));
     }
     let e = d.e(d.port(f, port)?);
     let (s, he) = (d.b(e.start), d.b(e.head_end));
@@ -961,7 +974,9 @@ impl Doc<'_> {
             .find(|v| v.name == name)
             .map(|v| v.entry)
             .ok_or_else(|| {
-                format!("図「{name}」が見つかりません。テキストが先に変わった可能性があります")
+                Message::verbatim(format!(
+                    "図「{name}」が見つかりません。テキストが先に変わった可能性があります"
+                ))
             })
     }
 }
@@ -1066,35 +1081,36 @@ pub(super) fn save_view(
 ) -> Result<Change, Refusal> {
     let name = name.trim();
     if name.is_empty() {
-        return Err("図の名前を入力してください".to_owned());
+        return Err(Message::verbatim("図の名前を入力してください"));
     }
     // 要素の名前と同じ規則にする（`'` などを含む名前は、名前の変更では付けられないため。#267）
     if let Some(why) = super::ops::bad_name_reason(name) {
-        return Err(why.to_owned());
+        return Err(why);
     }
     if d.m.views.iter().any(|v| v.name == name) {
-        return Err(format!(
+        return Err(Message::verbatim(format!(
             "「{name}」という図は既にあります。別の名前にしてください"
-        ));
+        )));
     }
-    let std = std_view_for(kind).ok_or_else(|| format!("図の描き方「{kind}」は扱えません"))?;
+    let std = std_view_for(kind)
+        .ok_or_else(|| Message::verbatim(format!("図の描き方「{kind}」は扱えません")))?;
     if targets.is_empty() && kind != "general" {
-        return Err("図の対象を選んでください".to_owned());
+        return Err(Message::verbatim("図の対象を選んでください"));
     }
     let pkg = d.first_package().ok_or_else(|| {
-        "図を置くパッケージがありません。先にパッケージを作ってください".to_owned()
+        Message::verbatim("図を置くパッケージがありません。先にパッケージを作ってください")
     })?;
     // 図は package の直下に置くので、同じ package の直下の要素と同じ名前にしない（同じ名前が 2 つになり、参照が曖昧になる。#240）
     if d.e(pkg).children.iter().any(|&c| d.e(c).name == name) {
-        return Err(format!(
+        return Err(Message::verbatim(format!(
             "「{name}」という名前の要素が既にあります。図には別の名前を付けてください"
-        ));
+        )));
     }
     // パッケージと同じ名前の図は、`P::A` の `P` が図の中を探すようになり、ほかの図の expose が見つからなくなる（#266）
     if (0..d.p.entries.len()).any(|i| d.e(i).kind == "package" && d.e(i).name == name) {
-        return Err(format!(
+        return Err(Message::verbatim(format!(
             "「{name}」はパッケージの名前なので、図には別の名前を付けてください"
-        ));
+        )));
     }
     let indent = format!("{}    ", indent_at(d.text, d.b(d.e(pkg).start)));
     let ts: Vec<usize> = targets.iter().map(|f| f.entry).collect();
@@ -1139,7 +1155,10 @@ pub(super) fn add_to_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Change, 
                 .iter()
                 .any(|k| d.m.nodes.iter().any(|n| &n.key == k && n.entry == f.entry))
     }) {
-        return Err(format!("「{}」は既にこの図にあります", e.name));
+        return Err(Message::verbatim(format!(
+            "「{}」は既にこの図にあります",
+            e.name
+        )));
     }
     let (text, s, end) = insert_into(
         d.text,
@@ -1180,10 +1199,10 @@ pub(super) fn remove_from_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Cha
         .map(|x| (d.b(x.start), d.b(x.end + 1)))
         .collect();
     if xs.is_empty() {
-        return Err(format!(
+        return Err(Message::verbatim(format!(
             "「{}」は、ほかの要素とまとめてこの図に入っているため、1 つだけ外すことはできません（テキストの expose で直せます）",
             d.e(f.entry).name
-        ));
+        )));
     }
     xs.sort_unstable();
     let mut text = d.text.to_owned();
@@ -1223,10 +1242,10 @@ pub(super) fn rename_view(d: &Doc<'_>, view: &str, name: &str) -> Result<Change,
     let v = d.view_named(view)?;
     let name = name.trim();
     if name.is_empty() {
-        return Err("図の名前を入力してください".to_owned());
+        return Err(Message::verbatim("図の名前を入力してください"));
     }
     if let Some(why) = super::ops::bad_name_reason(name) {
-        return Err(why.to_owned());
+        return Err(why);
     }
     let e = d.e(v);
     if name == view {
@@ -1237,9 +1256,9 @@ pub(super) fn rename_view(d: &Doc<'_>, view: &str, name: &str) -> Result<Change,
         });
     }
     if d.m.views.iter().any(|x| x.name == name) {
-        return Err(format!(
+        return Err(Message::verbatim(format!(
             "「{name}」という図は既にあります。別の名前にしてください"
-        ));
+        )));
     }
     let (hs, he) = (d.b(e.start), d.b(e.head_end));
     let unquote = |t: &str| t.trim_matches('\'').replace("\\'", "'");
@@ -1252,7 +1271,7 @@ pub(super) fn rename_view(d: &Doc<'_>, view: &str, name: &str) -> Result<Change,
                 || (t.0 == SyntaxKind::QUOTED_NAME && unquote(t.2) == view)
         })
         .map(|t| (t.1, t.2.len()))
-        .ok_or_else(|| format!("図「{view}」の名前が見つかりません"))?;
+        .ok_or_else(|| Message::verbatim(format!("図「{view}」の名前が見つかりません")))?;
     let nn = sysml_name(name);
     let mut text = d.text.to_owned();
     text.replace_range(at.0..at.0 + at.1, &nn);
@@ -1566,15 +1585,15 @@ pub(super) fn set_attribute(
 ) -> Result<Change, Refusal> {
     let (name, ty, value) = (name.trim(), ty.trim(), value.trim());
     if name.is_empty() {
-        return Err("属性の名前を入力してください".to_owned());
+        return Err(Message::verbatim("属性の名前を入力してください"));
     }
     if let Some(why) = super::ops::bad_name_reason(name) {
-        return Err(why.to_owned());
+        return Err(why);
     }
     if ty.contains(ATTR_STOP) || value.contains(ATTR_STOP) || ty.contains('=') {
-        return Err(
-            "型と値には「;」「{」「}」や改行は書けません（型には「=」も書けません）".to_owned(),
-        );
+        return Err(Message::verbatim(
+            "型と値には「;」「{」「}」や改行は書けません（型には「=」も書けません）",
+        ));
     }
     let owner = d.e(f.entry);
     let attrs: Vec<usize> = owner
@@ -1590,7 +1609,9 @@ pub(super) fn set_attribute(
                 .copied()
                 .find(|&c| d.e(c).name == a)
                 .ok_or_else(|| {
-                    format!("属性「{a}」が見つかりません。テキストが先に変わった可能性があります")
+                    Message::verbatim(format!(
+                        "属性「{a}」が見つかりません。テキストが先に変わった可能性があります"
+                    ))
                 })?,
         ),
         None => None,
@@ -1599,13 +1620,17 @@ pub(super) fn set_attribute(
         .iter()
         .any(|&c| Some(c) != current && d.e(c).name == name)
     {
-        return Err(format!("「{name}」という属性は既にあります"));
+        return Err(Message::verbatim(format!(
+            "「{name}」という属性は既にあります"
+        )));
     }
     match current {
         Some(c) => {
             let e = d.e(c);
             if e.close.is_some() {
-                return Err("この属性には中身があるため、テキストで直してください".to_owned());
+                return Err(Message::verbatim(
+                    "この属性には中身があるため、テキストで直してください",
+                ));
             }
             if e.name != name {
                 // 名前を変えるときは、式や `:>` などの参照もまとめて変えてから、型と値を書き換える（F-EDIT-3。#231）
@@ -1674,7 +1699,9 @@ pub(super) fn remove_attribute(d: &Doc<'_>, f: &Found, attr: &str) -> Result<Cha
         .copied()
         .find(|&c| d.e(c).kind == "attribute" && d.e(c).name == attr)
         .ok_or_else(|| {
-            format!("属性「{attr}」が見つかりません。テキストが先に変わった可能性があります")
+            Message::verbatim(format!(
+                "属性「{attr}」が見つかりません。テキストが先に変わった可能性があります"
+            ))
         })?;
     let e = d.e(c);
     let (text, at) = remove_range(d.text, d.b(e.start), d.b(e.end));

@@ -15,6 +15,7 @@ use std::cell::Cell;
 
 use serde::{Deserialize, Serialize};
 
+use crate::Message;
 use crate::model::{self, Model};
 use crate::project::{self, Entry, ParseResult};
 pub use more::{FlowEnd, qualified_name, sysml_name};
@@ -196,8 +197,8 @@ pub struct Outcome {
     pub flash: Option<[usize; 2]>,
 }
 
-/// 操作できなかった理由（画面にそのまま出す文。ADR-0014）。
-pub type Refusal = String;
+/// 操作できなかった理由（画面に出す文。ADR-0014）。言語によらない形で運び、入口が文にする（ADR-0027 §3）。
+pub type Refusal = Message;
 
 /// 今のテキストに意図を当てて、テキストの編集を返す。暫定コアの `web/src/app/ops.ts` の操作と同じ振る舞い。
 /// テキストを解析し直して要素をキーで探すので、意図を作った後にテキストが変わっていても、無くなった要素は断る。
@@ -240,7 +241,7 @@ pub const SHOWN_IN_OTHER_FILE: &str = "この要素は、ほかのファイル�
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Refused {
     /// 画面にそのまま出す文（ADR-0014）。
-    pub reason: String,
+    pub reason: Message,
     /// ほかのファイルの要素を書き換えようとしたなら、そのファイルの番号（`merge` に渡した順で 1 から）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file: Option<usize>,
@@ -279,7 +280,7 @@ pub fn edit_in(text: &str, others: Vec<ParseResult>, intent: &Intent) -> Result<
     // 括弧が合っていないと、書く場所を取り違えて、ほかの要素を package の外へ出してしまう（#222）
     if !balanced(text) {
         return Err(Refused {
-            reason: UNBALANCED.to_owned(),
+            reason: Message::verbatim(UNBALANCED),
             file: None,
             shown_in: None,
         });
@@ -288,14 +289,14 @@ pub fn edit_in(text: &str, others: Vec<ParseResult>, intent: &Intent) -> Result<
     let result = ops::run(&doc, intent);
     if let Some(file) = doc.touched.get() {
         return Err(Refused {
-            reason: IN_OTHER_FILE.to_owned(),
+            reason: Message::verbatim(IN_OTHER_FILE),
             file: Some(file),
             shown_in: None,
         });
     }
     if let Some(file) = doc.shown_in.get() {
         return Err(Refused {
-            reason: SHOWN_IN_OTHER_FILE.to_owned(),
+            reason: Message::verbatim(SHOWN_IN_OTHER_FILE),
             file: None,
             shown_in: Some(file),
         });

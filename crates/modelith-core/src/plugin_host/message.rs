@@ -6,6 +6,7 @@ use modelith_plugin_protocol::{
 use serde::Serialize;
 
 use super::position::Positions;
+use crate::Message;
 
 /// 画面の位置（UTF-16 のオフセット）に直した変更 1 つ。古いテキストの `[start, end)` を `text` に置き換える。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -96,16 +97,19 @@ pub fn check_message(
     text: &str,
     json: &str,
     permissions: &[Permission],
-) -> Result<CheckedMessage, String> {
-    let message: PluginMessage = serde_json::from_str(json)
-        .map_err(|e| format!("形が正しくないメッセージのため、使いませんでした（{e}）"))?;
+) -> Result<CheckedMessage, Message> {
+    let message: PluginMessage = serde_json::from_str(json).map_err(|e| {
+        Message::verbatim(format!(
+            "形が正しくないメッセージのため、使いませんでした（{e}）"
+        ))
+    })?;
     let missing = required_permission(&message).filter(|need| !permissions.contains(need));
     if let Some(need) = missing {
-        return Err(format!(
+        return Err(Message::verbatim(format!(
             "宣言していない権限（{}）が要るメッセージ（{}）のため、使いませんでした",
             permission_name(need),
             message_type(&message)
-        ));
+        )));
     }
     let edits = match &message {
         PluginMessage::ProposeEdits { edits, .. } => Some(resolve_edits(text, edits)?),
@@ -142,7 +146,7 @@ pub fn check_message(
 /// resolve_edits("abc", [0:0–0:2, 0:1–0:3])            → Err("変更案の範囲が重なっているため、適用しませんでした")
 /// resolve_edits("abc", [])                            → Ok([])
 /// ```
-pub fn resolve_edits(text: &str, edits: &[TextEdit]) -> Result<Vec<PlacedEdit>, String> {
+pub fn resolve_edits(text: &str, edits: &[TextEdit]) -> Result<Vec<PlacedEdit>, Message> {
     let positions = Positions::new(text);
     let mut placed = Vec::with_capacity(edits.len());
     for e in edits {
@@ -151,14 +155,14 @@ pub fn resolve_edits(text: &str, edits: &[TextEdit]) -> Result<Vec<PlacedEdit>, 
             positions.offset(e.range.end),
         );
         let (Some(start), Some(end)) = (start, end) else {
-            return Err(
-                "変更案の範囲がテキストの外を指しているため、適用しませんでした".to_owned(),
-            );
+            return Err(Message::verbatim(
+                "変更案の範囲がテキストの外を指しているため、適用しませんでした",
+            ));
         };
         if start > end {
-            return Err(
-                "変更案の範囲の始まりが終わりより後ろにあるため、適用しませんでした".to_owned(),
-            );
+            return Err(Message::verbatim(
+                "変更案の範囲の始まりが終わりより後ろにあるため、適用しませんでした",
+            ));
         }
         placed.push(PlacedEdit {
             start,
@@ -171,7 +175,9 @@ pub fn resolve_edits(text: &str, edits: &[TextEdit]) -> Result<Vec<PlacedEdit>, 
         .windows(2)
         .any(|w| w[1].start < w[0].end || w[1].start == w[0].start)
     {
-        return Err("変更案の範囲が重なっているため、適用しませんでした".to_owned());
+        return Err(Message::verbatim(
+            "変更案の範囲が重なっているため、適用しませんでした",
+        ));
     }
     Ok(placed)
 }
@@ -197,7 +203,7 @@ pub fn resolve_edits(text: &str, edits: &[TextEdit]) -> Result<Vec<PlacedEdit>, 
 pub fn place_diagnostics(
     text: &str,
     items: &[Diagnostic],
-) -> Result<Vec<PlacedDiagnostic>, String> {
+) -> Result<Vec<PlacedDiagnostic>, Message> {
     let positions = Positions::new(text);
     items
         .iter()
@@ -213,7 +219,9 @@ pub fn place_diagnostics(
                     message: d.message.clone(),
                     code: d.code.clone(),
                 }),
-                _ => Err("診断の範囲がテキストの外を指しているため、使いませんでした".to_owned()),
+                _ => Err(Message::verbatim(
+                    "診断の範囲がテキストの外を指しているため、使いませんでした",
+                )),
             }
         })
         .collect()

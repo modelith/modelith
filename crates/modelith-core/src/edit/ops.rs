@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use super::more::sysml_name;
 use super::text::{Target, indent_at, insert_into, lower_first, remove_range};
 use super::{Change, Doc, Intent, Refusal, more};
+use crate::Message;
 use crate::project::{RelKind, Span, text::is_basic_name};
 use crate::syntax::{SyntaxKind, is_keyword, tokenize};
 
@@ -56,11 +57,12 @@ pub(super) const BAD_NAME_SEPARATOR: &str =
 /// bad_name_reason("a:b")       → None   // 「:」1 つは区切りではない
 /// bad_name_reason("電気 ケトル") → None
 /// ```
-pub(super) fn bad_name_reason(name: &str) -> Option<&'static str> {
+pub(super) fn bad_name_reason(name: &str) -> Option<Message> {
     if has_bad_name_char(name) {
-        return Some(BAD_RENAME);
+        return Some(Message::verbatim(BAD_RENAME));
     }
-    name.contains("::").then_some(BAD_NAME_SEPARATOR)
+    name.contains("::")
+        .then(|| Message::verbatim(BAD_NAME_SEPARATOR))
 }
 
 /// 名前が、テキストの書き方で使う言葉（SysML v2 の予約語）なら、断る理由の文を返す（予約語の名前はテキストを壊すため。#266）。
@@ -80,9 +82,12 @@ pub(super) fn bad_name_reason(name: &str) -> Option<&'static str> {
 /// keyword_problem("Lamp")  → None
 /// keyword_problem("Part")  → None   // 大文字の違う語は予約語でない
 /// ```
-pub(super) fn keyword_problem(name: &str) -> Option<String> {
-    is_keyword(name)
-        .then(|| format!("「{name}」はテキストの書き方で使う言葉なので、名前に使えません"))
+pub(super) fn keyword_problem(name: &str) -> Option<Message> {
+    is_keyword(name).then(|| {
+        Message::verbatim(format!(
+            "「{name}」はテキストの書き方で使う言葉なので、名前に使えません"
+        ))
+    })
 }
 
 /// 追加する定義の名前（種類ごと）。
@@ -296,7 +301,9 @@ pub(super) struct Found {
 /// missing("")     → "操作する要素「」が見つかりません。テキストが先に変わった可能性があります"
 /// ```
 pub(crate) fn missing(key: &str) -> Refusal {
-    format!("操作する要素「{key}」が見つかりません。テキストが先に変わった可能性があります")
+    Message::verbatim(format!(
+        "操作する要素「{key}」が見つかりません。テキストが先に変わった可能性があります"
+    ))
 }
 
 impl Doc<'_> {
@@ -599,7 +606,7 @@ fn add_node(
             let (text, target) = append_package(d.text, name)?;
             (text, target, None)
         }
-        (None, None) => return Err("要素を配置するパッケージがありません".to_owned()),
+        (None, None) => return Err(Message::verbatim("要素を配置するパッケージがありません")),
     };
     let names = d.names();
     let name = unique(lookup(NEW_NAME, kind).unwrap_or("NewElement"), |n| {
@@ -656,13 +663,15 @@ fn add_node(
 fn add_element(d: &Doc<'_>, kind: &str, name: &str, parent: &Found) -> Result<Change, Refusal> {
     let name = name.trim();
     if name.is_empty() {
-        return Err("名前を入力してください".to_owned());
+        return Err(Message::verbatim("名前を入力してください"));
     }
     if let Some(why) = bad_name_reason(name) {
-        return Err(why.to_owned());
+        return Err(why);
     }
     if !crate::project::DECL_KINDS.contains(&kind) {
-        return Err(format!("「{kind}」は、追加できる要素の種類ではありません"));
+        return Err(Message::verbatim(format!(
+            "「{kind}」は、追加できる要素の種類ではありません"
+        )));
     }
     let taken = d
         .e(parent.entry)
@@ -670,7 +679,7 @@ fn add_element(d: &Doc<'_>, kind: &str, name: &str, parent: &Found) -> Result<Ch
         .iter()
         .any(|&c| d.e(c).name == name);
     if taken {
-        return Err(format!("「{name}」は既に使われています"));
+        return Err(Message::verbatim(format!("「{name}」は既に使われています")));
     }
     let snippet = format!("{kind} {};", super::sysml_name(name));
     let (text, a, b) = insert_into(d.text, d.target(parent.entry), &snippet);
@@ -705,9 +714,9 @@ fn add_element(d: &Doc<'_>, kind: &str, name: &str, parent: &Found) -> Result<Ch
 /// ```
 pub(super) fn append_package(text: &str, name: &str) -> Result<(String, Target), Refusal> {
     if !is_basic_name(name) {
-        return Err(
-            "パッケージ名は、英字か _ で始め、英字・数字・_ だけで付けてください".to_owned(),
-        );
+        return Err(Message::verbatim(
+            "パッケージ名は、英字か _ で始め、英字・数字・_ だけで付けてください",
+        ));
     }
     if let Some(why) = keyword_problem(name) {
         return Err(why);
@@ -855,10 +864,10 @@ pub(super) fn tokens(text: &str) -> Vec<(SyntaxKind, usize, &str)> {
 fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
     let nn = nn.trim();
     if nn.is_empty() {
-        return Err("名前を入力してください".to_owned());
+        return Err(Message::verbatim("名前を入力してください"));
     }
     if let Some(why) = bad_name_reason(nn) {
-        return Err(why.to_owned());
+        return Err(why);
     }
     let e = d.e(f.entry);
     let old = e.name.as_str();
@@ -877,7 +886,7 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
             .enumerate()
             .any(|(i, x)| i != f.entry && x.pe == pe && x.name == nn);
     if taken {
-        return Err(format!("「{nn}」は既に使われています"));
+        return Err(Message::verbatim(format!("「{nn}」は既に使われています")));
     }
     Ok(rename_refs(d, f, nn))
 }
@@ -1722,7 +1731,9 @@ impl Doc<'_> {
                 })
             })
             .ok_or_else(|| {
-                "操作する関係が見つかりません。テキストが先に変わった可能性があります".to_owned()
+                Message::verbatim(
+                    "操作する関係が見つかりません。テキストが先に変わった可能性があります",
+                )
             })
     }
 }
@@ -1834,7 +1845,7 @@ fn connect(
         }
         "verify" => {
             if verifies(d, a.entry, b.entry) {
-                return Err(SAME_RELATION.to_owned());
+                return Err(Message::verbatim(SAME_RELATION));
             }
             let has_objective =
                 d.p.rels
@@ -1882,7 +1893,7 @@ fn connect(
             let (parent, ua, ub) = match ctx {
                 Some(c) if !ea.is_def => (d.context(c)?, a.entry, b.entry),
                 _ => common_parent(d, &ea.name, &eb.name).ok_or_else(|| {
-                    "2 つの部品を両方持つ部品定義がないため、流れを書けません".to_owned()
+                    Message::verbatim("2 つの部品を両方持つ部品定義がないため、流れを書けません")
                 })?,
             };
             // 内部ブロック図の入れ子の部品は、対象の中から `a.b` で指す
@@ -1895,11 +1906,15 @@ fn connect(
                 format!("flow from {} to {};", end(ua, fp), end(ub, tp)),
             )
         }
-        _ => return Err(format!("関係の種類「{rel}」は扱えません")),
+        _ => {
+            return Err(Message::verbatim(format!(
+                "関係の種類「{rel}」は扱えません"
+            )));
+        }
     };
     // package の直下に書く関係（満たす・導出）は、同じ文が既にあれば足さない（同じ関係が 2 行になるため。#244）
     if matches!(rel, "satisfy" | "derive") && has_statement(d.text, &snippet) {
-        return Err(SAME_RELATION.to_owned());
+        return Err(Message::verbatim(SAME_RELATION));
     }
     let (text, a, b) = insert_into(d.text, host, &snippet);
     Ok(Change {
@@ -1980,7 +1995,7 @@ fn has_statement(text: &str, stmt: &str) -> bool {
 /// no_package() → "関係を追加するパッケージがありません"
 /// ```
 fn no_package() -> Refusal {
-    "関係を追加するパッケージがありません".to_owned()
+    Message::verbatim("関係を追加するパッケージがありません")
 }
 
 /// a と b を部品として持つ最初の定義（flow を書く場所）と、その部品。部品は型の名前で探す（直下の `part` だけ）。

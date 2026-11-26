@@ -5,6 +5,7 @@
 
 use std::collections::BTreeMap;
 
+use modelith_core::Message;
 use modelith_core::read::{self, Project, SourceFile};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
@@ -108,15 +109,16 @@ pub fn read_problems(files: &str, project_file: Option<String>, plugin_files: &s
 /// read_problems_json("[]", None, "x")  → r#"{"error":"プラグインのファイルを読み込めませんでした（…）"}"#
 /// ```
 fn read_problems_json(files: &str, project_file: Option<&str>, plugin_files: &str) -> String {
-    let plugin_files: BTreeMap<String, BTreeMap<String, String>> =
-        match serde_json::from_str(plugin_files) {
-            Ok(p) => p,
-            Err(e) => {
-                return to_json(&serde_json::json!({
-                    "error": format!("プラグインのファイルを読み込めませんでした（{e}）")
-                }));
-            }
-        };
+    let plugin_files: BTreeMap<String, BTreeMap<String, String>> = match serde_json::from_str(
+        plugin_files,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            return to_json(&serde_json::json!({
+                "error": Message::verbatim(format!("プラグインのファイルを読み込めませんでした（{e}）"))
+            }));
+        }
+    };
     with_files(files, |sources| {
         to_json(&read::check(&Project {
             files: sources,
@@ -198,7 +200,7 @@ fn with_files(files: &str, f: impl FnOnce(&[SourceFile<'_>]) -> String) -> Strin
             f(&sources)
         }
         Err(e) => to_json(&serde_json::json!({
-            "error": format!("ファイルの一覧を読み込めませんでした（{e}）")
+            "error": Message::verbatim(format!("ファイルの一覧を読み込めませんでした（{e}）"))
         })),
     }
 }

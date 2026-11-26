@@ -12,7 +12,7 @@ use super::{
     CheckRule, Condition, LoadProblem, LoadedPlugin, MANIFEST_FILE, ManifestInfo, PLUGINS_DIR,
     Place, RELATIONS, ReadError, Target, element_kinds,
 };
-use crate::LineIndex;
+use crate::{LineIndex, Message};
 
 /// プロジェクトに入れたプラグイン 1 つを読み込む。マニフェストを読み、`contributes.rules` のファイルを順に読む。
 ///
@@ -51,9 +51,9 @@ pub fn load_plugin(
         plugin.problems.push(problem(
             "modelith.json",
             None,
-            format!(
+            Message::verbatim(format!(
                 "プラグインの ID「{id}」の形が正しくありません。英小文字・数字・「-」を「.」で区切って書いてください（例：jp.example.rules）"
-            ),
+            )),
         ));
         return plugin;
     }
@@ -184,7 +184,7 @@ pub fn describe_manifest(path: &str, text: &str) -> Result<ManifestInfo, LoadPro
 /// ```text
 /// problem("a.yaml", None, "x".into()) → LoadProblem { path: "a.yaml", place: None, message: "x" }
 /// ```
-fn problem(path: &str, place: Option<Place>, message: String) -> LoadProblem {
+fn problem(path: &str, place: Option<Place>, message: Message) -> LoadProblem {
     LoadProblem {
         path: path.to_owned(),
         place,
@@ -221,7 +221,7 @@ fn manifest_read_problem(id: &str, path: &str, e: &ReadError) -> LoadProblem {
             format!("プラグイン「{id}」のマニフェストを読み込めません（{reason}）")
         }
     };
-    problem(path, None, message)
+    problem(path, None, Message::verbatim(message))
 }
 
 /// ルールのファイルを読めなかったことを、問題にする。
@@ -247,7 +247,7 @@ fn rule_file_read_problem(path: &str, e: &ReadError) -> LoadProblem {
         }
         ReadError::Other(reason) => format!("ルールのファイルを読み込めません（{reason}）"),
     };
-    problem(path, None, message)
+    problem(path, None, Message::verbatim(message))
 }
 
 /// v1 のプラグインのプログラムのファイル（`main`）を読めなかったことを、問題にする。
@@ -273,7 +273,7 @@ fn main_file_read_problem(path: &str, e: &ReadError) -> LoadProblem {
         }
         ReadError::Other(reason) => format!("プログラムのファイルを読み込めません（{reason}）"),
     };
-    problem(path, None, message)
+    problem(path, None, Message::verbatim(message))
 }
 
 /// マニフェストから読み取った、読むべきファイル。
@@ -328,10 +328,10 @@ fn read_manifest(id: &str, path: &str, text: &str) -> (ManifestFiles, Vec<LoadPr
         problems.push(problem(
             path,
             key_place(text, "apiVersion"),
-            format!(
+            Message::verbatim(format!(
                 "対応していないバージョン（apiVersion「{}」）のプラグインです。この Modelith が対応しているのは「{API_VERSION}」です",
                 manifest.api_version
-            ),
+            )),
         ));
     }
     if let Some(engines) = &manifest.engines {
@@ -344,11 +344,11 @@ fn read_manifest(id: &str, path: &str, text: &str) -> (ManifestFiles, Vec<LoadPr
             Ok(false) => problems.push(problem(
                 path,
                 place,
-                format!(
+                Message::verbatim(format!(
                     "このプラグインが動く Modelith の版は「{}」です。この Modelith（{}）では動かしません",
                     engines.modelith,
                     super::engines::HOST_VERSION
-                ),
+                )),
             )),
             Err(message) => problems.push(problem(path, place, message)),
         }
@@ -357,18 +357,19 @@ fn read_manifest(id: &str, path: &str, text: &str) -> (ManifestFiles, Vec<LoadPr
         problems.push(problem(
             path,
             key_place(text, "runtime"),
-            "WebAssembly で動くプラグイン（runtime: wasm-component）には、まだ対応していません"
-                .to_owned(),
+            Message::verbatim(
+                "WebAssembly で動くプラグイン（runtime: wasm-component）には、まだ対応していません",
+            ),
         ));
     }
     if manifest.id.as_str() != id {
         problems.push(problem(
             path,
             key_place(text, "id"),
-            format!(
+            Message::verbatim(format!(
                 "マニフェストの ID「{}」が、プロジェクトに書かれた ID「{id}」と違います",
                 manifest.id
-            ),
+            )),
         ));
     }
     if !problems.is_empty() {
@@ -381,15 +382,14 @@ fn read_manifest(id: &str, path: &str, text: &str) -> (ManifestFiles, Vec<LoadPr
             Some((main, None)) => problems.push(problem(
                 path,
                 string_place(text, main),
-                format!(
+                Message::verbatim(format!(
                     "プログラムのファイル「{main}」は、プラグインのフォルダの中を、そこからの相対パスで指してください"
-                ),
+                )),
             )),
             None => problems.push(problem(
                 path,
                 None,
-                "画面に機能を追加するプラグイン（runtime: browser）には、プログラムのファイル（main）を書いてください"
-                    .to_owned(),
+                Message::verbatim("画面に機能を追加するプラグイン（runtime: browser）には、プログラムのファイル（main）を書いてください"),
             )),
         }
     }
@@ -399,9 +399,9 @@ fn read_manifest(id: &str, path: &str, text: &str) -> (ManifestFiles, Vec<LoadPr
             None => problems.push(problem(
                 path,
                 string_place(text, rule_path),
-                format!(
+                Message::verbatim(format!(
                     "ルールのファイル「{rule_path}」は、プラグインのフォルダの中を、そこからの相対パスで指してください"
-                ),
+                )),
             )),
         }
     }
@@ -492,17 +492,21 @@ fn load_rule_file(
             problems.push(problem(
                 path,
                 place,
-                format!("ルールの ID「{id}」が重複しています。プラグインの中で 1 つにしてください"),
+                Message::verbatim(format!(
+                    "ルールの ID「{id}」が重複しています。プラグインの中で 1 つにしてください"
+                )),
             ));
             continue;
         }
         match compile_rule(rule) {
             Ok(rule) => rules.push(rule),
-            Err(messages) => problems.extend(
-                messages
-                    .into_iter()
-                    .map(|m| problem(path, place, format!("ルール「{id}」：{m}"))),
-            ),
+            Err(messages) => problems.extend(messages.into_iter().map(|m| {
+                problem(
+                    path,
+                    place,
+                    Message::verbatim(format!("ルール「{id}」：{m}")),
+                )
+            })),
         }
     }
     (rules, problems)
@@ -525,7 +529,7 @@ fn load_rule_file(
 /// compile_rule(match.kind: [])                                       → Err(["要素の種類（match.kind）が空です…"])
 /// compile_rule(match.name: "[a", require.ports: {min: 2, max: 1})    → Err([正規表現の誤り, 数の範囲の誤り])
 /// ```
-fn compile_rule(rule: Rule) -> Result<CheckRule, Vec<String>> {
+fn compile_rule(rule: Rule) -> Result<CheckRule, Vec<Message>> {
     let mut errors = Vec::new();
     let target = compile_target(&rule.target, &mut errors);
     let require = compile_condition(&rule.require, "require", &mut errors);
@@ -559,20 +563,20 @@ fn compile_rule(rule: Rule) -> Result<CheckRule, Vec<String>> {
 /// compile_target(kind: "port")      → errors に「不明な要素の種類「port」です…」
 /// compile_target(kind: [])          → errors に「要素の種類（match.kind）が空です…」
 /// ```
-fn compile_target(m: &ElementMatch, errors: &mut Vec<String>) -> Target {
+fn compile_target(m: &ElementMatch, errors: &mut Vec<Message>) -> Target {
     let kinds = m.kind.as_slice();
     if kinds.is_empty() {
-        errors.push(
-            "ルールを当てる要素の種類（match.kind）が空です。1 つ以上書いてください".to_owned(),
-        );
+        errors.push(Message::verbatim(
+            "ルールを当てる要素の種類（match.kind）が空です。1 つ以上書いてください",
+        ));
     }
     let known = element_kinds();
     for kind in kinds {
         if !known.contains(&kind.as_str()) {
-            errors.push(format!(
+            errors.push(Message::verbatim(format!(
                 "不明な要素の種類「{kind}」です（match.kind）。指定できる種類：{}",
                 known.join("・")
-            ));
+            )));
         }
     }
     Target {
@@ -604,14 +608,14 @@ fn compile_target(m: &ElementMatch, errors: &mut Vec<String>) -> Target {
 /// compile_condition(ports: {min: 2, max: 1}, "require", …) → errors に「ポートの数の下限（2）が上限（1）より大きいです（require.ports）」
 /// compile_condition(not: {name: "["}, "require", …)       → errors に「…（require.not.name「[」…）」
 /// ```
-fn compile_condition(r: &Requirement, at: &str, errors: &mut Vec<String>) -> Condition {
+fn compile_condition(r: &Requirement, at: &str, errors: &mut Vec<Message>) -> Condition {
     if let Some(ports) = r.ports
         && let (Some(min), Some(max)) = (ports.min, ports.max)
         && min > max
     {
-        errors.push(format!(
+        errors.push(Message::verbatim(format!(
             "ポートの数の下限（{min}）が上限（{max}）より大きいです（{at}.ports）"
-        ));
+        )));
     }
     Condition {
         incoming: r
@@ -655,12 +659,12 @@ fn compile_condition(r: &Requirement, at: &str, errors: &mut Vec<String>) -> Con
 /// compile_relations("refinement", …)        → []、errors に「不明な関係の種類「refinement」です…」
 /// compile_relations([], …)                  → []、errors に「関係の種類（require.incoming）が空です…」
 /// ```
-fn compile_relations(kinds: &OneOrMany, at: &str, errors: &mut Vec<String>) -> Vec<&'static str> {
+fn compile_relations(kinds: &OneOrMany, at: &str, errors: &mut Vec<Message>) -> Vec<&'static str> {
     let kinds = kinds.as_slice();
     if kinds.is_empty() {
-        errors.push(format!(
+        errors.push(Message::verbatim(format!(
             "関係の種類（{at}）が空です。1 つ以上書いてください"
-        ));
+        )));
     }
     kinds
         .iter()
@@ -671,10 +675,10 @@ fn compile_relations(kinds: &OneOrMany, at: &str, errors: &mut Vec<String>) -> V
                 .map(|(_, e)| *e);
             if found.is_none() {
                 let names: Vec<&str> = RELATIONS.iter().map(|(n, _)| *n).collect();
-                errors.push(format!(
+                errors.push(Message::verbatim(format!(
                     "不明な関係の種類「{k}」です（{at}）。指定できる種類：{}",
                     names.join("・")
-                ));
+                )));
             }
             found
         })
@@ -699,15 +703,15 @@ fn compile_relations(kinds: &OneOrMany, at: &str, errors: &mut Vec<String>) -> V
 /// compile_regex("^[A-Z]", "match.name", …) → Some(…)
 /// compile_regex("[a", "match.name", …)     → None、errors に「名前の正規表現にエラーがあります（match.name「[a」：…）」
 /// ```
-fn compile_regex(pattern: &str, at: &str, errors: &mut Vec<String>) -> Option<Regex> {
+fn compile_regex(pattern: &str, at: &str, errors: &mut Vec<Message>) -> Option<Regex> {
     match Regex::new(pattern) {
         Ok(re) => Some(re),
         Err(e) => {
             let reason = e.to_string().replace('\n', " ");
-            errors.push(format!(
+            errors.push(Message::verbatim(format!(
                 "名前の正規表現にエラーがあります（{at}「{pattern}」：{}）",
                 reason.trim()
-            ));
+            )));
             None
         }
     }
@@ -734,7 +738,7 @@ fn compile_regex(pattern: &str, at: &str, errors: &mut Vec<String>) -> Option<Re
 /// describe_serde_error("EOF while parsing an object at line 1 column 1", "JSON")
 ///   → "書式にエラーがあるため読み込めません（JSON：途中で終わっています。閉じる括弧や「"」が足りません）"
 /// ```
-pub(super) fn describe_serde_error(raw: &str, format: &str) -> String {
+pub(super) fn describe_serde_error(raw: &str, format: &str) -> Message {
     let raw = raw.rfind(" at line ").map_or(raw, |i| &raw[..i]);
     let quoted = |after: &str| {
         let rest = &raw[raw.find(after)? + after.len()..];
@@ -747,21 +751,24 @@ pub(super) fn describe_serde_error(raw: &str, format: &str) -> String {
         .filter(|p| !p.is_empty() && !p.contains([' ', '`']))
         .map_or(String::new(), |p| format!("（場所：{p}）"));
     if let Some(key) = quoted("unknown field `") {
-        format!("不明な項目「{key}」があります{place}")
+        Message::verbatim(format!("不明な項目「{key}」があります{place}"))
     } else if let Some(key) = quoted("missing field `") {
-        format!("必要な項目「{key}」がありません{place}")
+        Message::verbatim(format!("必要な項目「{key}」がありません{place}"))
     } else if let Some(value) = quoted("unknown variant `") {
-        format!("指定できない値「{value}」です{place}")
+        Message::verbatim(format!("指定できない値「{value}」です{place}"))
     } else if raw.contains("invalid rule id") {
-        "ルールの ID は、英小文字・数字・「-」で書いてください（例：req-has-satisfier）".to_owned()
+        Message::verbatim(
+            "ルールの ID は、英小文字・数字・「-」で書いてください（例：req-has-satisfier）",
+        )
     } else if raw.contains("invalid plugin id") {
-        "プラグインの ID は、英小文字・数字・「-」を「.」で区切って書いてください（例：jp.example.rules）"
-            .to_owned()
+        Message::verbatim(
+            "プラグインの ID は、英小文字・数字・「-」を「.」で区切って書いてください（例：jp.example.rules）",
+        )
     } else {
-        format!(
+        Message::verbatim(format!(
             "書式にエラーがあるため読み込めません（{format}：{}）{place}",
             crate::read_error::read_reason(raw)
-        )
+        ))
     }
 }
 

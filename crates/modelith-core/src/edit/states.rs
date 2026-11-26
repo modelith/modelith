@@ -8,6 +8,7 @@ use super::ops::{EdgeAt, missing};
 use super::text::insert_into;
 use super::{Doc, Refusal};
 
+use crate::Message;
 use crate::model::{StateMachine, StateNode};
 
 /// 状態定義の、状態遷移の図。
@@ -56,9 +57,7 @@ pub(super) fn entry_of(d: &Doc<'_>, c: usize, key: &str) -> Result<Option<usize>
     let Some(n) = machine_of(d, c).and_then(|f| f.nodes.iter().find(|n| n.key == key)) else {
         return Ok(None);
     };
-    n.entry.map(Some).ok_or_else(|| {
-        "開始と終了の記号は、遷移から決まります。記号を消すときは、つながる遷移を削除してください".to_owned()
-    })
+    n.entry.map(Some).ok_or_else(|| Message::verbatim("開始と終了の記号は、遷移から決まります。記号を消すときは、つながる遷移を削除してください"))
 }
 
 /// 状態遷移の図の線（遷移）の ID と、消す範囲（遷移の文）。
@@ -139,20 +138,21 @@ pub(super) fn add_transition(
     };
     let (a, b) = (node(from)?, node(to)?);
     if b.kind == "start" {
-        return Err("開始の記号へ向かう遷移は引けません".to_owned());
+        return Err(Message::verbatim("開始の記号へ向かう遷移は引けません"));
     }
     if a.kind == "done" {
-        return Err("終了の記号から始まる遷移は引けません".to_owned());
+        return Err(Message::verbatim("終了の記号から始まる遷移は引けません"));
     }
     if a.kind == "start" {
-        return Err(
-            "開始の記号からの遷移は、本体ごとに 1 つです。行き先を変えるときは、テキストの「entry; then …;」を書き換えてください"
-                .to_owned(),
-        );
+        return Err(Message::verbatim(
+            "開始の記号からの遷移は、本体ごとに 1 つです。行き先を変えるときは、テキストの「entry; then …;」を書き換えてください",
+        ));
     }
     let same_body = a.container == b.container;
     if b.kind == "done" && !same_body {
-        return Err("終了の記号へは、同じ状態の中の状態からだけ遷移を引けます".to_owned());
+        return Err(Message::verbatim(
+            "終了の記号へは、同じ状態の中の状態からだけ遷移を引けます",
+        ));
     }
     let (body, source, target) = if same_body {
         let body = match &a.container {
@@ -169,10 +169,9 @@ pub(super) fn add_transition(
         .iter()
         .any(|e| e.from == from && e.to == to && e.label.is_empty())
     {
-        return Err(
-            "同じ遷移が既にあります。もう 1 つ足すときは、先にテキストで、いまの遷移にきっかけや条件を書いてください"
-                .to_owned(),
-        );
+        return Err(Message::verbatim(
+            "同じ遷移が既にあります。もう 1 つ足すときは、先にテキストで、いまの遷移にきっかけや条件を書いてください",
+        ));
     }
     let snippet = format!("transition first {source} then {target};");
     let (text, start, end) = insert_into(d.text, d.target(body), &snippet);
@@ -208,10 +207,9 @@ fn reference(n: &StateNode, path: bool) -> Result<String, Refusal> {
     }
     let walk = n.key.strip_prefix("s:").unwrap_or(&n.key);
     if n.name.is_empty() || walk.contains('#') {
-        return Err(
-            "名前の無い状態は、図から遷移でつなげません。テキストで名前を付けてから線を引いてください"
-                .to_owned(),
-        );
+        return Err(Message::verbatim(
+            "名前の無い状態は、図から遷移でつなげません。テキストで名前を付けてから線を引いてください",
+        ));
     }
     if !path {
         return Ok(sysml_name(&n.name));

@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use super::{Builder, Edge, StateMachine, StateNode};
+use crate::Message;
 use crate::project::text::ref_segs;
 use crate::project::{Entry, Rel, RelKind, Span};
 
@@ -259,7 +260,9 @@ impl Builder<'_> {
     fn missing_state(&mut self, pos: usize, who: &str) {
         self.problem(
             pos,
-            format!("「遷移」の相手「{who}」が見つかりません（transition）"),
+            Message::verbatim(format!(
+                "「遷移」の相手「{who}」が見つかりません（transition）"
+            )),
             None,
         );
     }

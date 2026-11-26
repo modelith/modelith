@@ -6,6 +6,8 @@
 use serde::Serialize;
 use serde::ser::{SerializeMap, Serializer};
 
+use crate::Message;
+
 /// 持ち主（名前のある宣言か、名前の無いブロック）の番号。JSON では `{"e":0}`・`{"b":0}`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Scope {
@@ -447,7 +449,7 @@ pub struct Rel {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ParseError {
     pub pos: usize,
-    pub msg: String,
+    pub msg: Message,
 }
 
 /// まだ扱えない文。

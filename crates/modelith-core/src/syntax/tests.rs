@@ -39,7 +39,7 @@ fn errors(text: &str) -> Vec<(usize, String)> {
     parse(text)
         .errors()
         .iter()
-        .map(|e| (e.offset, e.message.clone()))
+        .map(|e| (e.offset, e.message.render()))
         .collect()
 }
 
@@ -765,7 +765,7 @@ fn deep_nesting_stops_at_the_limit_without_overflowing_the_stack() {
         let too_deep = p
             .errors()
             .iter()
-            .any(|e| e.message.starts_with("入れ子が深すぎる"));
+            .any(|e| e.message.render().starts_with("入れ子が深すぎる"));
         assert_eq!(too_deep, expect_error, "{n}");
     }
 }

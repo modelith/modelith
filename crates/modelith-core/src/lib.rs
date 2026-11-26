@@ -6,6 +6,7 @@
 pub mod edit;
 pub mod levels;
 mod line_index;
+pub mod message;
 pub mod model;
 pub mod plugin_host;
 pub mod project;
@@ -17,6 +18,7 @@ pub mod syntax;
 pub mod write;
 
 pub use line_index::{LineCol, LineIndex};
+pub use message::Message;
 
 /// コアのバージョン。
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

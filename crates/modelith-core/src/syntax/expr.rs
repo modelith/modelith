@@ -9,6 +9,7 @@
 //! 知らない語や記号に出会ったら、誤って知らせないよう、そこで確かめるのをやめる（正しい式を「壊れている」と言わない。F-EDIT-8）。
 
 use super::kind::SyntaxKind::{self, *};
+use crate::Message;
 
 /// 式のトークン 1 つ（空白とコメントを除いたもの）。
 #[derive(Debug, Clone, Copy)]
@@ -25,7 +26,7 @@ pub(crate) struct Fault {
     /// そのトークンの後ろを指すか（「〜の後に値がありません」）。偽なら、そのトークンの頭を指す。
     pub after: bool,
     /// 知らせる文。
-    pub message: String,
+    pub message: Message,
 }
 
 /// たどるのをやめる理由。
@@ -308,7 +309,7 @@ impl<'t> Checker<'_, 't> {
         Stop::Fault(Fault {
             at: before,
             after: true,
-            message: format!("「{text}」の後に値がありません"),
+            message: Message::verbatim(format!("「{text}」の後に値がありません")),
         })
     }
 
@@ -332,10 +333,10 @@ impl<'t> Checker<'_, 't> {
         matches!(t.kind, IDENT | QUOTED_NAME | NUMBER | STRING).then(|| Fault {
             at: self.i,
             after: false,
-            message: format!(
+            message: Message::verbatim(format!(
                 "「{}」と「{}」の間に演算子がありません",
                 before.text, t.text
-            ),
+            )),
         })
     }
 
@@ -444,7 +445,7 @@ impl<'t> Checker<'_, 't> {
         Stop::Fault(Fault {
             at: self.i.saturating_sub(1),
             after: true,
-            message: format!("「if」の式に「{part}」がありません"),
+            message: Message::verbatim(format!("「if」の式に「{part}」がありません")),
         })
     }
 
@@ -673,7 +674,7 @@ impl<'t> Checker<'_, 't> {
         Err(Stop::Fault(Fault {
             at: before,
             after: true,
-            message: format!("「{text}」の後に{what}がありません"),
+            message: Message::verbatim(format!("「{text}」の後に{what}がありません")),
         }))
     }
 
@@ -875,7 +876,7 @@ mod tests {
             }
             offset += t.len;
         }
-        check(&toks).map(|f| (f.at, f.after, f.message))
+        check(&toks).map(|f| (f.at, f.after, f.message.render()))
     }
 
     /// 壊れていない（か、確かめきれない）式であることを確かめる。

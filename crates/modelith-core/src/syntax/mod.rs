@@ -15,6 +15,8 @@ pub use lexer::{Token, tokenize};
 use parser::{ErrorAt, Event, Input, Parser};
 use rowan::{GreenNode, GreenNodeBuilder};
 
+use crate::Message;
+
 /// `rowan` に渡す言語の印。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SysmlLanguage {}
@@ -39,7 +41,7 @@ pub type SyntaxElement = rowan::SyntaxElement<SysmlLanguage>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyntaxError {
     pub offset: usize,
-    pub message: String,
+    pub message: Message,
 }
 
 /// 解析の結果。

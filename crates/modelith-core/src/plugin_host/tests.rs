@@ -9,6 +9,7 @@ use super::position::Positions;
 use super::{
     PlacedEdit, check_message, place_diagnostics, required_permission, resolve_edits, snapshot,
 };
+use crate::Message;
 
 /// 行・列の範囲を作る。
 fn range(sl: u32, sc: u32, el: u32, ec: u32) -> Range {
@@ -170,7 +171,9 @@ fn resolve_edits_refuses_overlapping_edits() {
     // Assert
     assert_eq!(
         got,
-        Err("変更案の範囲が重なっているため、適用しませんでした".to_owned())
+        Err(Message::verbatim(
+            "変更案の範囲が重なっているため、適用しませんでした"
+        ))
     );
 }
 
@@ -193,7 +196,9 @@ fn resolve_edits_refuses_a_range_past_the_text() {
     // Assert
     assert_eq!(
         got,
-        Err("変更案の範囲がテキストの外を指しているため、適用しませんでした".to_owned())
+        Err(Message::verbatim(
+            "変更案の範囲がテキストの外を指しているため、適用しませんでした"
+        ))
     );
 }
 
@@ -291,10 +296,9 @@ fn check_message_refuses_edits_without_the_permission() {
     // Assert
     assert_eq!(
         got,
-        Err(
+        Err(Message::verbatim(
             "宣言していない権限（edits:propose）が要るメッセージ（proposeEdits）のため、使いませんでした"
-                .to_owned()
-        )
+        ))
     );
 }
 
@@ -352,7 +356,9 @@ fn check_message_refuses_edits_outside_the_text() {
     // Assert
     assert_eq!(
         got,
-        Err("変更案の範囲がテキストの外を指しているため、適用しませんでした".to_owned())
+        Err(Message::verbatim(
+            "変更案の範囲がテキストの外を指しているため、適用しませんでした"
+        ))
     );
 }
 

@@ -8,6 +8,7 @@
 
 use super::filters::filter_of;
 use super::{Builder, is_lib, is_library_package, is_standard_view};
+use crate::Message;
 use crate::project::text::{is_qualified, last_segment, path_segs, shown_path};
 
 impl Builder<'_> {
@@ -36,11 +37,11 @@ impl Builder<'_> {
                 }
                 self.problem(
                     e.start,
-                    format!(
+                    Message::verbatim(format!(
                         "引き継ぐ定義「{}」が見つかりません（{}）",
                         shown_path(&s.path),
                         e.name
-                    ),
+                    )),
                     None,
                 );
             }
@@ -56,11 +57,11 @@ impl Builder<'_> {
             }
             self.problem(
                 a.start,
-                format!(
+                Message::verbatim(format!(
                     "別名「{}」の指す先「{}」が見つかりません（alias）",
                     a.name,
                     shown_path(&a.target)
-                ),
+                )),
                 None,
             );
         }
@@ -82,10 +83,10 @@ impl Builder<'_> {
             }
             self.problem(
                 i.start,
-                format!(
+                Message::verbatim(format!(
                     "インポートする相手「{}」が見つかりません（import）",
                     shown_path(&i.path)
-                ),
+                )),
                 None,
             );
         }
@@ -100,10 +101,10 @@ impl Builder<'_> {
                 if filter_of(f, |n| self.is_metadata_def(n)).is_none() {
                     self.problem(
                         i.start,
-                        format!(
+                        Message::verbatim(format!(
                             "インポート「{}」の絞り込み「{f}」はまだ扱えないため、絞り込まずに取り込みます（import の [ ]・filter）",
                             i.path
-                        ),
+                        )),
                         Some("unsupported"),
                     );
                 }

@@ -5,6 +5,7 @@
 
 use serde::Serialize;
 
+use crate::Message;
 use crate::project::Span;
 
 /// 図に描く要素のポート。
@@ -76,7 +77,7 @@ pub struct Note {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Problem {
     pub pos: usize,
-    pub msg: String,
+    pub msg: Message,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kind: Option<&'static str>,
     /// 知らせの種類（重さを選べる種類。F-EDIT-11）。`trace.derive`・`trace.satisfy`・`trace.verify`・`unsupported`。エラーは None。

@@ -7,6 +7,7 @@ mod write;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+use modelith_core::Message;
 use modelith_core::levels::{self, Levels};
 use modelith_core::project::ParseResult;
 use modelith_core::project::merge::Files;
@@ -585,7 +586,7 @@ fn load_plugin_set(json: &str) -> PluginSet {
         Err(e) => {
             return PluginSet {
                 active: vec![],
-                summary: serde_json::json!({ "error": format!("プラグインを読み込めませんでした（{e}）") }).to_string(),
+                summary: serde_json::json!({ "error": Message::verbatim(format!("プラグインを読み込めませんでした（{e}）")) }).to_string(),
             };
         }
     };
@@ -635,7 +636,7 @@ fn load_plugin_set(json: &str) -> PluginSet {
 /// ```
 fn update_project_plugin_json(text: &str, id: &str, change: &str) -> String {
     let result = serde_json::from_str::<modelith_core::project_file::PluginChange>(change)
-        .map_err(|e| format!("変更を読み込めませんでした（{e}）"))
+        .map_err(|e| Message::verbatim(format!("変更を読み込めませんでした（{e}）")))
         .and_then(|c| modelith_core::project_file::update_plugin(text, id, &c));
     match result {
         Ok(text) => serde_json::json!({ "text": text }),
@@ -668,7 +669,7 @@ fn update_project_level_json(text: &str, kind: &str, level: &str) -> String {
     } else {
         serde_json::from_value::<modelith_core::project_file::Level>(serde_json::json!(level))
             .map(Some)
-            .map_err(|_| format!("重さ「{level}」は選べません"))
+            .map_err(|_| Message::verbatim(format!("重さ「{level}」は選べません")))
     };
     match chosen.and_then(|l| modelith_core::project_file::update_level(text, kind, l)) {
         Ok(text) => serde_json::json!({ "text": text }),
@@ -701,7 +702,7 @@ fn describe_plugin_json(text: &str) -> String {
             let at = p
                 .place
                 .map_or(String::new(), |pl| format!(" の {} 行目", pl.line));
-            serde_json::json!({ "refused": format!("{file}{at}：{}", p.message) })
+            serde_json::json!({ "refused": Message::verbatim(format!("{file}{at}：{}", p.message)) })
         }
     }
     .to_string()
@@ -793,13 +794,13 @@ fn model_snapshot_json(text: &str) -> String {
 /// ```
 fn check_plugin_message_json(text: &str, message: &str, permissions: &str) -> String {
     let result = serde_json::from_str::<Vec<rules::Permission>>(permissions)
-        .map_err(|e| format!("権限の並びを読み込めませんでした（{e}）"))
+        .map_err(|e| Message::verbatim(format!("権限の並びを読み込めませんでした（{e}）")))
         .and_then(|p| modelith_core::plugin_host::check_message(text, message, &p));
     let json = match result {
         Ok(checked) => serde_json::to_string(&checked),
         Err(refused) => Ok(refused_json(&refused)),
     };
-    json.unwrap_or_else(|e| refused_json(&e.to_string()))
+    json.unwrap_or_else(|e| refused_json(&Message::verbatim(e.to_string())))
 }
 
 /// 断りの JSON（`{ "refused": 理由 }`）を作る。理由に `"` や `\` があっても、JSON として壊れない。
@@ -818,7 +819,7 @@ fn check_plugin_message_json(text: &str, message: &str, permissions: &str) -> St
 /// refused_json("使えません")      → r#"{"refused":"使えません"}"#
 /// refused_json(r#"名前 "a\b""#) → r#"{"refused":"名前 \"a\\b\""}"#
 /// ```
-fn refused_json(reason: &str) -> String {
+fn refused_json(reason: &Message) -> String {
     serde_json::json!({ "refused": reason }).to_string()
 }
 
@@ -870,7 +871,11 @@ fn edit_json(text: &str, intent: &str) -> String {
 fn edit_json_in(text: &str, paths: &[String], parsed: Vec<ParseResult>, intent: &str) -> String {
     let intent = match serde_json::from_str::<modelith_core::edit::Intent>(intent) {
         Ok(i) => i,
-        Err(e) => return refused_json(&format!("操作を読み込めませんでした（{e}）")),
+        Err(e) => {
+            return refused_json(&Message::verbatim(format!(
+                "操作を読み込めませんでした（{e}）"
+            )));
+        }
     };
     let json = match modelith_core::edit::edit_in(text, parsed, &intent) {
         Ok(out) => serde_json::to_string(&out),
@@ -887,7 +892,7 @@ fn edit_json_in(text: &str, paths: &[String], parsed: Vec<ParseResult>, intent: 
             })
         }
     };
-    json.unwrap_or_else(|e| refused_json(&e.to_string()))
+    json.unwrap_or_else(|e| refused_json(&Message::verbatim(e.to_string())))
 }
 
 #[derive(Serialize)]
@@ -1010,7 +1015,7 @@ mod tests {
         // Arrange（JSON を壊しうる文字：二重引用符・バックスラッシュ）
         let reason = r#"ファイル "a\b" を読み込めません"#;
         // Act
-        let json = refused_json(reason);
+        let json = refused_json(&Message::verbatim(reason));
         // Assert（JSON として読め、理由がそのまま戻る）
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(parsed["refused"], reason);

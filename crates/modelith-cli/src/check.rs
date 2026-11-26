@@ -6,6 +6,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use modelith_core::Message;
 use modelith_core::levels;
 use modelith_core::project_file;
 use modelith_core::rules::{self, LoadedPlugin, ReadError};
@@ -29,20 +30,25 @@ use crate::report::{self, Entry};
 /// run(Path::new("proj"))    → Ok(("model.sysml:2:3: 警告: … [jp.x/r1]\nファイル 1 件をチェックしました：…\n", false))
 /// run(Path::new("missing")) → Err("フォルダ「missing」が見つかりません")
 /// ```
-pub fn run(folder: &Path) -> Result<(String, bool), String> {
+pub fn run(folder: &Path) -> Result<(String, bool), Message> {
     if !folder.is_dir() {
-        return Err(format!("フォルダ「{}」が見つかりません", folder.display()));
+        return Err(Message::verbatim(format!(
+            "フォルダ「{}」が見つかりません",
+            folder.display()
+        )));
     }
     let project_text = match read_text(&folder.join("modelith.json")) {
         Ok(text) => text,
         Err(ReadError::NotFound) => {
-            return Err(format!(
+            return Err(Message::verbatim(format!(
                 "フォルダ「{}」に modelith.json がありません。プロジェクトのフォルダを指定してください",
                 folder.display()
-            ));
+            )));
         }
         Err(ReadError::Other(reason)) => {
-            return Err(format!("modelith.json を読み込めません（{reason}）"));
+            return Err(Message::verbatim(format!(
+                "modelith.json を読み込めません（{reason}）"
+            )));
         }
     };
     let parsed = project_file::parse(&project_text);
@@ -68,8 +74,8 @@ pub fn run(folder: &Path) -> Result<(String, bool), String> {
                 .map(|p| report::from_load_problem(&plugin.id, p)),
         );
     }
-    let files =
-        model_files(folder).map_err(|e| format!("フォルダの内容を読み込めません（{e}）"))?;
+    let files = model_files(folder)
+        .map_err(|e| Message::verbatim(format!("フォルダの内容を読み込めません（{e}）")))?;
     // フォルダのすべてのファイルを 1 つのモデルとし、ファイルごとにその要素を検査する（ADR-0021）
     let mut texts: Vec<(String, String)> = Vec::new();
     for file in &files {
@@ -122,14 +128,14 @@ pub fn run(folder: &Path) -> Result<(String, bool), String> {
 /// ```
 fn unreadable_model(path: &str, e: &ReadError) -> Entry {
     let reason = match e {
-        ReadError::NotFound => "見つかりません",
-        ReadError::Other(reason) => reason,
+        ReadError::NotFound => Message::verbatim("見つかりません"),
+        ReadError::Other(reason) => reason.clone(),
     };
     Entry {
         path: path.to_owned(),
         place: None,
         severity: rules::DiagnosticSeverity::Error,
-        message: format!("ファイルを読み込めません（{reason}）"),
+        message: Message::verbatim(format!("ファイルを読み込めません（{reason}）")),
         source: None,
     }
 }
@@ -153,13 +159,13 @@ fn unreadable_model(path: &str, e: &ReadError) -> Entry {
 /// ```
 fn read_text(path: &Path) -> Result<String, ReadError> {
     if is_symlink(path).map_err(read_error)? {
-        return Err(ReadError::Other(
-            "シンボリックリンクは読みません".to_owned(),
-        ));
+        return Err(ReadError::Other(Message::verbatim(
+            "シンボリックリンクは読みません",
+        )));
     }
     let bytes = fs::read(path).map_err(read_error)?;
     String::from_utf8(bytes)
-        .map_err(|_| ReadError::Other("UTF-8 のテキストではありません".to_owned()))
+        .map_err(|_| ReadError::Other(Message::verbatim("UTF-8 のテキストではありません")))
 }
 
 /// パスそのものがシンボリックリンクか（リンクの先は見ない）。
@@ -203,7 +209,7 @@ fn read_error(e: io::Error) -> ReadError {
     if e.kind() == io::ErrorKind::NotFound {
         ReadError::NotFound
     } else {
-        ReadError::Other(e.to_string())
+        ReadError::Other(Message::verbatim(e.to_string()))
     }
 }
 
@@ -361,7 +367,7 @@ mod tests {
             got,
             (
                 ReadError::NotFound,
-                ReadError::Other("権限がありません".to_owned())
+                ReadError::Other(Message::verbatim("権限がありません"))
             )
         );
     }

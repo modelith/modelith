@@ -358,8 +358,9 @@ fn update_plugin_refuses_to_change_an_entry_that_is_not_there() {
     let off = update_plugin(text, "jp.x", &PluginChange::SetEnabled { enabled: false });
     let removed = update_plugin(text, "jp.x", &PluginChange::Remove);
     // Assert
-    let expected =
-        Err("プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません".to_owned());
+    let expected = Err(Message::verbatim(
+        "プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません",
+    ));
     assert_eq!((off, removed), (expected.clone(), expected));
 }
 
@@ -372,7 +373,9 @@ fn update_plugin_refuses_a_broken_file_with_its_line() {
     // Assert
     assert_eq!(
         out,
-        Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。2 行目 3 文字目：プロジェクト名（name）は、文字列を \" \" で囲んで書いてください".to_owned())
+        Err(Message::verbatim(
+            "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。2 行目 3 文字目：プロジェクト名（name）は、文字列を \" \" で囲んで書いてください"
+        ))
     );
 }
 
@@ -391,7 +394,9 @@ fn update_plugin_refuses_to_add_a_malformed_id() {
     // Assert
     assert_eq!(
         out,
-        Err("プラグインの ID「../x」の形が正しくありません".to_owned())
+        Err(Message::verbatim(
+            "プラグインの ID「../x」の形が正しくありません"
+        ))
     );
 }
 
@@ -527,7 +532,7 @@ fn update_level_refuses_a_broken_file_with_its_line() {
     // Act
     let r = update_level("{", "unsupported", Some(Level::Off));
     // Assert（異常系）
-    let reason = r.expect_err("誤りのある設定は書き換えない");
+    let reason = r.expect_err("誤りのある設定は書き換えない").render();
     assert!(
         reason.starts_with(
             "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 "

@@ -5,6 +5,7 @@
 
 use std::collections::BTreeMap;
 
+use modelith_core::Message;
 use modelith_core::write::{self, EditRequest, VersionedFile, Workspace};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
@@ -126,7 +127,9 @@ fn propose_edit_json(
 /// error_json("編集の意図", &e) → r#"{"error":"編集の意図を読み込めませんでした（expected value at line 1 column 1）"}"#
 /// ```
 fn error_json(what: &str, e: &serde_json::Error) -> String {
-    to_json(&serde_json::json!({ "error": format!("{what}を読み込めませんでした（{e}）") }))
+    to_json(
+        &serde_json::json!({ "error": Message::verbatim(format!("{what}を読み込めませんでした（{e}）")) }),
+    )
 }
 
 #[cfg(test)]

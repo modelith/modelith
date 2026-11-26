@@ -491,7 +491,7 @@ fn every_other_file_is_checked_as_the_center() {
         parts
             .problems
             .iter()
-            .map(|p| p.msg.as_str())
+            .map(|p| p.msg.render())
             .collect::<Vec<_>>(),
         ["型「Wheel」が見つかりません（w）"]
     );

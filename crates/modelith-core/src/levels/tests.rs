@@ -1,13 +1,14 @@
 //! 知らせの重さ（F-EDIT-11）の単体テスト。
 
 use super::*;
+use crate::Message;
 use crate::model::Problem;
 
 /// 種類と文から問題を作る。
 fn problem(code: Option<&'static str>, kind: Option<&'static str>, msg: &str) -> Problem {
     Problem {
         pos: 0,
-        msg: msg.to_owned(),
+        msg: Message::verbatim(msg),
         kind,
         code,
         level: None,
@@ -74,7 +75,12 @@ fn apply_problems_drops_off_and_marks_chosen_levels() {
     // Act
     let out = apply_problems(problems, &levels);
     // Assert（構文エラーと、選んでいない種類はそのまま）
-    let shown: Vec<(&str, Option<&str>)> = out.iter().map(|p| (p.msg.as_str(), p.level)).collect();
+    let texts: Vec<String> = out.iter().map(|p| p.msg.render()).collect();
+    let shown: Vec<(&str, Option<&str>)> = texts
+        .iter()
+        .map(String::as_str)
+        .zip(out.iter().map(|p| p.level))
+        .collect();
     assert_eq!(
         shown,
         vec![

@@ -49,6 +49,8 @@ pub use modelith_plugin_protocol::{
 use regex_lite::Regex;
 use serde::Serialize;
 
+use crate::Message;
+
 /// プロジェクトに入れたプラグインを置くフォルダ（プロジェクトのフォルダからの相対パス。ADR-0019 §1）。
 pub const PLUGINS_DIR: &str = ".modelith/plugins";
 
@@ -100,7 +102,7 @@ pub struct LoadProblem {
     /// ファイルの中の位置。ファイル全体の問題（見つからないなど）や、位置を決められないときは `None`。
     pub place: Option<Place>,
     /// 画面にそのまま出す文（画面の言葉の手引きに従う）。
-    pub message: String,
+    pub message: Message,
 }
 
 /// ファイルを読めなかった理由（呼び出し側が渡す）。
@@ -109,7 +111,7 @@ pub enum ReadError {
     /// ファイルが無い。
     NotFound,
     /// それ以外（権限が無い、UTF-8 でないなど）。中身は理由の文。
-    Other(String),
+    Other(Message),
 }
 
 /// マニフェスト（`modelith-plugin.json`）から読んだ、プラグインを画面に示すための情報。

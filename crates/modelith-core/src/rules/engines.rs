@@ -6,6 +6,8 @@
 //! 本体の版は、プレリリースの印（`-rc.2` など）を外して比べる（`0.1.0-rc.2` の本体は `0.1.0` として扱う）。
 //! そろえるため、範囲に書いた版のプレリリースとビルドの印（`>=0.2.0-beta.1` の `-beta.1`）も外して比べる（#242）。
 
+use crate::Message;
+
 /// 版（メジャー・マイナー・パッチ）。
 type Ver = (u64, u64, u64);
 
@@ -54,10 +56,10 @@ pub(crate) fn host_ver(s: &str) -> Ver {
 /// ```text
 /// bad_range("latest") → "動く Modelith の版の範囲（engines.modelith「latest」）の書き方が正しくありません。…"
 /// ```
-fn bad_range(range: &str) -> String {
-    format!(
+fn bad_range(range: &str) -> Message {
+    Message::verbatim(format!(
         "動く Modelith の版の範囲（engines.modelith「{range}」）の書き方が正しくありません。「>=0.1.0, <0.3.0」のように、比べる記号と版をカンマで区切って書いてください"
-    )
+    ))
 }
 
 /// 比べる記号と版を 1 組だけ読み、その組が許す版の下限（含む）と上限（含まない。無ければ None）にする。
@@ -202,7 +204,7 @@ fn marks_ok(s: &str) -> bool {
 /// range_allows("^0.2", (0, 1, 0))            → Ok(false)
 /// range_allows("latest", (0, 1, 0))          → Err("動く Modelith の版の範囲（engines.modelith「latest」）の書き方が正しくありません。…")
 /// ```
-pub(crate) fn range_allows(range: &str, v: Ver) -> Result<bool, String> {
+pub(crate) fn range_allows(range: &str, v: Ver) -> Result<bool, Message> {
     if range.trim().is_empty() {
         return Err(bad_range(range));
     }

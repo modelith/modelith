@@ -10,6 +10,7 @@ use modelith_plugin_protocol::{FileChange, Range, TextEdit};
 // 契約の型（呼ぶ側が plugin-sdk に直接頼らなくても使えるように、ここからも出す）
 pub use modelith_plugin_protocol::{EditProposal, EditRequest};
 
+use crate::Message;
 use crate::edit::text::Utf16;
 use crate::edit::{self, Intent, qualified_name};
 use crate::plugin_host::Positions;
@@ -61,7 +62,7 @@ pub struct Workspace<'a> {
 /// propose(ws, Rename { element: "P::Nope", name: "B" })
 ///   → Err("操作する要素「P::Nope」が見つかりません。テキストが先に変わった可能性があります")
 /// ```
-pub fn propose(ws: &Workspace<'_>, request: &EditRequest) -> Result<EditProposal, String> {
+pub fn propose(ws: &Workspace<'_>, request: &EditRequest) -> Result<EditProposal, Message> {
     // 変わるファイルの番号と、新しいテキスト
     let mut rewritten: BTreeMap<usize, String> = BTreeMap::new();
     match request {
@@ -70,7 +71,7 @@ pub fn propose(ws: &Workspace<'_>, request: &EditRequest) -> Result<EditProposal
                 .files
                 .iter()
                 .position(|f| f.path == file)
-                .ok_or_else(|| format!("ファイル「{file}」が見つかりません"))?;
+                .ok_or_else(|| Message::verbatim(format!("ファイル「{file}」が見つかりません")))?;
             rewritten.insert(at, text.clone());
         }
         _ => {
@@ -405,7 +406,7 @@ mod tests {
     const APP: &str = "package App {\n    part c : Shop::Cart;\n    part x : Shop::Nope;\n}\n";
 
     /// shop.sysml（版 s1）と app.sysml（版 a1）のプロジェクトに、意図を当てる。
-    fn run(request: EditRequest) -> Result<EditProposal, String> {
+    fn run(request: EditRequest) -> Result<EditProposal, Message> {
         let files = [
             VersionedFile {
                 path: "shop.sysml",
@@ -455,7 +456,7 @@ mod tests {
     }
 
     /// ファイル（パスとテキスト）を並べたプロジェクトに、意図を当てる。版は「v」とファイルの番号。
-    fn run_on(texts: &[(&str, &str)], request: EditRequest) -> Result<EditProposal, String> {
+    fn run_on(texts: &[(&str, &str)], request: EditRequest) -> Result<EditProposal, Message> {
         let versions: Vec<String> = (0..texts.len()).map(|i| format!("v{i}")).collect();
         let files: Vec<VersionedFile<'_>> = texts
             .iter()
@@ -631,7 +632,7 @@ mod tests {
             },
         );
         // Assert
-        assert_eq!(got, Err("「Tire」は既に使われています".to_owned()));
+        assert_eq!(got, Err(Message::verbatim("「Tire」は既に使われています")));
     }
 
     // --- 正常系 ---

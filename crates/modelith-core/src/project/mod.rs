@@ -13,6 +13,7 @@ pub use types::*;
 
 use std::collections::HashMap;
 
+use crate::Message;
 use crate::syntax::{Parse, SyntaxKind, SyntaxKind::*, SyntaxNode, SyntaxToken};
 use text::*;
 
@@ -55,7 +56,7 @@ pub fn project(source: &str, parse: &Parse) -> ParseResult {
     if let Some(at) = broken_layout_comment(source) {
         c.out.errors.push(ParseError {
             pos: c.utf16(at),
-            msg: "@layout コメントを読み込めません".to_owned(),
+            msg: Message::verbatim("@layout コメントを読み込めません"),
         });
     }
     c.out

@@ -2,12 +2,13 @@
 // 重さを当てるのはコア（levels）。ここでは、コアが付けた重さ（無ければ既定）を印・数え方・選ぶ画面の行にする。
 
 import type { Problem, ProblemKind, ProblemLevel } from "../core";
+import { t } from "../l10n";
 
 /** 問題一覧に出す重さ（出さないものは一覧に来ない）。 */
 export type ShownLevel = Exclude<ProblemLevel, "off">;
 
 /** 重さの、画面に出す名前（選択欄の項目）。 */
-export const LEVEL_LABEL: Record<ProblemLevel, string> = { error: "エラー", warning: "警告", info: "情報", off: "出さない" };
+export const LEVEL_LABEL: Record<ProblemLevel, string> = { error: t("app-level-error"), warning: t("app-level-warning"), info: t("app-level-info"), off: t("app-level-off") };
 
 /** 重さの、問題一覧の行の頭の印。 */
 export const LEVEL_MARK: Record<ShownLevel, string> = { error: "⚠", warning: "△", info: "ℹ" };
@@ -64,10 +65,10 @@ export interface RuleSet {
  * //    { kind: "jp.x/r1", label: "チェックルール：チェック／r1", defaultLabel: "既定（ルールに書いた重さ）", value: "off" }]
  */
 export function levelRows(kinds: readonly ProblemKind[], rules: readonly RuleSet[], levels: Readonly<Record<string, ProblemLevel>>): LevelRow[] {
-  const model = kinds.map((k) => ({ kind: k.code, label: k.label, defaultLabel: `既定（${LEVEL_LABEL[k.default]}）`, value: levels[k.code] ?? null }));
-  const ruleRow = (kind: string, label: string): LevelRow => ({ kind, label, defaultLabel: "既定（ルールに書いた重さ）", value: levels[kind] ?? null });
-  const loaded = rules.flatMap((s) => s.rules.map((r) => ruleRow(`${s.plugin}/${r}`, `チェックルール：${s.name}／${r}`)));
+  const model = kinds.map((k) => ({ kind: k.code, label: k.label, defaultLabel: t("app-level-default", { level: LEVEL_LABEL[k.default] }), value: levels[k.code] ?? null }));
+  const ruleRow = (kind: string, label: string): LevelRow => ({ kind, label, defaultLabel: t("app-level-default-rule"), value: levels[kind] ?? null });
+  const loaded = rules.flatMap((s) => s.rules.map((r) => ruleRow(`${s.plugin}/${r}`, t("app-level-rule", { plugin: s.name, rule: r }))));
   const shown = new Set([...model, ...loaded].map((r) => r.kind));
-  const rest = Object.keys(levels).filter((k) => !shown.has(k)).sort().map((k) => ruleRow(k, `チェックルール：${k}（読み込んでいません）`));
+  const rest = Object.keys(levels).filter((k) => !shown.has(k)).sort().map((k) => ruleRow(k, t("app-level-rule-not-loaded", { kind: k })));
   return [...model, ...loaded, ...rest];
 }

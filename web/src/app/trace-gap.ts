@@ -1,6 +1,8 @@
 // トレースの抜けの案内（F-TRACE-2）の判断。DOM と状態には触れず、問題の位置と文から、
 // 図の要素・抜けの種類・案内の文・何件目に移るか・移る先の画面を決める。
 
+import { t } from "../l10n";
+
 /**
  * 抜けの種類。`expand` は下位の要求への展開（最上位の工程の要求）、`source` は導出元の上位の要求、
  * `satisfy` は要求を満たす要素、`verify` は要求を確かめる検証が無いこと。
@@ -54,34 +56,34 @@ export function gapNodeAt<N extends RangedNode>(nodes: readonly N[], pos: number
  * gapKind("参照先が見つかりません")                                     // → null
  */
 export function gapKind(msg: string): GapKind | null {
-  if (msg.endsWith("（verify）")) return "verify";
-  if (msg.endsWith("（satisfy）")) return "satisfy";
+  if (msg.endsWith("（verify）")) return "verify"; // l10n-ignore: コアの問題の文の末尾と比べる
+  if (msg.endsWith("（satisfy）")) return "satisfy"; // l10n-ignore: コアの問題の文の末尾と比べる
   // 要求の名前に同じ言葉が入っていても見誤らないよう、コアの文の末尾で見分ける
-  if (msg.endsWith("下位の要求にも展開されていません（derivation）")) return "expand";
-  return msg.endsWith("（derivation）") ? "source" : null;
+  if (msg.endsWith("下位の要求にも展開されていません（derivation）")) return "expand"; // l10n-ignore: コアの問題の文の末尾と比べる
+  return msg.endsWith("（derivation）") ? "source" : null; // l10n-ignore: コアの問題の文の末尾と比べる
 }
 
 /** 抜けの種類ごとの案内の文（何が足りないか・直し方・関係を追加するときにつなぐ相手）。 */
 const GUIDE: Record<GapKind, { lack: string; fix: string; target: string }> = {
   expand: {
-    lack: "この要求は、どの下位の要求にも展開されていません",
-    fix: "「関係を追加」を押して、ここから導き出す下位の要求を選ぶと解消します（derivation）",
-    target: "下位の要求",
+    lack: t("app-inspect-gap-expand-lack"),
+    fix: t("app-inspect-gap-expand-fix"),
+    target: t("app-inspect-gap-expand-target"),
   },
   source: {
-    lack: "この要求の導出元になる上位の要求がありません",
-    fix: "「関係を追加」を押して、導出元の上位の要求を選ぶと解消します（derivation）",
-    target: "上位の要求",
+    lack: t("app-inspect-gap-source-lack"),
+    fix: t("app-inspect-gap-source-fix"),
+    target: t("app-inspect-gap-source-target"),
   },
   satisfy: {
-    lack: "この要求を満たす部品がありません",
-    fix: "「関係を追加」を押して、この要求を満たす部品を選ぶと解消します（satisfy）",
-    target: "部品",
+    lack: t("app-inspect-gap-satisfy-lack"),
+    fix: t("app-inspect-gap-satisfy-fix"),
+    target: t("app-inspect-gap-satisfy-target"),
   },
   verify: {
-    lack: "この要求を確かめる検証がありません",
-    fix: "「関係を追加」を押して、検証の要素を選ぶと解消します（verify）",
-    target: "検証の要素",
+    lack: t("app-inspect-gap-verify-lack"),
+    fix: t("app-inspect-gap-verify-fix"),
+    target: t("app-inspect-gap-verify-target"),
   },
 };
 
@@ -96,7 +98,7 @@ const GUIDE: Record<GapKind, { lack: string; fix: string; target: string }> = {
  * gapGuide(null, "R：何か")  // → { lack: "R：何か", fix: "「テキストで見る」で、該当の行を確かめてください", target: null }
  */
 export function gapGuide(kind: GapKind | null, msg: string): { lack: string; fix: string; target: string | null } {
-  if (!kind) return { lack: msg, fix: "「テキストで見る」で、該当の行を確かめてください", target: null };
+  if (!kind) return { lack: msg, fix: t("app-inspect-gap-unknown-fix"), target: null };
   return GUIDE[kind];
 }
 
@@ -120,7 +122,7 @@ export function gapMarks(gaps: readonly GapProblem[], keyAt: (pos: number) => st
     list.push(gapGuide(gapKind(g.msg), g.msg).lack);
     lines.set(key, list);
   }
-  return new Map([...lines].map(([k, ls]) => [k, ["トレースの抜け：", ...ls].join("\n")]));
+  return new Map([...lines].map(([k, ls]) => [k, [t("app-inspect-gap-mark-title"), ...ls].join("\n")]));
 }
 
 /**
@@ -154,7 +156,7 @@ export function stepGap(index: number, total: number, step: 1 | -1): number | nu
  * gapCountLabel(0, 3) // → "1 / 3 件目"
  * gapCountLabel(2, 3) // → "3 / 3 件目"
  */
-export const gapCountLabel = (index: number, total: number): string => `${index + 1} / ${total} 件目`;
+export const gapCountLabel = (index: number, total: number): string => t("app-inspect-gap-count", { index: String(index + 1), total: String(total) });
 
 /**
  * 抜けへ移るときに、どちらの画面で示すかを決める。図が見えていれば図、テキストだけを見ていればテキストにする。
@@ -241,10 +243,10 @@ export interface RelEnd {
  */
 export function gapRelOptions(kind: GapKind, a: RelEnd, b: RelEnd): GapRelChoice[] {
   if (a.key === b.key || b.usage || b.lifeline || b.note || b.junction || b.flow || b.state) return [];
-  if (kind === "verify") return b.kind === "verification def" ? [{ rel: "verify", label: "この検証で確かめる «verify»", reverse: true }] : [];
-  if (kind === "satisfy") return /^part/.test(b.kind) ? [{ rel: "satisfy", label: "この部品で満たす «satisfy»", reverse: true }] : [];
+  if (kind === "verify") return b.kind === "verification def" ? [{ rel: "verify", label: t("app-inspect-rel-verify-reverse"), reverse: true }] : [];
+  if (kind === "satisfy") return /^part/.test(b.kind) ? [{ rel: "satisfy", label: t("app-inspect-rel-satisfy-reverse"), reverse: true }] : [];
   if (b.kind !== "requirement def") return [];
   return kind === "source"
-    ? [{ rel: "derive", label: "この上位の要求から導出する «derive»", reverse: false }]
-    : [{ rel: "derive", label: "この下位の要求へ展開する «derive»", reverse: true }];
+    ? [{ rel: "derive", label: t("app-inspect-rel-gap-derive-source"), reverse: false }]
+    : [{ rel: "derive", label: t("app-inspect-rel-gap-derive-expand"), reverse: true }];
 }

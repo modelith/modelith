@@ -1,5 +1,8 @@
 // 問題一覧に出す行の数を決める（F-EDIT-5）。
 
+import { t } from "../l10n";
+import { esc } from "../render/escape";
+
 /** 問題一覧にボタンとして出す行の上限。多すぎると描き直しが重くなるため。 */
 export const MAX_PROBLEM_ROWS = 200;
 
@@ -17,5 +20,5 @@ export const MAX_PROBLEM_ROWS = 200;
 export function problemRows(rows: readonly string[], max: number): string[] {
   if (rows.length <= max) return [...rows];
   const rest = rows.length - max;
-  return [...rows.slice(0, max), `<div class="more">ほかに ${rest} 件あります。上の問題を直すと表示します</div>`];
+  return [...rows.slice(0, max), `<div class="more">${esc(t("app-problems-more", { count: String(rest) }))}</div>`];
 }

@@ -2,6 +2,8 @@
 // コアが数えたファイルごとの問題を受け取り、ここでは重さの分け方・件数・行の文だけを決める（描くのは sync.ts・files.ts）。
 
 import { lineOf, type FileReport, type Problem, type RuleFinding } from "../core";
+import { t } from "../l10n";
+import { esc } from "./dom";
 import { LEVEL_MARK, problemLevel } from "./notice-levels";
 import { findingText, SEVERITY_MARK } from "./plugins";
 
@@ -117,7 +119,7 @@ export function folderStatus(statuses: ReadonlyMap<string, FileStatus>, dir: str
 export function statusBadge(s: FileStatus): string {
   const n = s.errors + s.warnings;
   if (!n) return "";
-  return `<span class="cnt ${s.errors ? "err" : "warn"}" title="エラー ${s.errors} 件・警告 ${s.warnings} 件">${n}</span>`;
+  return `<span class="cnt ${s.errors ? "err" : "warn"}" title="${esc(t("app-files-problem-counts", { errors: String(s.errors), warnings: String(s.warnings) }))}">${n}</span>`;
 }
 
 /**

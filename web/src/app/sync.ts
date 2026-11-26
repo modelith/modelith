@@ -19,6 +19,7 @@ import { otherFiles, problemClass, type FileProblems } from "./project-problems"
 import { highlight, render } from "./render";
 import { S } from "./state";
 import { curLayout, curView, syncModelViewKind, VK, viewContent } from "./views";
+import { t } from "../l10n";
 
 export interface SetTextOpts {
   /** 変更が始まる位置（カーソル位置の補正に使う）。 */
@@ -92,7 +93,7 @@ export function attachCore(c: CoreClient): void {
  * coreClient() // → Error「コアがまだつながっていません」
  */
 export function coreClient(): CoreClient {
-  if (!core) throw new Error("コアがまだつながっていません");
+  if (!core) throw new Error(t("app-core-not-attached"));
   return core;
 }
 
@@ -160,12 +161,12 @@ let coreGaveUp = false;
 export const coreHooks: CoreSupervisorHooks = {
   onDown: () => {
     toast(CORE_STOPPED);
-    setSync("busy", "図を読み込み直しています…");
+    setSync("busy", t("app-sync-reloading"));
   },
   onGaveUp: () => {
     coreGaveUp = true;
-    setSync("bad", "図を更新できません。ページを再読み込みしてください");
-    toast("図を更新できなくなりました。テキストは保存できます。ページを再読み込みしてください");
+    setSync("bad", t("app-sync-gave-up"));
+    toast(t("app-core-gave-up"));
     const ws = waiters;
     waiters = [];
     for (const w of ws) w();
@@ -327,7 +328,7 @@ export function dismissToast(): void {
  */
 export function toastFailure(what: string, e: unknown): void {
   console.warn(`${what}:`, e);
-  toast(`${what}：${errorText(e)}`);
+  toast(t("app-failure", { what, reason: errorText(e) }));
 }
 
 let textListener: (text: string) => void = () => {};
@@ -365,9 +366,20 @@ export function updateSync(): void {
   const serious = (s: string): boolean => s === "error" || s === "warning";
   const rules = S.findings.filter((f) => serious(f.severity)).length + currentDiagnostics().filter((d) => serious(d.item.severity)).length;
   const n = S.M.nodes.length, e = S.M.edges.length, p = S.M.problems.filter((x) => problemLevel(x) === "error").length + rules + S.pluginNotes.length;
-  setSync(p ? "bad" : "", p ? `同期済み（問題 ${p} 件）` : "同期済み");
-  $("#textInfo").textContent = `SysML v2 テキスト：要素 ${n}、関係 ${e}`;
+  setSync(p ? "bad" : "", p ? t("app-sync-done-with-problems", { count: String(p) }) : t("app-sync-done"));
+  $("#textInfo").textContent = t("app-text-info", { nodes: String(n), edges: String(e) });
 }
+
+/**
+ * 問題一覧の行の文（何行目の、どんな問題か）を作る。
+ *
+ * @param line 1 から数えた行
+ * @param text 問題の文
+ * @returns 行の文（HTML に入れるときは esc を通す）
+ * @example
+ * atLine(12, "型「Wheel」が見つかりません（w）") // → "12 行目：型「Wheel」が見つかりません（w）"
+ */
+const atLine = (line: number, text: string): string => t("app-problem-at-line", { line: String(line), text });
 
 /** 問題一覧の 1 行（画面の HTML と、コピーする内容）。own は表示中のファイルの行（ファイル名はコピーするときに決める）。 */
 interface ProblemRow {
@@ -414,15 +426,15 @@ export function renderProblems(): void {
   const own = (pos: number, text: string, html: (copy: number) => string): ProblemRow => ({ html, own: true, path: null, line: lineOf(S.text, pos), text });
   const note = (text: string, html: (copy: number) => string): ProblemRow => ({ html, own: false, path: null, line: null, text });
   const model = (p: Problem): ProblemRow =>
-    own(p.pos, p.msg, (c) => `<button data-pos="${p.pos}"${gapIndex.has(p) ? ` data-gap="${gapIndex.get(p)}"` : ""} data-copy="${c}" class="${problemClass(p)}">${LEVEL_MARK[problemLevel(p)]} ${lineOf(S.text, p.pos)} 行目：${esc(p.msg)}</button>`);
+    own(p.pos, p.msg, (c) => `<button data-pos="${p.pos}"${gapIndex.has(p) ? ` data-gap="${gapIndex.get(p)}"` : ""} data-copy="${c}" class="${problemClass(p)}">${LEVEL_MARK[problemLevel(p)]} ${esc(atLine(lineOf(S.text, p.pos), p.msg))}</button>`);
   const rule = (f: RuleFinding): ProblemRow => {
     const text = findingText(f, S.pluginNames);
-    return own(f.pos, text, (c) => `<button data-pos="${f.pos}" data-copy="${c}" class="rule ${f.severity}">${SEVERITY_MARK[f.severity]} ${lineOf(S.text, f.pos)} 行目：${esc(text)}</button>`);
+    return own(f.pos, text, (c) => `<button data-pos="${f.pos}" data-copy="${c}" class="rule ${f.severity}">${SEVERITY_MARK[f.severity]} ${esc(atLine(lineOf(S.text, f.pos), text))}</button>`);
   };
   const notes = S.pluginNotes.map((n) => note(n.msg, (c) => `<button class="plugin"${n.add ? ` data-plugin-add="${esc(n.add)}"` : ""} data-copy="${c}">⚠ ${esc(n.msg)}</button>`));
   const diagnostic = ({ plugin, item }: { plugin: string; item: PlacedDiagnostic }): ProblemRow => {
     const text = diagnosticText(item, S.pluginNames.get(plugin) ?? plugin);
-    return own(item.pos, text, (c) => `<button data-pos="${item.pos}" data-copy="${c}" class="rule ${item.severity}">${SEVERITY_MARK[item.severity]} ${lineOf(S.text, item.pos)} 行目：${esc(text)}</button>`);
+    return own(item.pos, text, (c) => `<button data-pos="${item.pos}" data-copy="${c}" class="rule ${item.severity}">${SEVERITY_MARK[item.severity]} ${esc(atLine(lineOf(S.text, item.pos), text))}</button>`);
   };
   const dropped = S.pluginDiagnostics
     .filter((d) => d.version === applied && d.dropped > 0)
@@ -440,7 +452,7 @@ export function renderProblems(): void {
   ];
   const fileProblems = otherFiles(S.fileProblems, S.shownPath);
   const others = fileProblems.map((f) => f.rows.map((r): ProblemRow => ({
-    html: (c) => `<button data-path="${esc(f.path)}" data-at="${r.pos}" data-copy="${c}" class="${r.cls}">${r.mark} ${r.line} 行目：${esc(r.text)}</button>`,
+    html: (c) => `<button data-path="${esc(f.path)}" data-at="${r.pos}" data-copy="${c}" class="${r.cls}">${r.mark} ${esc(atLine(r.line, r.text))}</button>`,
     own: false,
     path: f.path,
     line: r.line,
@@ -451,7 +463,7 @@ export function renderProblems(): void {
     $("#problems").innerHTML = "";
     return;
   }
-  const head = `<div class="phead"><span>問題 ${rows.length} 件</span><button type="button" class="pcopy" data-levels title="知らせの種類ごとに、エラー・警告・情報・出さないのどれで知らせるかを選ぶ">知らせの重さ…</button><button type="button" class="pcopy" data-copy-all title="一覧のすべての問題を「ファイル名:行: メッセージ」の形でコピーする">すべてコピー</button></div>`;
+  const head = `<div class="phead"><span>${esc(t("app-problems-count", { count: String(rows.length) }))}</span><button type="button" class="pcopy" data-levels title="${esc(t("app-problems-levels-hint"))}">${esc(t("app-problems-levels"))}</button><button type="button" class="pcopy" data-copy-all title="${esc(t("app-problems-copy-all-hint"))}">${esc(t("app-problems-copy-all"))}</button></div>`;
   let at = mine.length;
   const files = fileProblems.map((f, i) => {
     const html = otherFileHtml(f, (others[i] ?? []).map((r, j) => r.html(at + j)));
@@ -477,8 +489,8 @@ const MAX_FILE_ROWS = 20;
  */
 function otherFileHtml(f: FileProblems, rowsHtml: readonly string[]): string {
   if (!f.rows.length) return "";
-  const head = `<div class="pfile">${esc(f.path)}<small>エラー ${f.status.errors}・警告 ${f.status.warnings}</small></div>`;
-  const more = f.rows.length > MAX_FILE_ROWS ? [`<div class="pfile-more">ほか ${f.rows.length - MAX_FILE_ROWS} 件</div>`] : [];
+  const head = `<div class="pfile">${esc(f.path)}<small>${esc(t("app-problems-file-counts", { errors: String(f.status.errors), warnings: String(f.status.warnings) }))}</small></div>`;
+  const more = f.rows.length > MAX_FILE_ROWS ? [`<div class="pfile-more">${esc(t("app-problems-file-more", { count: String(f.rows.length - MAX_FILE_ROWS) }))}</div>`] : [];
   return head + rowsHtml.slice(0, MAX_FILE_ROWS).join("") + more.join("");
 }
 

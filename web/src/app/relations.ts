@@ -1,6 +1,7 @@
 // 2 つの要素の間に追加できる関係を決める。
 
 import { inOpenFile, type Entry, type ModelNode } from "../core";
+import { t } from "../l10n";
 import { canSucceed } from "../render/action-flow";
 import { canTransition } from "../render/state-machine";
 import { kindLabel } from "../render/labels";
@@ -68,15 +69,15 @@ export function commonParent(a: ModelNode, b: ModelNode): { parent: Entry; ua: E
 export function relOptions(a: ModelNode | null, b: ModelNode | null): RelChoice[] {
   const o: RelChoice[] = [];
   if (!a || !b) return o;
-  if (a.usage || b.usage) return a.usage && b.usage && a.key !== b.key ? [{ rel: "flow", label: "信号・物理量を流す（flow）" }] : o;
-  if (a.flow || b.flow) return canSucceed(a, b) ? [{ rel: "succession", label: "この後に実行する（順序 succession）" }] : o;
-  if (a.state || b.state) return canTransition(a, b) ? [{ rel: "transition", label: "この状態から遷移する（transition）" }] : o;
+  if (a.usage || b.usage) return a.usage && b.usage && a.key !== b.key ? [{ rel: "flow", label: t("app-inspect-rel-flow") }] : o;
+  if (a.flow || b.flow) return canSucceed(a, b) ? [{ rel: "succession", label: t("app-inspect-rel-succession") }] : o;
+  if (a.state || b.state) return canTransition(a, b) ? [{ rel: "transition", label: t("app-inspect-rel-transition") }] : o;
   if (a.lifeline || b.lifeline || a.note || b.note) return o;
   if (a.isDef && b.isDef && a.key !== b.key && !["concern def", "item def", "port def"].includes(a.kind)) {
-    o.push({ rel: "comp", label: `${kindLabel(KW_FOR[b.kind] ?? "part")}として持つ` });
+    o.push({ rel: "comp", label: t("app-inspect-rel-comp", { kind: kindLabel(KW_FOR[b.kind] ?? "part") }) });
   }
   o.push(...reqRelOptions(a, b));
-  if (/^part/.test(a.kind) && /^part/.test(b.kind) && commonParent(a, b)) o.push({ rel: "flow", label: "信号・物理量を流す（flow）" });
+  if (/^part/.test(a.kind) && /^part/.test(b.kind) && commonParent(a, b)) o.push({ rel: "flow", label: t("app-inspect-rel-flow") });
   return o;
 }
 
@@ -107,14 +108,14 @@ export function reqRelOptions(a: ReqRelEnd, b: ReqRelEnd): RelChoice[] {
   const isReq = (n: ReqRelEnd): boolean => /^requirement/.test(n.kind);
   const isPart = (n: ReqRelEnd): boolean => /^part/.test(n.kind);
   const o: RelChoice[] = [];
-  if (isReq(b) && isPart(a)) o.push({ rel: "satisfy", label: "要求を満たす «satisfy»" });
-  if (isReq(b) && a.kind === "verification def") o.push({ rel: "verify", label: "要求を検証する «verify»" });
-  if (isReq(a) && b.kind === "concern def") o.push({ rel: "frame", label: "関心事を扱う «frame»" });
+  if (isReq(b) && isPart(a)) o.push({ rel: "satisfy", label: t("app-inspect-rel-satisfy") });
+  if (isReq(b) && a.kind === "verification def") o.push({ rel: "verify", label: t("app-inspect-rel-verify") });
+  if (isReq(a) && b.kind === "concern def") o.push({ rel: "frame", label: t("app-inspect-rel-frame") });
   if (a.kind === "requirement def" && b.kind === "requirement def") {
-    o.push({ rel: "derive", label: "この要求から導出する «derive»" }, { rel: "derive", label: "この要求へ展開する «derive»", reverse: true });
+    o.push({ rel: "derive", label: t("app-inspect-rel-derive") }, { rel: "derive", label: t("app-inspect-rel-derive-reverse"), reverse: true });
   }
-  if (isReq(a) && isPart(b)) o.push({ rel: "satisfy", label: "この部品で満たす «satisfy»", reverse: true });
-  if (isReq(a) && b.kind === "verification def") o.push({ rel: "verify", label: "この検証で確かめる «verify»", reverse: true });
-  if (isReq(b) && a.kind === "concern def") o.push({ rel: "frame", label: "この要求で扱う «frame»", reverse: true });
+  if (isReq(a) && isPart(b)) o.push({ rel: "satisfy", label: t("app-inspect-rel-satisfy-reverse"), reverse: true });
+  if (isReq(a) && b.kind === "verification def") o.push({ rel: "verify", label: t("app-inspect-rel-verify-reverse"), reverse: true });
+  if (isReq(b) && a.kind === "concern def") o.push({ rel: "frame", label: t("app-inspect-rel-frame-reverse"), reverse: true });
   return o;
 }

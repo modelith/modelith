@@ -1,10 +1,11 @@
 // 図の下に出るインスペクタ（選択中の要素・関係・接続点の情報と操作）。
 
 import { type Entry, lineOf, type ModelEdge, type ModelNode, type PortDir } from "../core";
+import { t } from "../l10n";
 import { flowDetail, flowName } from "../render/action-flow";
 import { eventName } from "../render/sequence";
 import { isPseudoState, stateActionLines, stateName } from "../render/state-machine";
-import { annotationsHtml } from "./annotations";
+import { annotationsHtml, noteTitle } from "./annotations";
 import { $, closest, esc } from "./dom";
 import { hasShape, resetShape } from "./edge-shape";
 import { openProjectFile, otherFileText } from "./other-file";
@@ -36,7 +37,7 @@ const DIRS: PortDir[] = ["in", "out", "inout"];
  * delBtn("del", "削除") // → '<button data-act="del" class="danger">もう一度押して削除</button>'
  */
 const delBtn = (act: string, label: string): string =>
-  `<button data-act="${act}" class="${S.confirmDel ? "danger" : ""}">${S.confirmDel ? "もう一度押して削除" : label}</button>`;
+  `<button data-act="${act}" class="${S.confirmDel ? "danger" : ""}">${esc(S.confirmDel ? t("app-inspect-delete-confirm") : label)}</button>`;
 /**
  * 接続点の ID がポートなら、「.ポート名」の形にする（接続の案内で「部品.ポート」と見せるため）。
  *
@@ -139,7 +140,7 @@ function connectHtml(): string | null {
   const b = nodeByKey(S.connectTo);
   const target = S.connectGap ? gapGuide(S.connectGap, "").target : null;
   if (!b) {
-    return `<div class="what"><small>${esc(a.name + fromTxt)} から線を引きます</small><b>${esc(target ?? "接続先の要素")}をタップしてください</b></div><div class="acts"><button data-act="cancel">やめる</button></div>`;
+    return `<div class="what"><small>${esc(t("app-inspect-connect-from", { name: a.name + fromTxt }))}</small><b>${esc(t("app-inspect-connect-tap", { target: target ?? t("app-inspect-connect-target") }))}</b></div><div class="acts"><button data-act="cancel">${esc(t("app-inspect-cancel"))}</button></div>`;
   }
   const fix = S.connectGap ? gapRelOptions(S.connectGap, a, b) : [];
   const opts: RelChoice[] = fix.length ? fix : relOptions(a, b);
@@ -147,16 +148,16 @@ function connectHtml(): string | null {
   const nm = (n: ModelNode): string => (n.flow ? flowName(n) : n.state ? stateName(n) : n.name);
   const why =
     a.flow && b.flow && (!a.name || !b.name)
-      ? "名前の無い要素は、順序の線でつなげません。テキストで名前を付けてください"
+      ? t("app-inspect-connect-unnamed-flow")
       : a.state && b.state && ((!isPseudoState(a) && !a.name) || (!isPseudoState(b) && !b.name))
-        ? "名前の無い状態は、遷移でつなげません。テキストで名前を付けてください"
-        : "この組み合わせで追加できる関係はありません";
+        ? t("app-inspect-connect-unnamed-state")
+        : t("app-inspect-connect-no-relation");
   return (
-    `<div class="what"><small>追加する関係を選択</small><b>${esc(nm(a) + fromTxt)} → ${esc(nm(b) + toTxt)}</b></div><div class="acts">` +
+    `<div class="what"><small>${esc(t("app-inspect-connect-choose"))}</small><b>${esc(nm(a) + fromTxt)} → ${esc(nm(b) + toTxt)}</b></div><div class="acts">` +
     (opts.length
       ? opts.map((o) => `<button class="primary" data-rel="${o.rel}"${o.reverse ? ' data-reverse="1"' : ""}>${esc(o.label)}</button>`).join("")
-      : `<span style="font-size:12px;color:var(--ink2)">${why}</span>`) +
-    `<button data-act="cancel">やめる</button></div>`
+      : `<span style="font-size:12px;color:var(--ink2)">${esc(why)}</span>`) +
+    `<button data-act="cancel">${esc(t("app-inspect-cancel"))}</button></div>`
   );
 }
 
@@ -171,13 +172,14 @@ function connectHtml(): string | null {
 function multiHtml(): string {
   const ns = selNodes();
   const phases = S.M.phases;
+  const names = ns.slice(0, 3).map((n) => n.name).join(t("app-inspect-list-separator"));
   return (
-    `<div class="what"><small>${ns.length} 個を選択中（何もない所をドラッグで範囲選択、Shift＋クリックで増減）</small><b>${esc(ns.slice(0, 3).map((n) => n.name).join("、"))}${ns.length > 3 ? ` ほか${ns.length - 3}個` : ""}</b></div><div class="acts">` +
-    `<button data-act="alLeft">左揃え</button><button data-act="alTop">上揃え</button><button data-act="alH">横に等間隔</button><button data-act="alV">縦に等間隔</button>` +
+    `<div class="what"><small>${esc(t("app-inspect-multi-count", { count: String(ns.length) }))}</small><b>${esc(ns.length > 3 ? t("app-inspect-multi-names-more", { names, count: String(ns.length - 3) }) : names)}</b></div><div class="acts">` +
+    `<button data-act="alLeft">${esc(t("app-inspect-align-left"))}</button><button data-act="alTop">${esc(t("app-inspect-align-top"))}</button><button data-act="alH">${esc(t("app-inspect-align-hspace"))}</button><button data-act="alV">${esc(t("app-inspect-align-vspace"))}</button>` +
     (phases
-      ? `<select id="phaseSelMulti" aria-label="フェーズをまとめて設定" ${SELECT_STYLE}><option value="">フェーズをまとめて設定…</option>${phases.map((p) => `<option value="${esc(p)}">${esc(phaseLabel(p))}</option>`).join("")}</select>`
+      ? `<select id="phaseSelMulti" aria-label="${esc(t("app-inspect-phase-multi-label"))}" ${SELECT_STYLE}><option value="">${esc(t("app-inspect-phase-multi-placeholder"))}</option>${phases.map((p) => `<option value="${esc(p)}">${esc(phaseLabel(p))}</option>`).join("")}</select>`
       : "") +
-    delBtn("delMulti", "まとめて削除") +
+    delBtn("delMulti", t("app-inspect-delete-multi")) +
     `</div>`
   );
 }
@@ -202,13 +204,13 @@ function pinHtml(n: ModelNode, pin: Pin): string {
   const p = pin.port;
   // アクティビティ図のパラメータは、向きや宣言をテキストで書き換える（図からは変えない）
   if (p && n.flow) {
-    return `<div class="what"><small>パラメータ（${esc(n.name)}）・${DIR_LABEL[p.dir]}</small><b>${esc(p.name)}${p.type ? " : " + esc(p.type) : ""}</b></div>`;
+    return `<div class="what"><small>${esc(t("app-inspect-param-where", { owner: n.name, dir: DIR_LABEL[p.dir] }))}</small><b>${esc(p.name)}${p.type ? " : " + esc(p.type) : ""}</b></div>`;
   }
   if (p) {
     return (
-      `<div class="what"><small>ポート（${esc(n.name)}）・ドラッグで縁に沿って移動</small><b>${esc(p.name)}${p.type ? " : " + (p.conj ? "~" : "") + esc(p.type) : ""}</b></div><div class="acts">` +
-      DIRS.map((d) => `<button data-dir="${d}" aria-pressed="${p.dir === d}" class="${p.dir === d ? "primary" : ""}">${DIR_LABEL[d]}</button>`).join("") +
-      delBtn("delPort", "ポートを削除") +
+      `<div class="what"><small>${esc(t("app-inspect-port-where", { owner: n.name }))}</small><b>${esc(p.name)}${p.type ? " : " + (p.conj ? "~" : "") + esc(p.type) : ""}</b></div><div class="acts">` +
+      DIRS.map((d) => `<button data-dir="${d}" aria-pressed="${p.dir === d}" class="${p.dir === d ? "primary" : ""}">${esc(DIR_LABEL[d])}</button>`).join("") +
+      delBtn("delPort", t("app-inspect-delete-port")) +
       `</div>`
     );
   }
@@ -218,20 +220,20 @@ function pinHtml(n: ModelNode, pin: Pin): string {
     if (S.portForm === true) S.portForm = { dir: guess };
     const f = S.portForm;
     return (
-      `<div class="what"><small>ポートにする（${esc(n.name)} にポートを追加）</small></div>` +
-      `<input id="portName" value="${esc(f.name || uniqueChild(n.portHost ?? n.entry, "p"))}" aria-label="ポート名">` +
-      `<select id="portType" aria-label="ポートの型" ${SELECT_STYLE}><option value="">型なし</option>${pdefs.map((t) => `<option ${f.type === t ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>` +
-      `<div class="acts">${DIRS.map((d) => `<button data-fdir="${d}" aria-pressed="${f.dir === d}" class="${f.dir === d ? "primary" : ""}">${DIR_LABEL[d]}</button>`).join("")}` +
-      `<button class="primary" data-act="portOk">作成</button><button data-act="portCancel">やめる</button></div>`
+      `<div class="what"><small>${esc(t("app-inspect-port-form-title", { owner: n.name }))}</small></div>` +
+      `<input id="portName" value="${esc(f.name || uniqueChild(n.portHost ?? n.entry, "p"))}" aria-label="${esc(t("app-inspect-port-name-label"))}">` +
+      `<select id="portType" aria-label="${esc(t("app-inspect-port-type-label"))}" ${SELECT_STYLE}><option value="">${esc(t("app-inspect-type-none"))}</option>${pdefs.map((pd) => `<option ${f.type === pd ? "selected" : ""}>${esc(pd)}</option>`).join("")}</select>` +
+      `<div class="acts">${DIRS.map((d) => `<button data-fdir="${d}" aria-pressed="${f.dir === d}" class="${f.dir === d ? "primary" : ""}">${esc(DIR_LABEL[d])}</button>`).join("")}` +
+      `<button class="primary" data-act="portOk">${esc(t("app-inspect-create"))}</button><button data-act="portCancel">${esc(t("app-inspect-cancel"))}</button></div>`
     );
   }
   const used = Object.entries(curLayout().ends).filter(([k, v]) => {
-    const [, f, t] = k.split("|");
-    return (f === n.key && v[0] === pin.id) || (t === n.key && v[1] === pin.id);
+    const [, f, to] = k.split("|");
+    return (f === n.key && v[0] === pin.id) || (to === n.key && v[1] === pin.id);
   }).length;
   return (
-    `<div class="what"><small>接続点（${esc(n.name)}）・線 ${used} 本・ドラッグで移動</small><b>ここからさらに線を引けます</b></div><div class="acts">` +
-    `<button data-act="makePort" class="primary">ポートにする</button><button data-act="rmAnchor">接続点を外す</button></div>`
+    `<div class="what"><small>${esc(t("app-inspect-anchor-where", { owner: n.name, count: String(used) }))}</small><b>${esc(t("app-inspect-anchor-hint"))}</b></div><div class="acts">` +
+    `<button data-act="makePort" class="primary">${esc(t("app-inspect-make-port"))}</button><button data-act="rmAnchor">${esc(t("app-inspect-remove-anchor"))}</button></div>`
   );
 }
 
@@ -246,8 +248,8 @@ function pinHtml(n: ModelNode, pin: Pin): string {
  */
 function otherFileHtml(n: ModelNode, path: string): string {
   return (
-    `<div class="what"><small>«${esc(n.kind)}» ${esc(path)} の要素</small><b>${esc(n.name || "（名前なし）")}</b></div><div class="acts">` +
-    `<button class="primary" data-act="openFile">そのファイルを開く</button></div>` +
+    `<div class="what"><small>${esc(t("app-inspect-other-file-where", { kind: n.kind, path }))}</small><b>${esc(n.name || t("app-inspect-unnamed"))}</b></div><div class="acts">` +
+    `<button class="primary" data-act="openFile">${esc(t("app-inspect-open-file"))}</button></div>` +
     `<div class="notes"><div class="note"><p>${esc(otherFileText(path))}</p></div></div>`
   );
 }
@@ -269,7 +271,7 @@ function otherFileHtml(n: ModelNode, path: string): string {
  */
 function nodeHtml(n: ModelNode): string {
   if (S.renaming) {
-    return `<div class="what"><small>新しい名前（日本語も使えます。参照もまとめて変更されます）</small></div><input id="renameIn" value="${esc(n.name)}" aria-label="新しい名前"><div class="acts"><button class="primary" data-act="renameOk">変更する</button><button data-act="renameCancel">やめる</button></div>`;
+    return `<div class="what"><small>${esc(t("app-inspect-rename-hint"))}</small></div><input id="renameIn" value="${esc(n.name)}" aria-label="${esc(t("app-inspect-rename-label"))}"><div class="acts"><button class="primary" data-act="renameOk">${esc(t("app-inspect-rename-ok"))}</button><button data-act="renameCancel">${esc(t("app-inspect-cancel"))}</button></div>`;
   }
   const e = n.entry;
   if (n.file) return otherFileHtml(n, n.file);
@@ -277,38 +279,38 @@ function nodeHtml(n: ModelNode): string {
   if (n.junction) {
     // n 項の接続の点（8.2.3.13 の n-ary-connection-dot）。削除すると接続ごと消える
     return (
-      `<div class="what"><small>3 つ以上をつなぐ接続（connect） テキスト ${line} 行目</small><b>${esc(n.name || "（名前なし）")}${e.type ? " : " + esc(e.type) : ""}</b></div><div class="acts">` +
-      `<button data-act="goto">テキストで見る</button>` +
-      delBtn("del", "接続を削除") +
+      `<div class="what"><small>${esc(t("app-inspect-junction-where", { line: String(line) }))}</small><b>${esc(n.name || t("app-inspect-unnamed"))}${e.type ? " : " + esc(e.type) : ""}</b></div><div class="acts">` +
+      `<button data-act="goto">${esc(t("app-inspect-show-in-text"))}</button>` +
+      delBtn("del", t("app-inspect-delete-connection")) +
       `</div>`
     );
   }
   if (n.note && n.kind === "rep") {
     // 別の言語での表し方（8.2.3.4 の textual-representation）。持ち主の要素の中に書くので、ここでは消さない
     return (
-      `<div class="what"><small>別の言語での表し方（rep） テキスト ${line} 行目</small><b>${esc(n.name || "（名前なし）")}</b></div><div class="acts">` +
-      `<button data-act="goto">テキストで見る</button>` +
-      `</div><div class="notes"><div class="note"><small>言語</small><p>${esc(e.type)}</p></div><div class="note"><small>本文</small><pre>${esc(e.body ?? "")}</pre></div></div>`
+      `<div class="what"><small>${esc(t("app-inspect-rep-where", { line: String(line) }))}</small><b>${esc(n.name || t("app-inspect-unnamed"))}</b></div><div class="acts">` +
+      `<button data-act="goto">${esc(t("app-inspect-show-in-text"))}</button>` +
+      `</div><div class="notes"><div class="note"><small>${esc(t("app-inspect-rep-language-label"))}</small><p>${esc(e.type)}</p></div><div class="note"><small>${esc(t("app-inspect-body-label"))}</small><pre>${esc(e.body ?? "")}</pre></div></div>`
     );
   }
   if (n.note) {
     // メモ（8.2.3.4 の comment）。注釈する要素と本文を見せ、削除するとコメントごと消える
-    const about = (e.about ?? []).map((a) => a.name || "（名前なし）").join("、");
+    const about = (e.about ?? []).map((a) => a.name || t("app-inspect-unnamed")).join(t("app-inspect-list-separator"));
     return (
-      `<div class="what"><small>メモ テキスト ${line} 行目</small><b>${esc(n.name || "（名前なし）")}</b></div><div class="acts">` +
-      `<button data-act="goto">テキストで見る</button>` +
-      delBtn("del", "メモを削除") +
-      `</div><div class="notes"><div class="note"><small>メモを付ける相手</small><p>${esc(about)}</p></div><div class="note"><small>本文</small><p>${esc(e.body ?? "")}</p></div></div>`
+      `<div class="what"><small>${esc(t("app-inspect-note-where", { line: String(line) }))}</small><b>${esc(n.name || t("app-inspect-unnamed"))}</b></div><div class="acts">` +
+      `<button data-act="goto">${esc(t("app-inspect-show-in-text"))}</button>` +
+      delBtn("del", t("app-inspect-delete-note")) +
+      `</div><div class="notes"><div class="note"><small>${esc(t("app-inspect-note-about-label"))}</small><p>${esc(about)}</p></div><div class="note"><small>${esc(t("app-inspect-body-label"))}</small><p>${esc(e.body ?? "")}</p></div></div>`
     );
   }
   if (n.flow) return flowNodeHtml(n, line);
   if (n.state) return stateNodeHtml(n, line);
   if (n.usage || n.lifeline) {
     return (
-      `<div class="what"><small>«${esc(n.kind)}» テキスト ${line} 行目${n.usage ? "・縁の＋から線を引けます" : "・ライフラインから横にドラッグでメッセージを追加"}</small><b>${esc(n.name)}${e.type ? " : " + esc(e.type) : ""}</b></div><div class="acts">` +
-      `<button data-act="goto">テキストで見る</button>` +
-      (e.type && S.M.byName.has(e.type) ? `<button data-act="openType">型の定義へ</button>` : "") +
-      delBtn("del", "削除") +
+      `<div class="what"><small>${esc(n.usage ? t("app-inspect-node-where", { kind: n.kind, line: String(line) }) : t("app-inspect-lifeline-where", { kind: n.kind, line: String(line) }))}</small><b>${esc(n.name)}${e.type ? " : " + esc(e.type) : ""}</b></div><div class="acts">` +
+      `<button data-act="goto">${esc(t("app-inspect-show-in-text"))}</button>` +
+      (e.type && S.M.byName.has(e.type) ? `<button data-act="openType">${esc(t("app-inspect-open-type"))}</button>` : "") +
+      delBtn("del", t("app-inspect-delete")) +
       `</div>` +
       annotationsHtml(e, S.P.entries)
     );
@@ -316,15 +318,15 @@ function nodeHtml(n: ModelNode): string {
   const phases = S.M.phases;
   const phSel =
     phases && n.isDef
-      ? `<select id="phaseSel" aria-label="フェーズ" ${SELECT_STYLE}><option value="">フェーズなし</option>${phases.map((p) => `<option value="${esc(p)}" ${n.phase === p ? "selected" : ""}>${esc(phaseLabel(p))}${n.phase === p && !n.phaseOwn ? "（継承）" : ""}</option>`).join("")}</select>`
+      ? `<select id="phaseSel" aria-label="${esc(t("app-inspect-phase-label"))}" ${SELECT_STYLE}><option value="">${esc(t("app-inspect-phase-none"))}</option>${phases.map((p) => `<option value="${esc(p)}" ${n.phase === p ? "selected" : ""}>${esc(n.phase === p && !n.phaseOwn ? t("render-phase-inherited", { phase: phaseLabel(p) }) : phaseLabel(p))}</option>`).join("")}</select>`
       : "";
   // トレースの抜けを案内しているときは、「テキストで見る」「関係を追加」を案内の中に置く（F-TRACE-2）
   const guide = gapGuideHtml(n);
   return (
     (guide ?? "") +
-    `<div class="what"><small>«${esc(n.kind)}» テキスト ${line} 行目・縁の＋から線を引けます</small><b>${esc(n.name)}</b></div>${phSel}<div class="acts">` +
-    (guide ? `<button data-act="rename">名前を変更</button>` : `<button data-act="goto">テキストで見る</button><button data-act="rename">名前を変更</button><button data-act="connect">関係を追加</button>`) +
-    delBtn("del", "削除") +
+    `<div class="what"><small>${esc(t("app-inspect-node-where", { kind: n.kind, line: String(line) }))}</small><b>${esc(n.name)}</b></div>${phSel}<div class="acts">` +
+    (guide ? `<button data-act="rename">${esc(t("app-inspect-rename"))}</button>` : `<button data-act="goto">${esc(t("app-inspect-show-in-text"))}</button><button data-act="rename">${esc(t("app-inspect-rename"))}</button><button data-act="connect">${esc(t("app-inspect-add-relation"))}</button>`) +
+    delBtn("del", t("app-inspect-delete")) +
     `</div>` +
     docHtml(n) +
     // トレースの抜けを案内しているときは、案内と図が狭い画面でも見えるよう、属性の欄を出さない
@@ -350,14 +352,14 @@ function docHtml(n: ModelNode): string {
   const doc = n.entry.docText ?? n.entry.doc ?? "";
   if (S.docEdit) {
     return (
-      `<div class="docbox doc"><div class="note"><small>${label}（空にすると消えます）</small></div>` +
-      `<textarea id="docIn" rows="4" aria-label="${label}">${esc(doc)}</textarea>` +
-      `<div class="acts"><button class="primary" data-act="docOk">保存</button><button data-act="docCancel">やめる</button></div></div>`
+      `<div class="docbox doc"><div class="note"><small>${esc(t("app-inspect-doc-edit-hint", { label }))}</small></div>` +
+      `<textarea id="docIn" rows="4" aria-label="${esc(label)}">${esc(doc)}</textarea>` +
+      `<div class="acts"><button class="primary" data-act="docOk">${esc(t("app-inspect-save"))}</button><button data-act="docCancel">${esc(t("app-inspect-cancel"))}</button></div></div>`
     );
   }
   return (
-    `<div class="docbox doc"><div class="note"><small>${label}</small>${doc ? `<p>${esc(doc)}</p>` : `<p class="muted">まだありません</p>`}</div>` +
-    `<div class="acts"><button data-act="docEdit">${label}を編集</button></div></div>`
+    `<div class="docbox doc"><div class="note"><small>${esc(label)}</small>${doc ? `<p>${esc(doc)}</p>` : `<p class="muted">${esc(t("app-inspect-none-yet"))}</p>`}</div>` +
+    `<div class="acts"><button data-act="docEdit">${esc(t("app-inspect-doc-edit", { label }))}</button></div></div>`
   );
 }
 
@@ -375,19 +377,19 @@ function attrsHtml(n: ModelNode): string {
   const attrs = n.entry.children.filter((c) => c.kind === "attribute");
   const form = (a: Entry | null): string =>
     `<div class="attrform">` +
-    `<input id="attrName" value="${esc(a?.name ?? "")}" placeholder="名前" aria-label="属性の名前">` +
-    `<input id="attrType" value="${esc(a?.type ?? "")}" placeholder="型（例：Real）" aria-label="属性の型">` +
-    `<input id="attrValue" value="${esc(a?.value ?? "")}" placeholder="値（例：1500）" aria-label="属性の値">` +
-    `<div class="acts"><button class="primary" data-act="attrOk">保存</button><button data-act="attrCancel">やめる</button></div></div>`;
+    `<input id="attrName" value="${esc(a?.name ?? "")}" placeholder="${esc(t("app-inspect-attr-name-placeholder"))}" aria-label="${esc(t("app-inspect-attr-name-label"))}">` +
+    `<input id="attrType" value="${esc(a?.type ?? "")}" placeholder="${esc(t("app-inspect-attr-type-placeholder"))}" aria-label="${esc(t("app-inspect-attr-type-label"))}">` +
+    `<input id="attrValue" value="${esc(a?.value ?? "")}" placeholder="${esc(t("app-inspect-attr-value-placeholder"))}" aria-label="${esc(t("app-inspect-attr-value-label"))}">` +
+    `<div class="acts"><button class="primary" data-act="attrOk">${esc(t("app-inspect-save"))}</button><button data-act="attrCancel">${esc(t("app-inspect-cancel"))}</button></div></div>`;
   const rows = attrs.map((a) =>
     S.attrEdit === a.name
       ? form(a)
-      : `<div class="attr"><span>${esc(attrText(a))}</span><button data-act="attrEdit" data-attr="${esc(a.name)}">編集</button><button data-act="attrDel" data-attr="${esc(a.name)}">削除</button></div>`,
+      : `<div class="attr"><span>${esc(attrText(a))}</span><button data-act="attrEdit" data-attr="${esc(a.name)}">${esc(t("app-inspect-edit"))}</button><button data-act="attrDel" data-attr="${esc(a.name)}">${esc(t("app-inspect-delete"))}</button></div>`,
   );
   return (
-    `<div class="docbox attrs"><div class="note"><small>属性</small>${attrs.length ? "" : `<p class="muted">まだありません</p>`}</div>` +
+    `<div class="docbox attrs"><div class="note"><small>${esc(t("app-inspect-attrs-title"))}</small>${attrs.length ? "" : `<p class="muted">${esc(t("app-inspect-none-yet"))}</p>`}</div>` +
     rows.join("") +
-    (S.attrEdit === "" ? form(null) : `<div class="acts"><button data-act="attrAdd">属性を追加</button></div>`) +
+    (S.attrEdit === "" ? form(null) : `<div class="acts"><button data-act="attrAdd">${esc(t("app-inspect-attr-add"))}</button></div>`) +
     `</div>`
   );
 }
@@ -401,7 +403,7 @@ function attrsHtml(n: ModelNode): string {
  * docLabel({ fam: "req", … })  // → "要求の文章"
  * docLabel({ fam: "part", … }) // → "説明"
  */
-export const docLabel = (n: Pick<ModelNode, "fam">): string => (n.fam === "req" ? "要求の文章" : "説明");
+export const docLabel = (n: Pick<ModelNode, "fam">): string => (n.fam === "req" ? t("app-inspect-doc-label-requirement") : t("app-inspect-doc-label"));
 
 /**
  * アクションの流れの図の要素（8.2.3.17）の HTML を作る。種類の画面の言葉と中身、テキストで見る・名前の変更・順序の線の追加・削除のボタンを出す。
@@ -419,13 +421,15 @@ export const docLabel = (n: Pick<ModelNode, "fam">): string => (n.fam === "req" 
 function flowNodeHtml(n: ModelNode, line: number): string {
   const implicit = n.kind === "start" || n.kind === "done";
   const detail = flowDetail(n);
-  const where = implicit ? "・順序の線から決まる記号です" : ` テキスト ${line} 行目・縁の＋から順序の線を引けます`;
+  const where = implicit
+    ? t("app-inspect-flow-implicit-where", { label: kindLabel(n.kind), kind: n.kind })
+    : t("app-inspect-flow-where", { label: kindLabel(n.kind), kind: n.kind, line: String(line) });
   return (
-    `<div class="what"><small>${esc(kindLabel(n.kind))}（${esc(n.kind)}）${where}</small><b>${esc(flowName(n))}</b>${detail && n.name && !implicit ? `<small>${esc(detail)}</small>` : ""}</div><div class="acts">` +
-    (implicit ? "" : `<button data-act="goto">テキストで見る</button>`) +
-    (n.name && !implicit ? `<button data-act="rename">名前を変更</button>` : "") +
-    (n.kind === "done" ? "" : `<button data-act="connect">順序の線を追加</button>`) +
-    (implicit ? "" : delBtn("del", "削除")) +
+    `<div class="what"><small>${esc(where)}</small><b>${esc(flowName(n))}</b>${detail && n.name && !implicit ? `<small>${esc(detail)}</small>` : ""}</div><div class="acts">` +
+    (implicit ? "" : `<button data-act="goto">${esc(t("app-inspect-show-in-text"))}</button>`) +
+    (n.name && !implicit ? `<button data-act="rename">${esc(t("app-inspect-rename"))}</button>` : "") +
+    (n.kind === "done" ? "" : `<button data-act="connect">${esc(t("app-inspect-add-succession"))}</button>`) +
+    (implicit ? "" : delBtn("del", t("app-inspect-delete"))) +
     `</div>`
   );
 }
@@ -445,24 +449,30 @@ function flowNodeHtml(n: ModelNode, line: number): string {
  */
 function stateNodeHtml(n: ModelNode, line: number): string {
   const pseudo = isPseudoState(n);
-  const where = pseudo ? (n.kind === "start" ? "・最初の遷移から決まる記号です" : "・遷移から決まる記号です") : ` テキスト ${line} 行目・縁の＋から遷移を引けます`;
+  const names = { label: kindLabel(n.kind), kind: n.kind };
+  const what = n.parallel ? t("app-inspect-state-what-parallel", names) : t("app-inspect-state-what", names);
+  const where = !pseudo
+    ? t("app-inspect-state-where", { what, line: String(line) })
+    : n.kind === "start"
+      ? t("app-inspect-state-start-where", { what })
+      : t("app-inspect-state-pseudo-where", { what });
   const actions = pseudo ? [] : stateActionLines(n.entry);
   return (
-    `<div class="what"><small>${esc(kindLabel(n.kind))}（${esc(n.kind)}）${n.parallel ? "・並行" : ""}${where}</small><b>${esc(stateName(n))}</b></div><div class="acts">` +
-    (pseudo ? "" : `<button data-act="goto">テキストで見る</button>`) +
-    (n.name && !pseudo ? `<button data-act="rename">名前を変更</button><button data-act="connect">遷移を追加</button>` : "") +
-    (pseudo ? "" : delBtn("del", "削除")) +
+    `<div class="what"><small>${esc(where)}</small><b>${esc(stateName(n))}</b></div><div class="acts">` +
+    (pseudo ? "" : `<button data-act="goto">${esc(t("app-inspect-show-in-text"))}</button>`) +
+    (n.name && !pseudo ? `<button data-act="rename">${esc(t("app-inspect-rename"))}</button><button data-act="connect">${esc(t("app-inspect-add-transition"))}</button>` : "") +
+    (pseudo ? "" : delBtn("del", t("app-inspect-delete"))) +
     `</div>` +
-    (actions.length ? `<div class="notes"><div class="note"><small>振る舞い（entry・do・exit）</small><p>${actions.map(esc).join("<br>")}</p></div></div>` : "")
+    (actions.length ? `<div class="notes"><div class="note"><small>${esc(t("app-inspect-state-actions-label"))}</small><p>${actions.map(esc).join("<br>")}</p></div></div>` : "")
   );
 }
 
 const EDGE_NAME: Record<string, string> = {
-  comp: "部品・特性として持つ", satisfy: "要求を満たす «satisfy»", verify: "要求を検証する «verify»", frame: "関心事を扱う «frame»", flow: "流れ・接続", defined: "型（定義）", derive: "要求の導出 «derive»",
-  specialize: "定義を引き継ぐ（特殊化 :>）", subset: "一部になる（部分集合 subsets）", redefine: "置き換える（再定義 redefines）", reference: "参照する（references）",
-  dependency: "依存する（dependency）", allocate: "割り当てる «allocate»", bind: "値を等しくする（結び付け bind）",
-  connect: "3 つ以上をつなぐ接続（connect）", annotate: "メモを付ける（comment about）",
-  succession: "順序（succession）", successionFlow: "順序付きの流れ（succession flow）", transition: "遷移（transition）",
+  comp: t("app-inspect-edge-comp"), satisfy: t("app-inspect-edge-satisfy"), verify: t("app-inspect-edge-verify"), frame: t("app-inspect-edge-frame"), flow: t("app-inspect-edge-flow"), defined: t("app-inspect-edge-defined"), derive: t("app-inspect-edge-derive"),
+  specialize: t("app-inspect-edge-specialize"), subset: t("app-inspect-edge-subset"), redefine: t("app-inspect-edge-redefine"), reference: t("app-inspect-edge-reference"),
+  dependency: t("app-inspect-edge-dependency"), allocate: t("app-inspect-edge-allocate"), bind: t("app-inspect-edge-bind"),
+  connect: t("app-inspect-edge-connect"), annotate: t("app-inspect-edge-annotate"),
+  succession: t("app-inspect-edge-succession"), successionFlow: t("app-inspect-edge-succession-flow"), transition: t("app-inspect-edge-transition"),
 };
 
 /**
@@ -494,26 +504,28 @@ function edgeHtml(ed: ModelEdge): string {
     if (S.msgEdit) {
       const items = S.M.nodes.filter((x) => x.kind === "item def").map((x) => x.name);
       return (
-        `<div class="what"><small>メッセージ ${i + 1} を編集</small></div><input id="msgName" value="${esc(ed.label || "")}" aria-label="メッセージ名">` +
-        `<select id="msgType" aria-label="アイテムの型" ${SELECT_STYLE}><option value="">型なし</option>${items.map((it) => `<option ${ed.type === it ? "selected" : ""}>${esc(it)}</option>`).join("")}</select>` +
-        `<div class="acts"><button class="primary" data-act="msgOk">保存</button><button data-act="msgCancel">やめる</button></div>`
+        `<div class="what"><small>${esc(t("app-inspect-message-edit-title", { index: String(i + 1) }))}</small></div><input id="msgName" value="${esc(ed.label || "")}" aria-label="${esc(t("app-inspect-message-name-label"))}">` +
+        `<select id="msgType" aria-label="${esc(t("app-inspect-message-type-label"))}" ${SELECT_STYLE}><option value="">${esc(t("app-inspect-type-none"))}</option>${items.map((it) => `<option ${ed.type === it ? "selected" : ""}>${esc(it)}</option>`).join("")}</select>` +
+        `<div class="acts"><button class="primary" data-act="msgOk">${esc(t("app-inspect-save"))}</button><button data-act="msgCancel">${esc(t("app-inspect-cancel"))}</button></div>`
       );
     }
     return (
-      `<div class="what"><small>メッセージ ${i + 1}／${count}：${esc(nodeByKey(ed.from)?.name ?? "?")} → ${esc(nodeByKey(ed.to)?.name ?? "?")}</small><b>${esc(ed.label || "（名前なし）")}${ed.type ? " : " + esc(ed.type) : ""}</b></div><div class="acts">` +
-      `<button data-act="msgUp" ${i === 0 ? "disabled" : ""}>上へ</button><button data-act="msgDown" ${i === count - 1 ? "disabled" : ""}>下へ</button>` +
-      `<button data-act="msgEdit">名前・型を編集</button><button data-act="goto">テキストで見る</button>` +
-      delBtn("delEdge", "削除") +
+      `<div class="what"><small>${esc(t("app-inspect-message-where", { index: String(i + 1), count: String(count), from: nodeByKey(ed.from)?.name ?? "?", to: nodeByKey(ed.to)?.name ?? "?" }))}</small><b>${esc(ed.label || t("app-inspect-unnamed"))}${ed.type ? " : " + esc(ed.type) : ""}</b></div><div class="acts">` +
+      `<button data-act="msgUp" ${i === 0 ? "disabled" : ""}>${esc(t("app-inspect-message-up"))}</button><button data-act="msgDown" ${i === count - 1 ? "disabled" : ""}>${esc(t("app-inspect-message-down"))}</button>` +
+      `<button data-act="msgEdit">${esc(t("app-inspect-message-edit"))}</button><button data-act="goto">${esc(t("app-inspect-show-in-text"))}</button>` +
+      delBtn("delEdge", t("app-inspect-delete")) +
       `</div>`
     );
   }
+  const name = EDGE_NAME[ed.kind] ?? ed.kind;
+  const title = ed.label && (ed.kind === "comp" || ed.kind === "transition") ? t("app-inspect-edge-with-label", { name, label: ed.label }) : name;
   return (
-    `<div class="what"><small>${esc(EDGE_NAME[ed.kind] ?? ed.kind)}${ed.label && (ed.kind === "comp" || ed.kind === "transition") ? "：" + esc(ed.label) : ""}</small><b>${esc(ed.kind === "annotate" ? `メモ ${nodeByKey(ed.from)?.name ?? ""}`.trim() : endName(ed.from))} → ${esc(endName(ed.to))}</b></div><div class="acts">` +
-    `<button data-act="goto">テキストで見る</button>` +
+    `<div class="what"><small>${esc(title)}</small><b>${esc(ed.kind === "annotate" ? noteTitle(nodeByKey(ed.from)?.name ?? "").trim() : endName(ed.from))} → ${esc(endName(ed.to))}</b></div><div class="acts">` +
+    `<button data-act="goto">${esc(t("app-inspect-show-in-text"))}</button>` +
     // 調整した線の形を、自動の経路に戻す（F-VIEW-16）
-    (hasShape(curLayout(), ed.id) ? `<button data-act="resetShape">線の形を元に戻す</button>` : "") +
+    (hasShape(curLayout(), ed.id) ? `<button data-act="resetShape">${esc(t("app-inspect-reset-shape"))}</button>` : "") +
     // メモの線だけを削除する操作は無い（メモごと削除する）
-    (ed.kind === "annotate" ? "" : delBtn("delEdge", "関係を削除")) +
+    (ed.kind === "annotate" ? "" : delBtn("delEdge", t("app-inspect-delete-relation"))) +
     `</div>`
   );
 }

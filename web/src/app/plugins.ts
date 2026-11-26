@@ -1,6 +1,7 @@
 // プラグイン（ADR-0018・ADR-0019）の画面の言葉と判断。入出力を持たない純粋関数だけを置く（読み書きは plugin-panel.ts）。
 
 import type { PlacedDiagnostic, PluginFiles, PluginInfo, PluginLoadProblem, PluginRuntime, PluginSummary, PluginUse, ProjectFile, RuleFinding, RuleSeverity } from "../core";
+import { t } from "../l10n";
 import type { BrowserPlugin } from "../plugins/browser-store";
 import type { Permission } from "../plugins/generated/protocol";
 import { NETWORK_WARNING, permissionLines } from "../plugins/permissions";
@@ -16,23 +17,23 @@ export const MANIFEST_FILE = "modelith-plugin.json";
 export type PluginPlace = "project" | "browser";
 
 /** 入れる先の画面の言葉。 */
-export const PLACE_LABEL: Record<PluginPlace, string> = { project: "このプロジェクト", browser: "このブラウザ" };
+export const PLACE_LABEL: Record<PluginPlace, string> = { project: t("app-plugins-place-project"), browser: t("app-plugins-place-browser") };
 
 /** 一覧に出すプラグインの状態。shadowed は、同じ ID のプロジェクトのプラグインがあるため使わない、このブラウザのプラグイン。 */
 export type PluginState = "ok" | "error" | "missing" | "version" | "off" | "shadowed";
 
 /** 状態の画面の言葉。 */
 export const STATE_LABEL: Record<PluginState, string> = {
-  ok: "有効",
-  error: "エラーあり",
-  missing: "未追加",
-  version: "バージョン不一致",
-  off: "無効",
-  shadowed: "プロジェクトを優先",
+  ok: t("app-plugins-state-ok"),
+  error: t("app-plugins-state-error"),
+  missing: t("app-plugins-state-missing"),
+  version: t("app-plugins-state-version"),
+  off: t("app-plugins-state-off"),
+  shadowed: t("app-plugins-state-shadowed"),
 };
 
 /** 同じ ID のプロジェクトのプラグインがあるため、このブラウザのプラグインを使わないことの説明。 */
-export const SHADOWED_NOTICE = "このプロジェクトに同じ ID のプラグインがあるため、このプロジェクトではプロジェクトのものを使います（このブラウザのものは使いません）。";
+export const SHADOWED_NOTICE = t("app-plugins-shadowed-notice");
 
 /** プラグインの一覧の 1 行。 */
 export interface PluginRow {
@@ -96,7 +97,7 @@ export function pluginState(use: PluginUse, summary: PluginSummary | undefined):
  * loadProblemText({ path: "modelith.json", place: null, message: "…" }) // → "modelith.json：…"
  */
 export function loadProblemText(p: PluginLoadProblem): string {
-  return p.place ? `${p.path} の ${p.place.line} 行目：${p.message}` : `${p.path}：${p.message}`;
+  return p.place ? t("app-plugins-load-problem-at-line", { path: p.path, line: String(p.place.line), message: p.message }) : t("app-plugins-load-problem", { path: p.path, message: p.message });
 }
 
 /**
@@ -158,7 +159,7 @@ export function isShadowed(id: string, project: ProjectFile | null): boolean {
  */
 export function browserProblem(p: PluginLoadProblem, id: string): PluginLoadProblem {
   const prefix = `${PLUGINS_DIR}/${id}/`;
-  return p.path.startsWith(prefix) ? { ...p, path: `このブラウザの ${id}/${p.path.slice(prefix.length)}` } : p;
+  return p.path.startsWith(prefix) ? { ...p, path: t("app-plugins-browser-path", { path: `${id}/${p.path.slice(prefix.length)}` }) } : p;
 }
 
 /**
@@ -287,11 +288,8 @@ function scriptOf(m: PluginInfo, code: string): ScriptPlugin {
  * missingNotice({ state: "ok", … }) // → null
  */
 export function missingNotice(row: PluginRow): string | null {
-  if (row.state === "missing") return `このプロジェクトで使うプラグイン「${row.id}」が追加されていません。追加しますか？`;
-  if (row.state === "version") {
-    const wanted = row.wanted ?? "";
-    return `このプロジェクトはプラグイン「${row.name}」のバージョン ${wanted} を使いますが、追加されているのはバージョン ${row.version ?? ""} です。バージョン ${wanted} を追加しますか？`;
-  }
+  if (row.state === "missing") return t("app-plugins-missing", { id: row.id });
+  if (row.state === "version") return t("app-plugins-version-mismatch", { name: row.name, wanted: row.wanted ?? "", version: row.version ?? "" });
   return null;
 }
 
@@ -313,7 +311,7 @@ export function pluginNotes(rows: readonly PluginRow[]): PluginNote[] {
     if (!row.enabled) return [];
     const notice = missingNotice(row);
     // 未追加のプラグインの「マニフェストが見つからない」は、追加を尋ねる行と同じことなので重ねない
-    const problems = row.state === "missing" ? [] : row.problems.map((p) => ({ msg: `プラグイン「${row.name}」：${p}` }));
+    const problems = row.state === "missing" ? [] : row.problems.map((p) => ({ msg: t("app-plugins-note-problem", { name: row.name, problem: p }) }));
     return notice ? [{ msg: notice, add: row.id }, ...problems] : problems;
   });
 }
@@ -330,7 +328,7 @@ export function pluginNotes(rows: readonly PluginRow[]): PluginNote[] {
  * findingText({ plugin: "jp.y", rule: "r1", message: "m", … }, new Map()) // → "m（プラグイン「jp.y」のルール r1）"
  */
 export function findingText(f: RuleFinding, names: ReadonlyMap<string, string>): string {
-  return `${f.message}（プラグイン「${names.get(f.plugin) ?? f.plugin}」のルール ${f.rule}）`;
+  return t("app-plugins-finding", { message: f.message, name: names.get(f.plugin) ?? f.plugin, rule: f.rule });
 }
 
 /**
@@ -344,7 +342,7 @@ export function findingText(f: RuleFinding, names: ReadonlyMap<string, string>):
  * diagnosticText({ message: "m", … }, "jp.y")                                                     // → "m（プラグイン「jp.y」）"
  */
 export function diagnosticText(d: PlacedDiagnostic, name: string): string {
-  return `${d.message}（プラグイン「${name}」${d.code ? `の ${d.code}` : ""}）`;
+  return d.code ? t("app-plugins-diagnostic-code", { message: d.message, name, code: d.code }) : t("app-plugins-diagnostic", { message: d.message, name });
 }
 
 /** チェックルールの結果の重大度ごとの印（問題一覧の行の頭）。 */
@@ -372,17 +370,15 @@ export type PanelPlace =
 export function panelIntro(place: PanelPlace, count: number): string {
   switch (place.kind) {
     case "unsupported":
-      return "このブラウザはフォルダを開けないため、プラグインはこのブラウザにだけ追加できます（自分だけが使えます）。プロジェクトに追加してチームや CI と共有するには、Chrome・Edge でモデルのフォルダを開いてください。";
+      return t("app-plugins-intro-unsupported");
     case "noFolder":
-      return "フォルダを開いていないため、プラグインはこのブラウザにだけ追加できます（自分だけが使えます）。チームや CI と共有するには、「ファイル → フォルダを開く…」でモデルのフォルダを開き、プロジェクトに追加してください。単独で開いたファイルやサンプルは、プロジェクトではありません。";
+      return t("app-plugins-intro-no-folder");
     case "folder":
-      return `フォルダ「${place.folderName}」はまだプロジェクトではありません。「追加…」でプラグインのフォルダを選び、追加先に「このプロジェクト」を選ぶと、このフォルダをプロジェクトにしてから追加します（設定ファイル modelith.json を作成します）。`;
+      return t("app-plugins-intro-folder", { folderName: place.folderName });
     case "brokenProject":
-      return "プロジェクトの設定（modelith.json）にエラーがあるため、プロジェクトのプラグインを使用できません。設定ファイルを修正してから、エクスプローラーの「一覧を更新」（↻）を押してください。このブラウザへの追加はできます。";
+      return t("app-plugins-intro-broken-project");
     case "project":
-      return count
-        ? `プロジェクト「${place.projectName}」に追加されているプラグインです。チェックルールの結果は、テキストの下の問題一覧に表示されます。`
-        : `プロジェクト「${place.projectName}」にはまだプラグインがありません。「追加…」を押して、プラグインのフォルダを選んでください。`;
+      return count ? t("app-plugins-intro-project", { projectName: place.projectName }) : t("app-plugins-intro-project-empty", { projectName: place.projectName });
   }
 }
 
@@ -399,11 +395,11 @@ export function panelIntro(place: PanelPlace, count: number): string {
 export function projectBlocked(place: PanelPlace): string | null {
   switch (place.kind) {
     case "unsupported":
-      return "このブラウザはフォルダを開けないため選べません";
+      return t("app-plugins-blocked-unsupported");
     case "noFolder":
-      return "フォルダを開いていないため選べません。「ファイル → フォルダを開く…」で開けます";
+      return t("app-plugins-blocked-no-folder");
     case "brokenProject":
-      return "プロジェクトの設定（modelith.json）にエラーがあるため選べません";
+      return t("app-plugins-blocked-broken-project");
     case "folder":
     case "project":
       return null;
@@ -467,16 +463,16 @@ export interface AddTarget {
  */
 export function addPrompt(info: PluginInfo, target: AddTarget): AddPrompt | { refused: string } {
   if (info.runtime === "wasm-component") {
-    return { refused: `「${info.name}」は、WebAssembly で動くプラグインです。この種類はまだ追加できません。現在追加できるのは、チェックルールのプラグインと、画面に機能を追加するプラグイン（TypeScript）です` };
+    return { refused: t("app-plugins-add-wasm-refused", { name: info.name }) };
   }
   const script = info.runtime === "browser";
   const permissions = info.permissions ?? [];
   const parts = [
-    `「${info.name}」（${info.author ? `作者：${info.author}、` : ""}ID：${info.id}、バージョン ${info.version}）を追加します。`,
-    info.description ? `説明：${info.description}` : "",
-    script
-      ? "画面に機能を追加するプラグイン（TypeScript）です。プログラムを含み、下の権限を使います。初めて実行する前に、実行してよいかを確認します。"
-      : "チェックルールのプラグインです。モデルのルールを記述したもので、プログラムは含みません。",
+    info.author
+      ? t("app-plugins-add-lead-author", { name: info.name, author: info.author, id: info.id, version: info.version })
+      : t("app-plugins-add-lead", { name: info.name, id: info.id, version: info.version }),
+    info.description ? t("app-plugins-add-description", { description: info.description }) : "",
+    script ? t("app-plugins-add-kind-script") : t("app-plugins-add-kind-rules"),
   ];
   const places = [projectOption(info, target, script), browserOption(info, target, script)];
   const prompt: AddPrompt = { text: parts.filter(Boolean).join(""), places, initial: target.blocked === null ? "project" : "browser" };
@@ -497,16 +493,17 @@ export function addPrompt(info: PluginInfo, target: AddTarget): AddPrompt | { re
  */
 function projectOption(info: PluginInfo, target: AddTarget, script: boolean): PlaceOption {
   const label = PLACE_LABEL.project;
-  if (target.blocked !== null) return { id: "project", label, note: target.blocked, disabled: true, confirm: "追加する", askName: false };
+  if (target.blocked !== null) return { id: "project", label, note: target.blocked, disabled: true, confirm: t("app-plugins-add-confirm"), askName: false };
   const project = target.project;
   const wanted = project?.plugins[info.id]?.version;
+  const folder = `${PLUGINS_DIR}/${info.id}`;
   const note = [
-    `${PLUGINS_DIR}/${info.id}/ にコピーし、プロジェクトの設定（modelith.json）に登録します。Git で共有すると、チームの全員${script ? "" : "と CI "}が同じプラグインを使えます。`,
-    target.inProject ? "追加済みのプラグインは上書きされます。" : "",
-    wanted && wanted !== info.version ? `プロジェクトの設定ではバージョン ${wanted} が指定されています。追加すると、設定のバージョンを ${info.version} に変更します。` : "",
-    project ? "" : "このフォルダはまだプロジェクトではないため、プロジェクトにします（設定ファイル modelith.json をフォルダの直下に作成します）。プロジェクト名を入力してください。",
+    script ? t("app-plugins-project-note-script", { folder }) : t("app-plugins-project-note", { folder }),
+    target.inProject ? t("app-plugins-project-note-overwrite") : "",
+    wanted && wanted !== info.version ? t("app-plugins-project-note-version", { wanted, version: info.version }) : "",
+    project ? "" : t("app-plugins-project-note-new-project"),
   ];
-  return { id: "project", label, note: note.filter(Boolean).join(""), disabled: false, confirm: project ? "追加する" : "プロジェクトにして追加", askName: !project };
+  return { id: "project", label, note: note.filter(Boolean).join(""), disabled: false, confirm: project ? t("app-plugins-add-confirm") : t("app-plugins-add-confirm-as-project"), askName: !project };
 }
 
 /**
@@ -522,11 +519,11 @@ function projectOption(info: PluginInfo, target: AddTarget, script: boolean): Pl
  */
 function browserOption(info: PluginInfo, target: AddTarget, script: boolean): PlaceOption {
   const note = [
-    `このブラウザだけに保存します。どのプロジェクトでも、フォルダを開かなくても使えます。ほかの人${script ? "" : "や CI（modelith check）"}とは共有されません。`,
-    target.inBrowser ? "このブラウザに追加済みのプラグインは上書きされます。" : "",
-    isShadowed(info.id, target.project) ? "このプロジェクトには同じ ID のプラグインがあるため、このプロジェクトではプロジェクトのものを使います。" : "",
+    script ? t("app-plugins-browser-note-script") : t("app-plugins-browser-note"),
+    target.inBrowser ? t("app-plugins-browser-note-overwrite") : "",
+    isShadowed(info.id, target.project) ? t("app-plugins-browser-note-shadowed") : "",
   ];
-  return { id: "browser", label: PLACE_LABEL.browser, note: note.filter(Boolean).join(""), disabled: false, confirm: "追加する", askName: false };
+  return { id: "browser", label: PLACE_LABEL.browser, note: note.filter(Boolean).join(""), disabled: false, confirm: t("app-plugins-add-confirm"), askName: false };
 }
 
 /** 削除の確認ダイアログの中身。 */
@@ -553,9 +550,9 @@ export interface RemovePrompt {
 export function removePrompt(row: PluginRow, dataBytes: number, otherCopy: boolean): RemovePrompt {
   const text =
     row.place === "project"
-      ? `プラグイン「${row.name}」をこのプロジェクトから削除しますか？ ${PLUGINS_DIR}/${row.id}/ のファイルを削除し、プロジェクトの設定（modelith.json）からも登録を解除します。`
-      : `プラグイン「${row.name}」をこのブラウザから削除しますか？`;
-  return dataBytes > 0 && !otherCopy ? { text, data: { label: `このプラグインがこのブラウザに保存したデータ（${sizeText(dataBytes)}）` } } : { text };
+      ? t("app-plugins-remove-from-project", { name: row.name, folder: `${PLUGINS_DIR}/${row.id}` })
+      : t("app-plugins-remove-from-browser", { name: row.name });
+  return dataBytes > 0 && !otherCopy ? { text, data: { label: t("app-plugins-remove-data-label", { size: sizeText(dataBytes) }) } } : { text };
 }
 
 /**
@@ -590,11 +587,11 @@ export function pluginFolderPath(relativePath: string): string | null {
  * installFiles("jp.x", {}) // → { refused: "プラグインのフォルダに modelith-plugin.json がありません" }
  */
 export function installFiles(id: string, files: Readonly<Record<string, string>>): { files: [string, string][] } | { refused: string } {
-  if (!(MANIFEST_FILE in files)) return { refused: `プラグインのフォルダに ${MANIFEST_FILE} がありません` };
+  if (!(MANIFEST_FILE in files)) return { refused: t("app-plugins-no-manifest", { file: MANIFEST_FILE }) };
   const out: [string, string][] = [];
   for (const [path, text] of Object.entries(files)) {
     const segs = path.split("/");
-    if (!isSafeName(id) || segs.some((s) => !isSafeName(s))) return { refused: `プラグインのファイル「${path}」は、プラグインのフォルダの外を指しています` };
+    if (!isSafeName(id) || segs.some((s) => !isSafeName(s))) return { refused: t("app-plugins-file-outside", { path }) };
     out.push([`${PLUGINS_DIR}/${id}/${path}`, text]);
   }
   return { files: out };

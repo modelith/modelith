@@ -1,13 +1,14 @@
 // v1 のプラグインから届いたメッセージ（コアが形・権限・範囲を確かめた後）を、ホストがどう扱うかを決める（ADR-0018 §3・§4）。入出力を持たない。
 
 import type { CheckedPluginMessage, PlacedDiagnostic, Refused, TextEdit } from "../core";
+import { t } from "../l10n";
 import type { NotifyLevel, PluginMessage } from "./generated/protocol";
 import { MAX_DIAGNOSTICS } from "./limits";
 import { utf8Bytes } from "./storage";
 import { base64Bytes, exportFileName, MAX_TRANSFER_BYTES, mediaTypeOf, sizeText } from "./transfer";
 
 /** プラグインの変更案を、テキストが変わったために適用しなかったときの知らせ（ADR-0016 と同じ考え方）。 */
-export const STALE_PLUGIN_EDIT = "テキストが変わったため、プラグインの変更を適用しませんでした";
+export const STALE_PLUGIN_EDIT = t("plugins-stale-edit");
 
 /** ホストがプラグインに頼んで、まだ答えの無いこと（コマンドの実行・インポート・エクスポート）。 */
 export type PendingRequest =
@@ -89,7 +90,7 @@ export function decideMessage(result: CheckResult, pending: ReadonlyMap<number, 
     case "imported": {
       const request = pending.get(m.requestId);
       if (request?.kind !== "import") return unrequested(m.type);
-      if (utf8Bytes(m.text) > MAX_TRANSFER_BYTES) return { kind: "requestFailed", requestId: m.requestId, notice: failedNotice(request, `インポートしたテキストが大きすぎます（上限 ${sizeText(MAX_TRANSFER_BYTES)}）`) };
+      if (utf8Bytes(m.text) > MAX_TRANSFER_BYTES) return { kind: "requestFailed", requestId: m.requestId, notice: failedNotice(request, t("plugins-imported-too-large", { max: sizeText(MAX_TRANSFER_BYTES) })) };
       return { kind: "imported", requestId: m.requestId, title: request.title, fileName: m.fileName, text: m.text };
     }
     case "exported":
@@ -133,8 +134,8 @@ function cappedDiagnostics(version: number, items: PlacedDiagnostic[], max: numb
 function decideExported(m: Extract<PluginMessage, { type: "exported" }>, request: PendingRequest | undefined): HostAction {
   if (request?.kind !== "export") return unrequested(m.type);
   const bytes = base64Bytes(m.base64);
-  if (bytes === null) return { kind: "requestFailed", requestId: m.requestId, notice: failedNotice(request, "エクスポートされたファイルの中身が正しくありません（base64 ではありません）") };
-  if (bytes > MAX_TRANSFER_BYTES) return { kind: "requestFailed", requestId: m.requestId, notice: failedNotice(request, `エクスポートされたファイルが大きすぎます（${sizeText(bytes)}。上限 ${sizeText(MAX_TRANSFER_BYTES)}）`) };
+  if (bytes === null) return { kind: "requestFailed", requestId: m.requestId, notice: failedNotice(request, t("plugins-exported-not-base64")) };
+  if (bytes > MAX_TRANSFER_BYTES) return { kind: "requestFailed", requestId: m.requestId, notice: failedNotice(request, t("plugins-exported-too-large", { size: sizeText(bytes), max: sizeText(MAX_TRANSFER_BYTES) })) };
   return { kind: "exported", requestId: m.requestId, title: request.title, fileName: exportFileName(m.fileName, request.extension), mediaType: mediaTypeOf(m.mediaType), base64: m.base64 };
 }
 
@@ -150,8 +151,15 @@ function decideExported(m: Extract<PluginMessage, { type: "exported" }>, request
  * failedNotice({ kind: "export", title: "表", extension: ".csv" }, "x")     // → "エクスポート「表」を実行できませんでした：x"
  */
 export function failedNotice(request: PendingRequest, message: string): string {
-  const what = { command: "コマンド", import: "インポート", export: "エクスポート" }[request.kind];
-  return `${what}「${request.title}」を実行できませんでした：${message}`;
+  const values = { title: request.title, message };
+  switch (request.kind) {
+    case "command":
+      return t("plugins-failed-command", values);
+    case "import":
+      return t("plugins-failed-import", values);
+    case "export":
+      return t("plugins-failed-export", values);
+  }
 }
 
 /**
@@ -163,7 +171,7 @@ export function failedNotice(request: PendingRequest, message: string): string {
  * unrequested("imported") // → { kind: "drop", notice: "依頼していない結果（imported）が届いたため、使いませんでした" }
  */
 function unrequested(type: string): HostAction {
-  return { kind: "drop", notice: `依頼していない結果（${type}）が届いたため、使いませんでした` };
+  return { kind: "drop", notice: t("plugins-unrequested", { type }) };
 }
 
 /**

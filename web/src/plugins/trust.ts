@@ -1,5 +1,6 @@
 // v1 のプラグインの許可（ADR-0018 §5、F-PLUG-6）の判断と画面の言葉。入出力を持たない（保存は host.ts がブラウザに行う）。
 
+import { t } from "../l10n";
 import type { Permission } from "./generated/protocol";
 import { NETWORK_WARNING, permissionLines, PERMISSION_WORDS } from "./permissions";
 
@@ -150,18 +151,18 @@ export function trustPrompt(
   plugin: { name: string; author?: string; id: string; version: string; permissions: readonly Permission[] },
   check: Extract<TrustCheck, { kind: "ask" }>,
 ): TrustPrompt {
-  const who = `プラグイン「${plugin.name}」（作者：${plugin.author ?? "記載なし"}、ID：${plugin.id}、バージョン ${plugin.version}）`;
+  const who = { name: plugin.name, author: plugin.author ?? t("plugins-trust-author-unknown"), id: plugin.id, version: plugin.version };
   const lead = {
-    first: `${who}を初めて実行します。`,
-    permissions: `${who}の使う権限が、前回許可したときより増えました（増えた権限：${check.added.map((p) => PERMISSION_WORDS[p]).join("、")}）。`,
-    changed: `外部と通信できる${who}のバージョンかファイルが、前回許可したときから変わりました。`,
+    first: t("plugins-trust-first", who),
+    permissions: t("plugins-trust-permissions", { ...who, added: check.added.map((p) => PERMISSION_WORDS[p]).join(t("plugins-permission-separator")) }),
+    changed: t("plugins-trust-changed", who),
   }[check.reason];
   return {
-    title: "プラグインの実行の許可",
-    text: `${lead}このプラグインはプログラムを含みます。アプリとは切り離された場所で動き、開いているモデルのテキストを受け取って、次の権限だけを使えます。実行を許可しますか？`,
+    title: t("plugins-trust-title"),
+    text: `${lead}${t("plugins-trust-body")}`,
     items: permissionLines(plugin.permissions),
     warning: plugin.permissions.includes("network") ? NETWORK_WARNING : undefined,
-    confirm: "許可して実行",
-    cancel: "許可しない",
+    confirm: t("plugins-trust-allow"),
+    cancel: t("plugins-trust-deny"),
   };
 }

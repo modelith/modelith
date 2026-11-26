@@ -2,6 +2,7 @@
 // 広い画面では、語にマウスを乗せるとツールチップを出し、カーソルのある語の説明をテキストの下の 1 行（#wordLine）に出す。
 // タッチでは、語をダブルタップすると、その語を選んで説明を同じ行に出す（ホバーが無いため）。
 
+import { t } from "../l10n";
 import { $ } from "./dom";
 import { explainAt, type WordHelp } from "./glossary";
 import { highlight } from "./render";
@@ -141,7 +142,7 @@ function onPointerMove(ev: PointerEvent): void {
 }
 
 /** 読み取り専用のテキスト（狭い画面）で、説明する語が無いときに出す案内。 */
-const TAP_HINT = "語をダブルタップすると、意味を表示します。書き換えるには「編集」を押します。";
+const TAP_HINT = t("app-glossary-tap-hint");
 
 /**
  * テキストの下の 1 行（#wordLine）を、説明する語が無いときの中身にする。読み取り専用のテキスト（狭い画面）ならダブルタップの案内を、
@@ -204,8 +205,8 @@ function initDoubleTap(ed: HTMLTextAreaElement): void {
   let start: TouchPoint | null = null;
   let lastTap: TouchPoint | null = null;
   ed.addEventListener("touchstart", (ev) => {
-    const t = ev.touches[0];
-    start = ev.touches.length === 1 && t ? { x: t.clientX, y: t.clientY, time: ev.timeStamp } : null;
+    const touch = ev.touches[0];
+    start = ev.touches.length === 1 && touch ? { x: touch.clientX, y: touch.clientY, time: ev.timeStamp } : null;
     if (tapMark) {
       tapMark = false;
       S.textMark = null;
@@ -213,8 +214,8 @@ function initDoubleTap(ed: HTMLTextAreaElement): void {
     }
   }, { passive: true });
   ed.addEventListener("touchend", (ev) => {
-    const t = ev.changedTouches[0];
-    const end = t ? { x: t.clientX, y: t.clientY, time: ev.timeStamp } : null;
+    const touch = ev.changedTouches[0];
+    const end = touch ? { x: touch.clientX, y: touch.clientY, time: ev.timeStamp } : null;
     if (!start || !end || ev.touches.length > 0 || !isTap(start, end)) {
       lastTap = null;
       return;

@@ -2,6 +2,7 @@
 // iframe は同じ場所に置いた静的なページ（web/public/plugin-sandbox*.html）を sandbox="allow-scripts" で読み込む（独自のオリジンを持たない）。
 // ホストが MessageChannel を作り、一方の口を iframe に渡し、iframe がそれを Worker に渡す。以後のやり取りはこの口だけを使う。
 
+import { t } from "../l10n";
 import type { HostMessage } from "./generated/protocol";
 
 /** 隔離用のページとプラグインからの知らせを受け取る処理。 */
@@ -41,7 +42,7 @@ export function startSandbox(pageUrl: string, code: string, listener: SandboxLis
   const frame = document.createElement("iframe");
   frame.setAttribute("sandbox", "allow-scripts");
   frame.className = "plugin-sandbox";
-  frame.title = "プラグイン";
+  frame.title = t("plugins-sandbox-title");
   frame.hidden = true;
   frame.src = pageUrl;
   const channel = new MessageChannel();

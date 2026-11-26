@@ -1,6 +1,8 @@
 // 他のアプリでのファイルの変更の知らせ（F-FILE-8・F-FILE-18）。知らせる文を決めるだけの純粋関数。
 // 変更を確かめるのは Workspace、トーストとダイアログを出すのは files.ts が行う。
 
+import { t } from "../l10n";
+
 /** 知らせに名前を並べるファイルの数の上限（超えた分は「ほか N 件」にまとめる）。 */
 export const MAX_NAMES = 3;
 
@@ -15,8 +17,8 @@ export const MAX_NAMES = 3;
  * nameList(["a.sysml", "b.sysml", "c.sysml", "d.sysml"]) // → "「a.sysml」「b.sysml」「c.sysml」ほか 1 件"
  */
 export function nameList(names: readonly string[], max = MAX_NAMES): string {
-  const shown = names.slice(0, max).map((n) => `「${n}」`).join("");
-  return names.length > max ? `${shown}ほか ${names.length - max} 件` : shown;
+  const shown = names.slice(0, max).map((n) => t("app-files-quoted-name", { name: n })).join("");
+  return names.length > max ? t("app-files-names-and-more", { names: shown, count: String(names.length - max) }) : shown;
 }
 
 /**
@@ -31,10 +33,10 @@ export function nameList(names: readonly string[], max = MAX_NAMES): string {
  * externalNotice([], [])           // → null
  */
 export function externalNotice(reloaded: readonly string[], stale: readonly string[]): string | null {
-  const parts: string[] = [];
-  if (reloaded.length) parts.push(`他のアプリで変更された${nameList(reloaded)}を読み直しました`);
-  if (stale.length) parts.push(`${nameList(stale)}は他のアプリで変更されています。未保存の変更があるため読み直していません。保存するときに選べます`);
-  return parts.length ? parts.join("。") : null;
+  const reloadedText = reloaded.length ? t("app-files-external-reloaded", { names: nameList(reloaded) }) : null;
+  const staleText = stale.length ? t("app-files-external-stale", { names: nameList(stale) }) : null;
+  if (reloadedText !== null && staleText !== null) return t("app-files-external-both", { reloaded: reloadedText, stale: staleText });
+  return reloadedText ?? staleText;
 }
 
 /**
@@ -47,5 +49,5 @@ export function externalNotice(reloaded: readonly string[], stale: readonly stri
  * // → "「a.sysml」は開いた後に他のアプリで変更されています。ファイルの内容を読み込みますか？ 読み込むと、いま入力した変更は消えます。このまま編集すると、保存するときに上書きするかを選べます。"
  */
 export function editStartText(name: string): string {
-  return `「${name}」は開いた後に他のアプリで変更されています。ファイルの内容を読み込みますか？ 読み込むと、いま入力した変更は消えます。このまま編集すると、保存するときに上書きするかを選べます。`;
+  return t("app-files-edit-start-text", { name });
 }

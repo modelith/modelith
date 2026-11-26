@@ -22,6 +22,7 @@ import { defaultStateContext, isPseudoState, stateContexts } from "../render/sta
 import { baseViewOf, CC, defaultIbdContext, edgeById, ibdContexts, modelView, nodeByKey, phaseLabel, seqContexts, VIEWS } from "./views";
 import { isCtxOpen } from "./ctxmenu";
 import { goToGap } from "./gap-guide";
+import { t } from "../l10n";
 
 /* ---- パネル配置 ---- */
 /** パネルの設定を置く localStorage のキー（起動に失敗したときに初期化する設定。Q-6）。 */
@@ -171,7 +172,7 @@ const curTab = (): Tab | undefined => S.tabs.find((t) => t.id === S.tabId);
  * タブに出す名前を作る。作成した図はその名前、内部ブロック図・シーケンス図・アクションの流れの図・状態遷移の図は対象の名前つき、
  * 他のビューはビューの名前（工程で絞っていれば工程の名前つき）にする。
  *
- * @param t タブ
+ * @param tab タブ
  * @returns タブの名前
  * @example
  * tabLabel({ id: 1, view: "trace", ctx: null, phase: "" })                 // → "トレーサビリティ"
@@ -182,16 +183,17 @@ const curTab = (): Tab | undefined => S.tabs.find((t) => t.id === S.tabId);
  * tabLabel({ id: 6, view: "stm", ctx: "KettleStates", phase: "" })        // → "stm KettleStates"
  * tabLabel({ id: 4, view: "all", ctx: null, phase: "", mv: "Overview" })    // → "Overview"
  */
-function tabLabel(t: Tab): string {
-  if (t.mv) return t.mv;
-  const v = VIEWS.find((x) => x.id === t.view);
-  if (!v) return t.view;
-  const nm = t.ctx ? (S.M.nodes.find((n) => n.key === t.ctx)?.name ?? t.ctx) : "";
-  if (t.view === "ibd") return `ibd ${nm || "（未選択）"}`;
-  if (t.view === "seq") return `sd ${nm || "（未選択）"}`;
-  if (t.view === "afv") return `act ${nm || "（未選択）"}`;
-  if (t.view === "stm") return `stm ${nm || "（未選択）"}`;
-  return v.label + (t.phase ? `：${phaseLabel(t.phase)}` : "");
+function tabLabel(tab: Tab): string {
+  if (tab.mv) return tab.mv;
+  const v = VIEWS.find((x) => x.id === tab.view);
+  if (!v) return tab.view;
+  const nm = tab.ctx ? (S.M.nodes.find((n) => n.key === tab.ctx)?.name ?? tab.ctx) : "";
+  const target = nm || t("app-tab-no-target");
+  if (tab.view === "ibd") return `ibd ${target}`;
+  if (tab.view === "seq") return `sd ${target}`;
+  if (tab.view === "afv") return `act ${target}`;
+  if (tab.view === "stm") return `stm ${target}`;
+  return tab.phase ? t("app-tab-with-phase", { label: v.label, phase: phaseLabel(tab.phase) }) : v.label;
 }
 
 /**
@@ -212,17 +214,17 @@ export function activeTabLabel(): string {
 /**
  * タブのツールチップを作る。図の種類の名前に、当たる SysML v2 の標準ビューを補足として添える（ADR-0014）。
  *
- * @param t タブ
+ * @param tab タブ
  * @returns ツールチップの文。知らないビューのタブなら、タブの名前だけ
  * @example
  * tabHint({ id: 1, view: "all", ctx: null, phase: "" })                  // → "すべて（SysML v2 では GeneralView で描く図）"
  * tabHint({ id: 2, view: "ibd", ctx: "Vehicle", phase: "" })             // → "ibd Vehicle\n内部ブロック図（SysML v2 では InterconnectionView）"
  * tabHint({ id: 3, view: "all", ctx: null, phase: "", mv: "Overview" })  // → "作成した図「Overview」\n一般ビュー（SysML v2 では GeneralView）"（view Overview : GeneralView のとき）
  */
-function tabHint(t: Tab): string {
-  if (t.mv) return tabTitle(`作成した図「${t.mv}」`, "", savedViewHint(S.M.views.find((v) => v.name === t.mv)?.std ?? null));
-  const v = VIEWS.find((x) => x.id === t.view);
-  return v ? tabTitle(tabLabel(t), v.label, viewHint(v.label, v.std)) : tabLabel(t);
+function tabHint(tab: Tab): string {
+  if (tab.mv) return tabTitle(t("app-tab-saved-view", { name: tab.mv }), "", savedViewHint(S.M.views.find((v) => v.name === tab.mv)?.std ?? null));
+  const v = VIEWS.find((x) => x.id === tab.view);
+  return v ? tabTitle(tabLabel(tab), v.label, viewHint(v.label, v.std)) : tabLabel(tab);
 }
 
 /**
@@ -337,22 +339,22 @@ export function renderTabs(): void {
   syncCurTab();
   $("#tabbar").innerHTML =
     S.tabs
-      .map((t) => {
-        const sel = t.id === S.tabId;
+      .map((tab) => {
+        const sel = tab.id === S.tabId;
         return (
-          `<div class="tab${t.mv ? " mv" : ""}" role="tab" aria-selected="${sel}" data-tab="${t.id}" tabindex="${sel ? 0 : -1}" title="${esc(tabHint(t))}">${viewIcon(t.view)}<span>${esc(tabLabel(t))}</span>` +
-          (S.tabs.length > 1 ? `<button class="x" data-close="${t.id}" aria-label="タブを閉じる" title="タブを閉じる">×</button>` : "") +
+          `<div class="tab${tab.mv ? " mv" : ""}" role="tab" aria-selected="${sel}" data-tab="${tab.id}" tabindex="${sel ? 0 : -1}" title="${esc(tabHint(tab))}">${viewIcon(tab.view)}<span>${esc(tabLabel(tab))}</span>` +
+          (S.tabs.length > 1 ? `<button class="x" data-close="${tab.id}" aria-label="${esc(t("app-tab-close"))}" title="${esc(t("app-tab-close"))}">×</button>` : "") +
           `</div>`
         );
       })
       .join("") +
-    `<details class="menu tabadd"><summary aria-label="図を開く" title="図を開く">＋</summary><div class="pop pop-left">` +
-    `<div class="phead">自動で描く図</div>` +
+    `<details class="menu tabadd"><summary aria-label="${esc(t("app-tabs-open-diagram"))}" title="${esc(t("app-tabs-open-diagram"))}">＋</summary><div class="pop pop-left">` + // l10n-ignore: ＋ は記号
+    `<div class="phead">${esc(t("app-tabs-auto-heading"))}</div>` +
     VIEWS.filter((v) => !v.hidden).map((v) => viewMenuItem(`data-open="${v.id}"`, viewIcon(v.id), v.label, viewHint(v.label, v.std), v2ViewNote(v.label, v.std))).join("") +
-    `<div class="phead">作成した図</div>` +
+    `<div class="phead">${esc(t("app-tabs-saved-heading"))}</div>` +
     (S.M.views.length
       ? S.M.views.map((v) => viewMenuItem(`data-open-mv="${esc(v.name)}"`, viewIcon(baseViewOf(v)), v.name, savedViewHint(v.std), savedViewHint(v.std))).join("")
-      : `<div class="pnote">作成した図はまだありません。図のメニューの「新しい図を作成…」で作れます</div>`) +
+      : `<div class="pnote">${esc(t("app-tabs-no-saved"))}</div>`) +
     `</div></details>`;
   renderDiagramList();
 }
@@ -636,16 +638,28 @@ function moveTabByKey(ev: KeyboardEvent): void {
 }
 
 /* ---- パレット（クリックで配置） ---- */
+/**
+ * パレットに並べる道具を、要素の種類から作る。画面での名前は、種類の名前（kindLabel）にする。
+ *
+ * @param kinds 要素の種類（SysML v2 のキーワード。並べる順）
+ * @returns 要素の種類と、画面での名前の組
+ * @example
+ * paletteTools("part def", "occurrence def") // → [["part def", "部品定義"], ["occurrence def", "シナリオ"]]
+ * paletteTools()                             // → []
+ */
+const paletteTools = (...kinds: string[]): [string, string][] => kinds.map((k) => [k, kindLabel(k)]);
+
+/** ビューごとの、パレットに並べる道具（要素の種類と、画面での名前の組）。 */
 export const PALETTE: Record<string, [string, string][]> = {
-  trace: [["concern def", "関心事"], ["requirement def", "要求"], ["verification def", "検証"], ["analysis def", "解析"], ["part def", "部品定義"]],
-  structure: [["part def", "部品定義"], ["attribute def", "属性定義"], ["port def", "ポート定義"], ["item def", "アイテム定義"]],
-  control: [["part def", "部品定義"], ["constraint def", "制約定義"]],
-  behavior: [["state def", "状態定義"], ["action def", "アクション定義"], ["occurrence def", "シナリオ"]],
-  all: [
-    ["part def", "部品定義"], ["requirement def", "要求"], ["constraint def", "制約定義"], ["concern def", "関心事"], ["verification def", "検証"],
-    ["analysis def", "解析"], ["state def", "状態定義"], ["action def", "アクション定義"], ["attribute def", "属性定義"], ["port def", "ポート定義"],
-    ["item def", "アイテム定義"],
-  ],
+  trace: paletteTools("concern def", "requirement def", "verification def", "analysis def", "part def"),
+  structure: paletteTools("part def", "attribute def", "port def", "item def"),
+  control: paletteTools("part def", "constraint def"),
+  behavior: paletteTools("state def", "action def", "occurrence def"),
+  all: paletteTools(
+    "part def", "requirement def", "constraint def", "concern def", "verification def",
+    "analysis def", "state def", "action def", "attribute def", "port def",
+    "item def",
+  ),
 };
 
 /**
@@ -686,18 +700,18 @@ const toolUsage = (t: Tool | null): string | null => (t && "usage" in t ? t.usag
  */
 export function renderPalette(): void {
   let h =
-    `<button class="tool" data-tool="" aria-pressed="${!S.tool}" title="選択：ドラッグで範囲選択（Esc）">${SELECT_ICON}<span>選択</span></button>` +
-    `<button class="tool" data-tool="hand" aria-pressed="${isHand(S.tool)}" title="移動：ドラッグで表示範囲を動かす（中ボタン・スペース＋ドラッグでも可）">${HAND_ICON}<span>移動</span></button><span class="tsep"></span>`;
+    `<button class="tool" data-tool="" aria-pressed="${!S.tool}" title="${esc(t("app-palette-select-hint"))}">${SELECT_ICON}<span>${esc(t("app-palette-select"))}</span></button>` +
+    `<button class="tool" data-tool="hand" aria-pressed="${isHand(S.tool)}" title="${esc(t("app-palette-hand-hint"))}">${HAND_ICON}<span>${esc(t("app-palette-hand"))}</span></button><span class="tsep"></span>`;
   if (S.view === "ibd" || S.view === "seq") {
     const pdefs = S.M.nodes.filter((n) => n.kind === "part def");
     const cur = toolUsage(S.tool);
-    const label = S.view === "ibd" ? "部品を置く" : "ライフラインを追加";
-    h += `<label class="tool toolsel" aria-pressed="${!!cur}">${kindIcon("part")}<select id="usageTool" aria-label="${label}"><option value="">${label}…</option>${pdefs.map((p) => `<option value="${esc(p.name)}" ${cur === p.name ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>`;
-    if (S.view === "seq") h += `<button class="tool" data-tool="occurrence def" aria-pressed="false" title="新しいシナリオを作成">${kindIcon("occurrence def")}<span>シナリオ</span></button>`;
+    const [label, choose] = S.view === "ibd" ? [t("app-palette-place-part"), t("app-palette-place-part-choose")] : [t("app-palette-add-lifeline"), t("app-palette-add-lifeline-choose")];
+    h += `<label class="tool toolsel" aria-pressed="${!!cur}">${kindIcon("part")}<select id="usageTool" aria-label="${esc(label)}"><option value="">${esc(choose)}</option>${pdefs.map((p) => `<option value="${esc(p.name)}" ${cur === p.name ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>`;
+    if (S.view === "seq") h += `<button class="tool" data-tool="occurrence def" aria-pressed="false" title="${esc(t("app-palette-new-scenario"))}">${kindIcon("occurrence def")}<span>${esc(kindLabel("occurrence def"))}</span></button>`;
   } else if (!S.modelView || editableView()) {
     // 作成した図では、置いた要素をその図にも入れる（OPS.addNode）
     for (const [k, l] of PALETTE[S.view] ?? [])
-      h += `<button class="tool" data-tool="${k}" aria-pressed="${toolKind(S.tool) === k}" title="${l}（${k}）：押してから図の上をクリックで置く">${kindIcon(k)}<span>${l}</span></button>`;
+      h += `<button class="tool" data-tool="${k}" aria-pressed="${toolKind(S.tool) === k}" title="${esc(t("app-palette-tool-hint", { label: l, kind: k }))}">${kindIcon(k)}<span>${esc(l)}</span></button>`;
   }
   $("#palette").innerHTML = h;
   $("#btnSaveView").hidden = !!S.modelView;
@@ -719,7 +733,7 @@ export function setTool(tool: Tool | null): void {
   $("#wrap").classList.toggle("panning", isHand(tool));
   if (!tool || isHand(tool)) return;
   const u = toolUsage(tool);
-  toast(u ? `図の上をクリックすると「${u}」を部品として置きます（Esc で取消）` : `図の上をクリックすると${kindLabel(toolKind(tool) ?? "")}を置きます（Esc で取消）`);
+  toast(u ? t("app-tool-place-usage", { type: u }) : t("app-tool-place-kind", { kind: kindLabel(toolKind(tool) ?? "") }));
 }
 
 /**
@@ -872,14 +886,14 @@ const pathOf = (e: Entry): string => {
  */
 export function openTarget(e: Entry | null | undefined): { view: string; ctx?: string; mv?: string; label: string } | null {
   if (!e) return null;
-  if (e.kind === "view" && e.name) return { view: "", mv: e.name, label: "作成した図を開く" };
-  if (e.kind === "part def" && e.children.some((c) => c.kind === "part" && c.name)) return { view: "ibd", ctx: e.name, label: "内部ブロック図で開く" };
-  if (e.kind === "occurrence def") return { view: "seq", ctx: e.name, label: "シーケンス図で開く" };
-  if (/^(requirement|concern|verification|analysis) def$/.test(e.kind) || (e.kind === "requirement" && e.pe?.kind === "package")) return { view: "trace", label: "トレーサビリティで開く" };
-  if (e.kind === "constraint def" || e.kind === "calc def") return { view: "control", label: "制御ループで開く" };
-  if (e.kind === "action def") return { view: "afv", ctx: e.name, label: "アクティビティ図で開く" };
-  if (e.kind === "state def") return { view: "stm", ctx: e.name, label: "状態遷移図で開く" };
-  if (e.kind === "part def" || e.kind === "attribute def" || (e.kind === "part" && e.pe?.kind === "package")) return { view: "structure", label: "ブロック定義図で開く" };
+  if (e.kind === "view" && e.name) return { view: "", mv: e.name, label: t("app-open-saved-view") };
+  if (e.kind === "part def" && e.children.some((c) => c.kind === "part" && c.name)) return { view: "ibd", ctx: e.name, label: t("app-open-in-ibd") };
+  if (e.kind === "occurrence def") return { view: "seq", ctx: e.name, label: t("app-open-in-seq") };
+  if (/^(requirement|concern|verification|analysis) def$/.test(e.kind) || (e.kind === "requirement" && e.pe?.kind === "package")) return { view: "trace", label: t("app-open-in-trace") };
+  if (e.kind === "constraint def" || e.kind === "calc def") return { view: "control", label: t("app-open-in-control") };
+  if (e.kind === "action def") return { view: "afv", ctx: e.name, label: t("app-open-in-afv") };
+  if (e.kind === "state def") return { view: "stm", ctx: e.name, label: t("app-open-in-stm") };
+  if (e.kind === "part def" || e.kind === "attribute def" || (e.kind === "part" && e.pe?.kind === "package")) return { view: "structure", label: t("app-open-in-structure") };
   return null;
 }
 
@@ -1002,23 +1016,23 @@ export function renderTree(): void {
     const addable = ((S.view === "ibd" || S.view === "seq") && e.kind === "part def") || canAddToView(e);
     const phase = S.M.nodeOf.get(e)?.phase;
     rows.push(
-      `<div class="ti${sel ? " sel" : ""}" role="treeitem" tabindex="-1" aria-level="${d + 1}"${expandable ? ` aria-expanded="${open}"` : ""} aria-selected="${sel}" data-idx="${e.idx}" style="--d:${d}" title="${esc(e.kind + (phase ? "（" + phaseLabel(phase) + "）" : ""))}">` +
+      `<div class="ti${sel ? " sel" : ""}" role="treeitem" tabindex="-1" aria-level="${d + 1}"${expandable ? ` aria-expanded="${open}"` : ""} aria-selected="${sel}" data-idx="${e.idx}" style="--d:${d}" title="${esc(phase ? t("app-tree-kind-with-phase", { kind: e.kind, phase: phaseLabel(phase) }) : e.kind)}">` +
         `<span class="car" data-toggle="${esc(p)}">${expandable ? (open ? "▾" : "▸") : ""}</span>${kindIcon(e.kind)}` +
         `<span class="nm">${e.short ? `&lt;'${esc(e.short)}'&gt; ` : ""}${esc(shownName(e.name))}</span>${e.type ? `<span class="ty">: ${esc(typeText(e))}</span>` : ""}` +
-        `<span class="acts">${addable ? `<button data-add="${e.idx}" title="${canAddToView(e) ? "この図に入れる" : `この図に${S.view === "ibd" ? "部品" : "ライフライン"}として追加`}">追加</button>` : ""}${ot ? `<button data-open="${e.idx}" title="${ot.label}">開く</button>` : ""}<button class="nar" data-totext="${e.idx}" title="テキストで見る">文</button></span></div>`,
+        `<span class="acts">${addable ? `<button data-add="${e.idx}" title="${esc(canAddToView(e) ? t("app-tree-add-to-view") : S.view === "ibd" ? t("app-tree-add-as-part") : t("app-tree-add-as-lifeline"))}">${esc(t("app-tree-add"))}</button>` : ""}${ot ? `<button data-open="${e.idx}" title="${esc(ot.label)}">${esc(t("app-tree-open"))}</button>` : ""}<button class="nar" data-totext="${e.idx}" title="${esc(t("app-tree-show-text"))}">${esc(t("app-tree-show-text-short"))}</button></span></div>`,
     );
     if (!open) return;
     for (const c of kids) walk(c, d + 1);
     msgs.forEach((r, i) => {
       if (r.rel !== "message" || (q && !r.name.toLowerCase().includes(q))) return;
       rows.push(
-        `<div class="ti" role="treeitem" tabindex="-1" aria-level="${d + 2}" data-msg="${r.start}" style="--d:${d + 1}"><span class="car"></span>${kindIcon("message")}<span class="nm">${i + 1}. ${esc(r.name || "（名前なし）")}</span><span class="ty">${esc(r.a)} → ${esc(r.b)}</span></div>`,
+        `<div class="ti" role="treeitem" tabindex="-1" aria-level="${d + 2}" data-msg="${r.start}" style="--d:${d + 1}"><span class="car"></span>${kindIcon("message")}<span class="nm">${i + 1}. ${esc(r.name || t("app-tree-message-unnamed"))}</span><span class="ty">${esc(r.a)} → ${esc(r.b)}</span></div>`,
       );
     });
   };
   // ツリーには表示中のファイルの要素だけを出す（ほかのファイルの宣言もつないで持っている。ADR-0021）
   for (const e of S.P.entries) if (!e.pe && inOpenFile(e)) walk(e, 0);
-  el.innerHTML = rows.join("") || `<div class="tree-empty">${q ? "一致する要素がありません" : "要素を追加すると、ここにモデルの構造が表示されます"}</div>`;
+  el.innerHTML = rows.join("") || `<div class="tree-empty">${esc(q ? t("app-tree-no-match") : t("app-tree-empty"))}</div>`;
   // Tab で入る行は 1 つだけにする。描き直す前に行に入力があれば、同じ行へ入力を戻す（行が消えたら選んでいる行か先頭の行）
   const again = focusedKey ? el.querySelector<HTMLElement>(focusedKey) : null;
   const items = [...el.querySelectorAll<HTMLElement>(".ti")];
@@ -1219,7 +1233,7 @@ function initTree(): void {
     const [lx, ly] = local(ev.clientX, ev.clientY);
     if (e && canAddToView(e)) addToView(e, dropPos(lx, ly));
     else if (e && droppable(e)) placeUsageAt(e.name, lx, ly);
-    else toast("ツリーからのドラッグは、作成した図に要素を入れるときと、内部ブロック図・シーケンス図に部品定義を置くときに使えます");
+    else toast(t("app-tree-drag-not-allowed"));
   });
 }
 
@@ -1231,7 +1245,7 @@ function initTree(): void {
 export function renderSub(): void {
   const parts: string[] = [];
   const ctxSel = (cs: { key: string; name: string }[], cur: string | null, label: string): string =>
-    cs.length ? `<label>${label}<select id="ctxSel">${cs.map((n) => `<option value="${esc(n.key)}" ${n.key === cur ? "selected" : ""}>${esc(n.name)}</option>`).join("")}</select></label>` : "";
+    cs.length ? `<label>${esc(label)}<select id="ctxSel">${cs.map((n) => `<option value="${esc(n.key)}" ${n.key === cur ? "selected" : ""}>${esc(n.name)}</option>`).join("")}</select></label>` : "";
   const phases = S.M.phases;
   const mv = modelView();
   if (S.modelView) {
@@ -1239,28 +1253,28 @@ export function renderSub(): void {
     const ctx = S.view === "ibd" ? S.ibdCtx : S.view === "seq" ? S.seqCtx : S.view === "afv" ? S.flowCtx : S.view === "stm" ? S.stateCtx : null;
     const ctxName = ctx ? S.M.nodes.find((n) => n.key === ctx)?.name : undefined;
     parts.push(
-      `<span class="mvnote" title="${editableView() ? "パレットから置くか、ツリーからドラッグすると、この図に入ります。外すときは要素を右クリックします" : "この図に出す要素は、作成した図の設定で決まります"}（view の expose・filter）">作成した図「${esc(S.modelView)}」：<span class="vkind" title="${esc(savedViewHint(mv?.std ?? null))}">${esc(stdViewLabel(mv?.std ?? null))}</span>${ctxName ? `（${esc(ctxName)}）` : ""}</span>`,
+      `<span class="mvnote" title="${esc(editableView() ? t("app-sub-saved-view-editable-hint") : t("app-sub-saved-view-fixed-hint"))}">${esc(t("app-sub-saved-view", { name: S.modelView }))}<span class="vkind" title="${esc(savedViewHint(mv?.std ?? null))}">${esc(stdViewLabel(mv?.std ?? null))}</span>${ctxName ? esc(t("app-sub-saved-view-target", { name: ctxName })) : ""}</span>`,
     );
   } else if (S.view === "ibd") {
     CC();
-    parts.push(ctxSel(ibdContexts(S.M), S.ibdCtx, "対象ブロック"));
+    parts.push(ctxSel(ibdContexts(S.M), S.ibdCtx, t("app-sub-target-block")));
   } else if (S.view === "seq") {
     CC();
-    parts.push(ctxSel(seqContexts(S.M), S.seqCtx, "シナリオ"));
+    parts.push(ctxSel(seqContexts(S.M), S.seqCtx, t("app-sub-target-scenario")));
   } else if (S.view === "afv") {
     CC();
-    parts.push(ctxSel(flowContexts(S.M), S.flowCtx, "アクション定義"));
+    parts.push(ctxSel(flowContexts(S.M), S.flowCtx, t("app-sub-target-action")));
   } else if (S.view === "stm") {
     CC();
-    parts.push(ctxSel(stateContexts(S.M), S.stateCtx, "状態定義"));
+    parts.push(ctxSel(stateContexts(S.M), S.stateCtx, t("app-sub-target-state")));
   } else if (phases) {
     parts.push(
-      `<label>フェーズ<select id="phaseFilter"><option value="">すべて</option>${phases.map((p) => `<option value="${esc(p)}" ${S.phase === p ? "selected" : ""}>${esc(phaseLabel(p))}（${S.M.nodes.filter((n) => n.phase === p).length}）</option>`).join("")}</select></label>`,
+      `<label>${esc(t("app-sub-phase"))}<select id="phaseFilter"><option value="">${esc(t("app-sub-phase-all"))}</option>${phases.map((p) => `<option value="${esc(p)}" ${S.phase === p ? "selected" : ""}>${esc(t("app-sub-phase-option", { phase: phaseLabel(p), count: String(S.M.nodes.filter((n) => n.phase === p).length) }))}</option>`).join("")}</select></label>`,
     );
-  } else parts.push(`<button id="btnPhaseInit">フェーズ管理を始める</button>`);
+  } else parts.push(`<button id="btnPhaseInit">${esc(t("app-sub-phase-start"))}</button>`);
   if (phases) {
     const gaps = S.M.problems.filter((p) => p.kind === "gap").length;
-    parts.push(gaps ? `<button id="btnGaps" class="gapbtn">トレースの抜け ${gaps} 件</button>` : `<span class="okgap">トレースの抜けなし</span>`);
+    parts.push(gaps ? `<button id="btnGaps" class="gapbtn">${esc(t("app-sub-gaps", { count: String(gaps) }))}</button>` : `<span class="okgap">${esc(t("app-sub-no-gaps"))}</span>`);
   }
   $("#subbar").innerHTML = parts.join("");
 }

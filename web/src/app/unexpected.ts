@@ -1,8 +1,10 @@
 // 予期しない例外の受け口（Q-6）。捕まえていない例外と、結果を待たない処理（Promise）の失敗を、例外 1 つにつき 1 回知らせ、
 // 詳しい内容はコンソールに残す。テキストは画面に残っているので、「失われていない」ことも伝える。
 
+import { t } from "../l10n";
+
 /** 予期しない例外を知らせる文。 */
-export const UNEXPECTED_MESSAGE = "予期しない問題が起きました。テキストはそのまま残っています";
+export const UNEXPECTED_MESSAGE = t("app-unexpected");
 
 /** 例外の出どころ（ブラウザでは window）。error は捕まえていない例外、unhandledrejection は結果を待たない処理の失敗。 */
 export interface ErrorSource {

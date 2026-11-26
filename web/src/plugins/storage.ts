@@ -1,6 +1,7 @@
 // v1 のプラグイン用の保存場所（`storage` の権限、ADR-0018 §3）の判断。入出力を持たない（ブラウザへの保存は browser-store.ts）。
 // プラグインごとに、キー → 値（JSON）の集まりを 1 つの JSON のテキストとして持ち、その大きさに上限を設ける。
 
+import { t } from "../l10n";
 import { sizeText } from "./transfer";
 
 /** プラグイン 1 つが保存できる大きさの上限（キーと値を合わせた JSON の UTF-8 のバイト数）。 */
@@ -77,6 +78,6 @@ export function storageUpdate(json: string | null, key: string, value: unknown, 
   else values[key] = value;
   if (!Object.keys(values).length) return { json: null };
   const next = JSON.stringify(values);
-  if (utf8Bytes(next) > limit) return { refused: `プラグイン用の保存場所の上限（${sizeText(limit)}）を超えるため、「${key}」を保存しませんでした` };
+  if (utf8Bytes(next) > limit) return { refused: t("plugins-storage-over-limit", { limit: sizeText(limit), key }) };
   return { json: next };
 }

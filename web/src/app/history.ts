@@ -9,6 +9,7 @@ import { scrollEditorTo } from "./render";
 import { pushVersion } from "./history-list";
 import { S } from "./state";
 import { committedLayout, loadLayout, notifyLayoutChange, setText, toast } from "./sync";
+import { t } from "../l10n";
 
 /** 元に戻せる回数（F-EDIT-4）。履歴は今の版を含めて、この数より 1 つ多く持つ（#244）。 */
 const UNDO_STEPS = 200;
@@ -127,7 +128,7 @@ function goHistory(step: -1 | 1): void {
   $<HTMLTextAreaElement>("#ed").setSelectionRange(a, a);
   scrollEditorTo(a);
   updateUndoUI();
-  toast(step < 0 ? "元に戻しました" : "やり直しました");
+  toast(step < 0 ? t("app-history-undone") : t("app-history-redone"));
 }
 
 /**

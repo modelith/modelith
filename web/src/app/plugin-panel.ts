@@ -7,6 +7,7 @@ import { hasFolderFiles, hasFolderTrees, type FolderFiles, type FolderTrees } fr
 import type { CreatedProjectFile, PluginFiles, PluginInfo, PluginSummary, ProjectFile, ProjectFileResult, Refused } from "../core";
 import type { RuleSet } from "./notice-levels";
 import { PROJECT_FILE, type OpenFolder } from "../workspace/workspace";
+import { t } from "../l10n";
 import { ask } from "./dialog";
 import { $, closest, esc } from "./dom";
 import { openModal } from "./modal";
@@ -54,7 +55,7 @@ export interface PluginEnv {
 }
 
 /** 設定ファイルが他のアプリで変わっていたときの知らせ。 */
-const PROJECT_CHANGED = "プロジェクトの設定（modelith.json）が他のアプリで変更されていたため、読み込み直しました。もう一度操作してください";
+const PROJECT_CHANGED = t("app-plugins-project-changed");
 
 let env: PluginEnv | null = null;
 /** コアが読み込んだプラグインのまとめ。 */
@@ -79,7 +80,7 @@ let loadSeq = 0;
  * pluginEnv() // → e
  */
 function pluginEnv(): PluginEnv {
-  if (!env) throw new Error("プラグインの画面がまだ初期化されていません");
+  if (!env) throw new Error(t("app-plugins-panel-not-ready"));
   return env;
 }
 
@@ -154,7 +155,7 @@ async function loadBrowserPlugins(): Promise<BrowserPlugin[]> {
   try {
     return await pluginEnv().browser.list();
   } catch (e) {
-    if (!browserErrorShown) toastFailure("このブラウザの保存場所を使えないため、このブラウザに追加したプラグインを読み込めません", e);
+    if (!browserErrorShown) toastFailure(t("app-plugins-browser-store-unavailable"), e);
     browserErrorShown = true;
     return [];
   }
@@ -176,7 +177,7 @@ async function readPlugin(f: { ref: FolderRef; source: FolderTrees }, id: string
   try {
     return (await f.source.readTree(f.ref, `${PLUGINS_DIR}/${id}`)) ?? {};
   } catch (e) {
-    toastFailure(`プラグイン「${id}」を読み込めませんでした`, e);
+    toastFailure(t("app-plugins-read-failed", { id }), e);
     return {};
   }
 }
@@ -209,12 +210,13 @@ function publish(project: ProjectFile | null): void {
 export function pluginExplorerHtml(): string {
   if (!env || !currentProject()) return "";
   const projectRows = rows.filter((r) => r.place === "project");
-  const button = `<div class="mkproj"><button data-cmd="plugins" title="このプロジェクトに追加したプラグイン（チェックルールなど）の一覧">プラグイン${projectRows.length ? `（${projectRows.length}）` : ""}</button></div>`;
+  const label = projectRows.length ? t("app-plugins-button-count", { count: String(projectRows.length) }) : t("app-plugins-button");
+  const button = `<div class="mkproj"><button data-cmd="plugins" title="${esc(t("app-plugins-button-tooltip"))}">${esc(label)}</button></div>`;
   const notices = projectRows
     .filter((r) => r.enabled)
     .flatMap((r) => {
       const notice = missingNotice(r);
-      return notice ? [`<div class="msg plugnote">${esc(notice)}<br><button data-cmd="addPlugin">追加…</button></div>`] : [];
+      return notice ? [`<div class="msg plugnote">${esc(notice)}<br><button data-cmd="addPlugin">${esc(t("app-plugins-add-button"))}</button></div>`] : [];
     });
   return button + notices.join("");
 }
@@ -254,23 +256,28 @@ function panelPlace(): PanelPlace {
 function rowHtml(r: PluginRow): string {
   const script = r.runtime === "browser";
   const run = script && r.state === "ok" ? runInfo(r.id) : undefined;
-  const version = r.version ?? "—";
-  const wanted = r.wanted && r.wanted !== r.version ? `（設定では ${esc(r.wanted)}）` : "";
+  const installed = r.version ?? "—";
+  const version = r.wanted && r.wanted !== r.version ? t("app-plugins-row-version-wanted", { version: installed, wanted: r.wanted }) : installed;
   const notice = r.enabled && r.place === "project" ? missingNotice(r) : null;
-  const help = notice ? `<p class="pn">${esc(notice)} <button data-cmd="addPlugin">追加…</button></p>` : r.state === "shadowed" ? `<p class="pm">${esc(SHADOWED_NOTICE)}</p>` : "";
+  const help = notice ? `<p class="pn">${esc(notice)} <button data-cmd="addPlugin">${esc(t("app-plugins-add-button"))}</button></p>` : r.state === "shadowed" ? `<p class="pm">${esc(SHADOWED_NOTICE)}</p>` : "";
   const lines = [...(r.state !== "missing" ? r.problems : []), ...(run?.notices ?? [])];
   const problems = lines.length ? `<ul class="pp">${lines.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : "";
-  const status = run ? `<span class="pst ${run.state}">${RUN_STATE_LABEL[run.state]}</span>` : `<span class="pst ${r.state}">${STATE_LABEL[r.state]}</span>`;
+  const status = run ? `<span class="pst ${run.state}">${esc(RUN_STATE_LABEL[run.state])}</span>` : `<span class="pst ${r.state}">${esc(STATE_LABEL[r.state])}</span>`;
   // プロジェクトのものを優先しているプラグインは読み込まないので、ルールの数は分からない
-  const count = r.state === "shadowed" ? "" : script ? `・コマンド ${r.commands} 件` : `・ルール ${r.rules} 件`;
+  const details =
+    r.state === "shadowed"
+      ? t("app-plugins-row-details", { id: r.id, version })
+      : script
+        ? t("app-plugins-row-details-commands", { id: r.id, version, count: String(r.commands) })
+        : t("app-plugins-row-details-rules", { id: r.id, version, count: String(r.rules) });
   const at = `data-place="${r.place}"`;
-  const removeButton = `<button data-remove="${esc(r.id)}" ${at} class="danger">削除</button>`;
-  const permissions = script ? `<ul class="pperm" aria-label="権限">${permissionLines(r.permissions).map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : "";
+  const removeButton = `<button data-remove="${esc(r.id)}" ${at} class="danger">${esc(t("app-plugins-row-remove"))}</button>`;
+  const permissions = script ? `<ul class="pperm" aria-label="${esc(t("app-plugins-row-permissions-label"))}">${permissionLines(r.permissions).map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : "";
   return (
     `<div class="plug" data-plugin="${esc(r.id)}" ${at}>` +
-    `<div class="ph"><b>${esc(r.name)}</b>${status}<span class="ploc" title="追加先">${PLACE_LABEL[r.place]}</span></div>` +
-    `<div class="pm">ID：${esc(r.id)}・バージョン：${esc(version)}${wanted}${count}</div>${permissions}${help}${problems}` +
-    `<div class="pa"><label><input type="checkbox" data-toggle="${esc(r.id)}" ${at}${r.enabled ? " checked" : ""}> 有効</label>` +
+    `<div class="ph"><b>${esc(r.name)}</b>${status}<span class="ploc" title="${esc(t("app-plugins-row-place-tooltip"))}">${esc(PLACE_LABEL[r.place])}</span></div>` +
+    `<div class="pm">${esc(details)}</div>${permissions}${help}${problems}` +
+    `<div class="pa"><label><input type="checkbox" data-toggle="${esc(r.id)}" ${at}${r.enabled ? " checked" : ""}> ${esc(t("app-plugins-row-enabled"))}</label>` +
     (run ? `<span class="pbtns">${runButton(r.id, run.state)}${removeButton}</span>` : removeButton) +
     `</div>` +
     `</div>`
@@ -291,9 +298,9 @@ function rowHtml(r: PluginRow): string {
  */
 function runButton(id: string, state: RunState): string {
   const at = esc(id);
-  if (state === "denied") return `<button data-plugin-allow="${at}">許可する…</button>`;
-  if (state === "running" || state === "starting") return `<button data-plugin-stop="${at}">停止</button>`;
-  if (state === "stopped" || state === "failed") return `<button data-plugin-start="${at}">開始</button>`;
+  if (state === "denied") return `<button data-plugin-allow="${at}">${esc(t("app-plugins-row-allow"))}</button>`;
+  if (state === "running" || state === "starting") return `<button data-plugin-stop="${at}">${esc(t("app-plugins-row-stop"))}</button>`;
+  if (state === "stopped" || state === "failed") return `<button data-plugin-start="${at}">${esc(t("app-plugins-row-start"))}</button>`;
   return "";
 }
 
@@ -349,7 +356,7 @@ async function isProjectFresh(f: { ref: FolderRef; source: FolderFiles; projectT
  * @param done 保存できたときの知らせ
  * @returns 保存できたら true。プロジェクトが無い・断られた・他で変わっていた・保存できなかったら false（断りと失敗はトーストで知らせる）
  * @example
- * await changeProjectFile((t) => coreClient().updateProjectLevel(t, "unsupported", "off"), "知らせの重さを変更しました") // → true
+ * await changeProjectFile((text) => coreClient().updateProjectLevel(text, "unsupported", "off"), "知らせの重さを変更しました") // → true
  */
 export async function changeProjectFile(update: (text: string) => Promise<CreatedProjectFile | Refused>, done: string): Promise<boolean> {
   const f = pluginFolder();
@@ -367,7 +374,7 @@ export async function changeProjectFile(update: (text: string) => Promise<Create
     toast(done);
     return true;
   } catch (e) {
-    toastFailure("プロジェクトの設定を保存できませんでした", e);
+    toastFailure(t("app-plugins-settings-save-failed"), e);
     return false;
   }
 }
@@ -408,7 +415,7 @@ export function projectLevels(): ProjectFile["levels"] | null {
  */
 async function setEnabled(id: string, place: PluginPlace, enabled: boolean): Promise<void> {
   const name = rows.find((r) => r.id === id && r.place === place)?.name ?? id;
-  const done = enabled ? `プラグイン「${name}」を有効にしました` : `プラグイン「${name}」を無効にしました。このプラグインのチェック結果は表示されなくなります`;
+  const done = enabled ? t("app-plugins-enabled-done", { name }) : t("app-plugins-disabled-done", { name });
   if (place === "browser") {
     const p = browserPlugins.find((x) => x.id === id);
     if (!p) return;
@@ -417,7 +424,7 @@ async function setEnabled(id: string, place: PluginPlace, enabled: boolean): Pro
       await reloadPlugins();
       toast(done);
     } catch (e) {
-      toastFailure("このブラウザに保存できませんでした", e);
+      toastFailure(t("app-plugins-browser-save-failed"), e);
     }
     return;
   }
@@ -436,15 +443,15 @@ async function removePlugin(id: string, place: PluginPlace): Promise<void> {
   if (!row) return;
   const otherCopy = rows.some((r) => r.id === id && r.place !== place);
   const prompt = removePrompt(row, await storedBytes(id), otherCopy);
-  const r = await ask("プラグインを削除", prompt.text, [
-    { id: "cancel", label: "やめる" },
-    { id: "remove", label: "削除する", kind: "danger" },
+  const r = await ask(t("app-plugins-remove-title"), prompt.text, [
+    { id: "cancel", label: t("app-plugins-cancel") },
+    { id: "remove", label: t("app-plugins-remove-confirm"), kind: "danger" },
   ], undefined, undefined, prompt.data ? {
     label: prompt.data.label,
     value: "keep",
     options: [
-      { id: "keep", label: "残す", note: "同じプラグインをもう一度追加したときに使えます。" },
-      { id: "delete", label: "削除する", note: "このプラグインが保存した設定や記録を消します。元に戻せません。" },
+      { id: "keep", label: t("app-plugins-remove-data-keep"), note: t("app-plugins-remove-data-keep-note") },
+      { id: "delete", label: t("app-plugins-remove-data-delete"), note: t("app-plugins-remove-data-delete-note") },
     ],
   } : undefined);
   if (r?.id !== "remove") return;
@@ -453,7 +460,7 @@ async function removePlugin(id: string, place: PluginPlace): Promise<void> {
   try {
     await pluginEnv().data.write(id, null);
   } catch (e) {
-    toastFailure("プラグインのデータを削除できませんでした", e);
+    toastFailure(t("app-plugins-remove-data-failed"), e);
   }
 }
 
@@ -498,10 +505,10 @@ async function removeFromProject(id: string, name: string): Promise<boolean> {
     await f.source.writeInFolder(f.ref, PROJECT_FILE, updated.text);
     if (isSafeName(id)) await f.source.removeInFolder(f.ref, `${PLUGINS_DIR}/${id}`);
     await pluginEnv().refreshFolder();
-    toast(`プラグイン「${name}」を削除しました`);
+    toast(t("app-plugins-removed", { name }));
     return true;
   } catch (e) {
-    toastFailure("プラグインを削除できませんでした", e);
+    toastFailure(t("app-plugins-remove-failed"), e);
     return false;
   }
 }
@@ -519,10 +526,10 @@ async function removeFromBrowser(id: string, name: string): Promise<boolean> {
   try {
     await pluginEnv().browser.remove(id);
     await reloadPlugins();
-    toast(`プラグイン「${name}」をこのブラウザから削除しました`);
+    toast(t("app-plugins-removed-from-browser", { name }));
     return true;
   } catch (e) {
-    toastFailure("プラグインを削除できませんでした", e);
+    toastFailure(t("app-plugins-remove-failed"), e);
     return false;
   }
 }
@@ -538,9 +545,9 @@ export async function addPlugin(): Promise<void> {
     const picked = await pluginEnv().pickPluginFolder();
     if (!picked) return;
     const manifest = picked.files[MANIFEST_FILE];
-    if (manifest === undefined) return toast(`選んだフォルダ「${picked.name}」には、プラグインの情報（${MANIFEST_FILE}）がありません。プラグインのフォルダを選んでください`);
+    if (manifest === undefined) return toast(t("app-plugins-folder-no-manifest", { folder: picked.name, file: MANIFEST_FILE }));
     const described = await coreClient().describePlugin(manifest);
-    if ("refused" in described) return toast(`選んだフォルダのプラグインを読み込めません。${described.refused}`);
+    if ("refused" in described) return toast(t("app-plugins-describe-refused", { reason: described.refused }));
     const info = described.plugin;
     const blocked = projectBlocked(panelPlace());
     const prompt = addPrompt(info, {
@@ -550,20 +557,20 @@ export async function addPlugin(): Promise<void> {
       inBrowser: browserPlugins.some((p) => p.id === info.id),
     });
     if ("refused" in prompt) {
-      await ask("プラグインを追加", prompt.refused, [{ id: "ok", label: "閉じる", kind: "primary" }]);
+      await ask(t("app-plugins-add-title"), prompt.refused, [{ id: "ok", label: t("app-plugins-close"), kind: "primary" }]);
       return;
     }
     const f = pluginFolder();
     const r = await ask(
-      "プラグインを追加",
+      t("app-plugins-add-title"),
       prompt.text,
       [
-        { id: "cancel", label: "やめる" },
-        { id: "ok", label: "追加する", kind: "primary" },
+        { id: "cancel", label: t("app-plugins-cancel") },
+        { id: "ok", label: t("app-plugins-add-confirm"), kind: "primary" },
       ],
-      prompt.places.some((p) => p.askName) && f ? { value: f.ref.name, label: "プロジェクト名" } : undefined,
+      prompt.places.some((p) => p.askName) && f ? { value: f.ref.name, label: t("app-plugins-add-project-name-label") } : undefined,
       prompt.items ? { items: prompt.items, warning: prompt.warning } : undefined,
-      { label: "追加先", value: prompt.initial, options: prompt.places.map((p) => ({ id: p.id, label: p.label, note: p.note, disabled: p.disabled, confirm: p.confirm, input: p.askName })) },
+      { label: t("app-plugins-add-place-label"), value: prompt.initial, options: prompt.places.map((p) => ({ id: p.id, label: p.label, note: p.note, disabled: p.disabled, confirm: p.confirm, input: p.askName })) },
     );
     if (r?.id !== "ok") return;
     if (r.option === "browser") return await installInBrowser(info, picked.files);
@@ -571,7 +578,7 @@ export async function addPlugin(): Promise<void> {
     if (!f || !place || place.disabled) return;
     await install(f, picked.files, info, place.askName ? r.value.trim() || f.ref.name : null);
   } catch (e) {
-    toastFailure("プラグインを追加できませんでした", e);
+    toastFailure(t("app-plugins-add-failed"), e);
   }
 }
 
@@ -597,7 +604,7 @@ async function install(f: { ref: FolderRef; source: FolderTrees & FolderFiles; p
   for (const [path, text] of plan.files) await f.source.writeInFolder(f.ref, path, text);
   await f.source.writeInFolder(f.ref, PROJECT_FILE, updated.text);
   await pluginEnv().refreshFolder();
-  toast(`プラグイン「${info.name}」をこのプロジェクトに追加しました`);
+  toast(t("app-plugins-added-to-project", { name: info.name }));
 }
 
 /**
@@ -613,7 +620,7 @@ async function installInBrowser(info: PluginInfo, files: Record<string, string>)
   if ("refused" in plan) return toast(plan.refused);
   await pluginEnv().browser.put({ id: info.id, enabled: true, info, files });
   await reloadPlugins();
-  toast(`プラグイン「${info.name}」をこのブラウザに追加しました`);
+  toast(t("app-plugins-added-to-browser", { name: info.name }));
 }
 
 /**
@@ -675,8 +682,8 @@ export function initPlugins(e: PluginEnv): void {
     if (start !== undefined) startScriptPlugin(start);
   });
   box.addEventListener("change", (ev) => {
-    const t = ev.target;
-    if (t instanceof HTMLInputElement && t.dataset["toggle"] !== undefined) void setEnabled(t.dataset["toggle"], placeOf(t), t.checked);
+    const target = ev.target;
+    if (target instanceof HTMLInputElement && target.dataset["toggle"] !== undefined) void setEnabled(target.dataset["toggle"], placeOf(target), target.checked);
   });
   box.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") closePlugins();

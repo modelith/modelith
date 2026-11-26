@@ -1,6 +1,8 @@
 // v1 のプラグインのインポート（import）とエクスポート（export）の判断（ADR-0018 §3・§4）。入出力を持たない。
 // ファイルの中身は base64 でやり取りする。大きさの上限、新しい文書の名前、ダウンロードするファイルの名前と種類をここで決める。
 
+import { t } from "../l10n";
+
 /** インポートするファイルと、エクスポートされたファイルの大きさの上限（バイト）。ブラウザのメモリとメッセージの受け渡しに無理のない大きさにする。 */
 export const MAX_TRANSFER_BYTES = 20 * 1024 * 1024;
 
@@ -21,7 +23,7 @@ const BAD_NAME_CHARS = /[\\/:*?"<>|\u0000-\u001f]/g;
 export function sizeText(bytes: number): string {
   const units: [number, string][] = [[1024 * 1024, "MB"], [1024, "KB"]];
   for (const [unit, label] of units) if (bytes >= unit) return `${Number((bytes / unit).toFixed(1))} ${label}`;
-  return `${bytes} バイト`;
+  return t("plugins-size-bytes", { bytes: String(bytes) });
 }
 
 /**

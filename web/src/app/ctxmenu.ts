@@ -1,8 +1,10 @@
 // 右クリック（長押し）メニュー。
 
 import type { ModelEdge, ModelNode } from "../core";
+import { t } from "../l10n";
 import { flowName } from "../render/action-flow";
 import { isPseudoState, stateName } from "../render/state-machine";
+import { noteTitle } from "./annotations";
 import { local, placeUsageAt, fit, toCanvas } from "./canvas";
 import { $, closest, esc } from "./dom";
 import type { Pin } from "../render/geometry";
@@ -105,43 +107,43 @@ function itemsForNode(n: ModelNode): CtxItem[] {
   const phases = S.M.phases;
   if (S.selSet.size > 1 && S.selSet.has(n.key)) {
     items.push(
-      { head: `${S.selSet.size} 個を選択中` },
-      { label: "左を揃える", act: () => alignSel("left") },
-      { label: "上を揃える", act: () => alignSel("top") },
-      { label: "横に等間隔で並べる", act: () => alignSel("hspace") },
-      { label: "縦に等間隔で並べる", act: () => alignSel("vspace") },
+      { head: t("app-inspect-menu-multi-head", { count: String(S.selSet.size) }) },
+      { label: t("app-inspect-menu-align-left"), act: () => alignSel("left") },
+      { label: t("app-inspect-menu-align-top"), act: () => alignSel("top") },
+      { label: t("app-inspect-menu-align-hspace"), act: () => alignSel("hspace") },
+      { label: t("app-inspect-menu-align-vspace"), act: () => alignSel("vspace") },
     );
     if (phases) {
-      items.push({ sep: true }, { head: "フェーズをまとめて設定" });
+      items.push({ sep: true }, { head: t("app-inspect-menu-phase-multi") });
       for (const p of phases) items.push({ label: phaseLabel(p), act: () => setPhaseSel(p) });
     }
-    items.push({ sep: true }, { label: `${S.selSet.size} 個をまとめて削除`, act: deleteSel });
+    items.push({ sep: true }, { label: t("app-inspect-menu-delete-multi", { count: String(S.selSet.size) }), act: deleteSel });
     return items;
   }
   if (n.note) return itemsForNote(n);
   if (n.flow) return itemsForFlowNode(n);
   if (n.state) return itemsForStateNode(n);
   items.push({ head: `«${n.kind}» ${n.name}` }, {
-    label: "テキストで見る",
+    label: t("app-inspect-menu-show-in-text"),
     act: () => {
       selectOnly(n.key);
       setTab("text");
       scrollEditorTo(n.entry.start);
     },
   });
-  if (!n.usage && !n.lifeline) items.push({ label: "名前を変更", act: () => { selectOnly(n.key); startRename(); } });
-  items.push({ label: "関係を追加…", act: () => { selectOnly(n.key); act("connect"); } }, { label: "選択に追加", act: () => toggleSel(n.key) });
+  if (!n.usage && !n.lifeline) items.push({ label: t("app-inspect-menu-rename"), act: () => { selectOnly(n.key); startRename(); } });
+  items.push({ label: t("app-inspect-menu-add-relation"), act: () => { selectOnly(n.key); act("connect"); } }, { label: t("app-inspect-menu-add-to-selection"), act: () => toggleSel(n.key) });
   const typeEntry = !n.isDef && n.entry.type ? S.M.byName.get(n.entry.type)?.find((x) => x.isDef) : undefined;
   const target = typeEntry ?? n.entry;
   const ot = openTarget(target);
   if (ot) items.push({ label: ot.label, act: () => openEntry(target) });
   if (phases && n.isDef) {
-    items.push({ sep: true }, { head: "フェーズ" });
-    for (const p of phases) items.push({ label: phaseLabel(p) + (n.phase === p ? "（現在）" : ""), act: () => PHASEOPS.set(n, p) });
+    items.push({ sep: true }, { head: t("app-inspect-menu-phase") });
+    for (const p of phases) items.push({ label: n.phase === p ? t("app-inspect-menu-phase-current", { phase: phaseLabel(p) }) : phaseLabel(p), act: () => PHASEOPS.set(n, p) });
   }
   // 作成した図では、図から外す操作とモデルから削除する操作を分けて並べる（取り違えてモデルを消さないため）
-  if (editableView()) items.push({ sep: true }, { label: "この図から外す", act: () => removeFromView(n) }, { label: "モデルから削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
-  else items.push({ sep: true }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
+  if (editableView()) items.push({ sep: true }, { label: t("app-inspect-menu-remove-from-view"), act: () => removeFromView(n) }, { label: t("app-inspect-menu-delete-from-model"), act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
+  else items.push({ sep: true }, { label: t("app-inspect-menu-delete"), act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
   return items;
 }
 
@@ -156,10 +158,10 @@ function itemsForNode(n: ModelNode): CtxItem[] {
  */
 function itemsForNote(n: ModelNode): CtxItem[] {
   return [
-    { head: `メモ${n.name ? " " + n.name : ""}` },
-    { label: "テキストで見る", act: () => { selectOnly(n.key); setTab("text"); scrollEditorTo(n.entry.start); } },
+    { head: noteTitle(n.name) },
+    { label: t("app-inspect-menu-show-in-text"), act: () => { selectOnly(n.key); setTab("text"); scrollEditorTo(n.entry.start); } },
     { sep: true },
-    { label: "メモを削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } },
+    { label: t("app-inspect-menu-delete-note"), act: () => { selectOnly(n.key); OPS.deleteNode(n); } },
   ];
 }
 
@@ -177,11 +179,11 @@ function itemsForNote(n: ModelNode): CtxItem[] {
  */
 function itemsForFlowNode(n: ModelNode): CtxItem[] {
   const implicit = n.kind === "start" || n.kind === "done";
-  const items: CtxItem[] = [{ head: implicit || !n.name ? flowName(n) : `${kindLabel(n.kind)} ${n.name}` }];
-  if (!implicit) items.push({ label: "テキストで見る", act: () => { selectOnly(n.key); setTab("text"); scrollEditorTo(n.entry.start); } });
-  if (!implicit && n.name) items.push({ label: "名前を変更", act: () => { selectOnly(n.key); startRename(); } });
-  if (n.kind !== "done") items.push({ label: "順序の線を追加…", act: () => { selectOnly(n.key); act("connect"); } });
-  if (!implicit) items.push({ sep: true }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
+  const items: CtxItem[] = [{ head: implicit || !n.name ? flowName(n) : t("app-inspect-menu-kind-name", { kind: kindLabel(n.kind), name: n.name }) }];
+  if (!implicit) items.push({ label: t("app-inspect-menu-show-in-text"), act: () => { selectOnly(n.key); setTab("text"); scrollEditorTo(n.entry.start); } });
+  if (!implicit && n.name) items.push({ label: t("app-inspect-menu-rename"), act: () => { selectOnly(n.key); startRename(); } });
+  if (n.kind !== "done") items.push({ label: t("app-inspect-menu-add-succession"), act: () => { selectOnly(n.key); act("connect"); } });
+  if (!implicit) items.push({ sep: true }, { label: t("app-inspect-menu-delete"), act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
   return items;
 }
 
@@ -199,10 +201,10 @@ function itemsForFlowNode(n: ModelNode): CtxItem[] {
  */
 function itemsForStateNode(n: ModelNode): CtxItem[] {
   if (isPseudoState(n)) return [{ head: stateName(n) }];
-  const items: CtxItem[] = [{ head: n.name ? `${kindLabel(n.kind)} ${n.name}` : stateName(n) }];
-  items.push({ label: "テキストで見る", act: () => { selectOnly(n.key); setTab("text"); scrollEditorTo(n.entry.start); } });
-  if (n.name) items.push({ label: "名前を変更", act: () => { selectOnly(n.key); startRename(); } }, { label: "遷移を追加…", act: () => { selectOnly(n.key); act("connect"); } });
-  items.push({ sep: true }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
+  const items: CtxItem[] = [{ head: n.name ? t("app-inspect-menu-kind-name", { kind: kindLabel(n.kind), name: n.name }) : stateName(n) }];
+  items.push({ label: t("app-inspect-menu-show-in-text"), act: () => { selectOnly(n.key); setTab("text"); scrollEditorTo(n.entry.start); } });
+  if (n.name) items.push({ label: t("app-inspect-menu-rename"), act: () => { selectOnly(n.key); startRename(); } }, { label: t("app-inspect-menu-add-transition"), act: () => { selectOnly(n.key); act("connect"); } });
+  items.push({ sep: true }, { label: t("app-inspect-menu-delete"), act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
   return items;
 }
 
@@ -221,9 +223,9 @@ function itemsForStateNode(n: ModelNode): CtxItem[] {
 function itemsForEdge(ed: ModelEdge): CtxItem[] {
   const i = ed.idx ?? 0;
   const items: CtxItem[] = [
-    { head: ed.kind === "message" ? `メッセージ ${i + 1}` : `«${ed.kind}»` },
+    { head: ed.kind === "message" ? t("app-inspect-menu-message", { index: String(i + 1) }) : `«${ed.kind}»` },
     {
-      label: "テキストで見る",
+      label: t("app-inspect-menu-show-in-text"),
       act: () => {
         clearSel();
         S.selEdge = ed.id;
@@ -237,13 +239,13 @@ function itemsForEdge(ed: ModelEdge): CtxItem[] {
   ];
   if (ed.kind === "message") {
     items.push(
-      { label: "名前・型を編集", act: () => { clearSel(); S.selEdge = ed.id; S.msgEdit = true; render(); renderInspector(); } },
-      { label: "上へ移動", disabled: i === 0, act: () => MSGOPS.move(ed, -1) },
-      { label: "下へ移動", disabled: i === CC().edges.filter((x) => x.kind === "message").length - 1, act: () => MSGOPS.move(ed, 1) },
+      { label: t("app-inspect-menu-message-edit"), act: () => { clearSel(); S.selEdge = ed.id; S.msgEdit = true; render(); renderInspector(); } },
+      { label: t("app-inspect-menu-message-up"), disabled: i === 0, act: () => MSGOPS.move(ed, -1) },
+      { label: t("app-inspect-menu-message-down"), disabled: i === CC().edges.filter((x) => x.kind === "message").length - 1, act: () => MSGOPS.move(ed, 1) },
     );
   }
   // メモの線だけを削除する操作は無い（メモごと削除する）
-  if (ed.kind !== "annotate") items.push({ sep: true }, { label: "関係を削除", act: () => { clearSel(); S.selEdge = ed.id; OPS.deleteEdge(ed); } });
+  if (ed.kind !== "annotate") items.push({ sep: true }, { label: t("app-inspect-menu-delete-relation"), act: () => { clearSel(); S.selEdge = ed.id; OPS.deleteEdge(ed); } });
   return items;
 }
 
@@ -262,14 +264,14 @@ function itemsForEdge(ed: ModelEdge): CtxItem[] {
  */
 function itemsForPin(node: ModelNode, pin: Pin): CtxItem[] {
   const port = pin.port;
-  const items: CtxItem[] = [{ head: port ? `ポート ${port.name}` : "接続点" }];
+  const items: CtxItem[] = [{ head: port ? t("app-inspect-menu-port", { name: port.name }) : t("app-inspect-menu-anchor") }];
   if (port) {
-    for (const d of ["in", "out", "inout"] as const) items.push({ label: `向き：${DIR_LABEL[d]}` + (port.dir === d ? "（現在）" : ""), act: () => PINOPS.setDir(node, port, d) });
-    items.push({ sep: true }, { label: "ポートを削除", act: () => { clearSel(); S.selPin = { node: node.key, pin: pin.id }; PINOPS.deletePort(node, pin); } });
+    for (const d of ["in", "out", "inout"] as const) items.push({ label: port.dir === d ? t("app-inspect-menu-dir-current", { dir: DIR_LABEL[d] }) : t("app-inspect-menu-dir", { dir: DIR_LABEL[d] }), act: () => PINOPS.setDir(node, port, d) });
+    items.push({ sep: true }, { label: t("app-inspect-menu-delete-port"), act: () => { clearSel(); S.selPin = { node: node.key, pin: pin.id }; PINOPS.deletePort(node, pin); } });
   } else {
     items.push(
-      { label: "ポートにする…", act: () => { clearSel(); S.selPin = { node: node.key, pin: pin.id }; S.portForm = true; render(); renderInspector(); } },
-      { label: "接続点を外す", act: () => PINOPS.removeAnchor(node, pin.id) },
+      { label: t("app-inspect-menu-make-port"), act: () => { clearSel(); S.selPin = { node: node.key, pin: pin.id }; S.portForm = true; render(); renderInspector(); } },
+      { label: t("app-inspect-menu-remove-anchor"), act: () => PINOPS.removeAnchor(node, pin.id) },
     );
   }
   return items;
@@ -292,20 +294,20 @@ function itemsForPin(node: ModelNode, pin: Pin): CtxItem[] {
 function itemsForCanvas(lx: number, ly: number): CtxItem[] {
   const items: CtxItem[] = [];
   if (S.view === "ibd" || S.view === "seq") {
-    items.push({ head: S.view === "ibd" ? "ここに部品を置く" : "ライフラインを追加" });
+    items.push({ head: S.view === "ibd" ? t("app-inspect-menu-place-part") : t("app-inspect-menu-add-lifeline") });
     for (const n of S.M.nodes.filter((x) => x.kind === "part def").slice(0, 12)) {
       items.push({ label: n.name, icon: kindIcon("part"), act: () => { S.tool = { usage: n.name }; placeTool(lx, ly); } });
     }
   } else if (S.view !== "afv" && S.view !== "stm") {
     // アクションの流れの図・状態遷移の図には、置く項目を出さない（要素はテキストで書く）
-    items.push({ head: "ここに要素を追加" });
+    items.push({ head: t("app-inspect-menu-add-element") });
     for (const [k, l] of PALETTE[S.view] ?? PALETTE["all"] ?? []) items.push({ label: l, icon: kindIcon(k), act: () => { S.tool = { kind: k }; placeTool(lx, ly); } });
   }
   if (items.length) items.push({ sep: true });
   items.push(
-    { label: "すべて選択", act: () => { setSelection(CC().nodes.map((n) => n.key)); render(); highlight(); renderInspector(); } },
-    { label: "この図を並べ直す", act: () => { relayout(); fit(); toast("この図を並べ直しました"); } },
-    { label: "全体を表示", act: fit },
+    { label: t("app-inspect-menu-select-all"), act: () => { setSelection(CC().nodes.map((n) => n.key)); render(); highlight(); renderInspector(); } },
+    { label: t("app-inspect-menu-relayout"), act: () => { relayout(); fit(); toast(t("app-inspect-menu-relayout-done")); } },
+    { label: t("app-inspect-menu-fit"), act: fit },
   );
   return items;
 }
@@ -367,14 +369,14 @@ export function initCtxMenu(): void {
     const n = S.M.nodeOf.get(e);
     const items: CtxItem[] = [
       { head: `«${e.kind}» ${e.name}` },
-      { label: "テキストで見る", act: () => { selectEntry(e); setTab("text"); } },
-      { label: "この図で選択", act: () => selectEntry(e) },
+      { label: t("app-inspect-menu-show-in-text"), act: () => { selectEntry(e); setTab("text"); } },
+      { label: t("app-inspect-menu-select-in-view"), act: () => selectEntry(e) },
     ];
     const ot = openTarget(e);
     if (ot) items.push({ label: ot.label, act: () => openEntry(e) });
     if ((S.view === "ibd" || S.view === "seq") && e.kind === "part def") {
       items.push({
-        label: S.view === "ibd" ? "開いている図に部品として追加" : "開いている図にライフラインとして追加",
+        label: S.view === "ibd" ? t("app-inspect-menu-add-as-part") : t("app-inspect-menu-add-as-lifeline"),
         act: () => {
           const r = $("#wrap").getBoundingClientRect();
           placeUsageAt(e.name, r.width / 2, r.height / 3);
@@ -383,7 +385,7 @@ export function initCtxMenu(): void {
     }
     if (canAddToView(e)) {
       items.push({
-        label: "この図に入れる",
+        label: t("app-inspect-menu-add-to-view"),
         act: () => {
           const r = $("#wrap").getBoundingClientRect();
           const [cx, cy] = toCanvas(r.width / 2, r.height / 3);
@@ -391,9 +393,9 @@ export function initCtxMenu(): void {
         },
       });
     }
-    if (n) items.push({ sep: true }, { label: "名前を変更", act: () => { selectOnly(n.key); startRename(); } }, { label: "削除", act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
+    if (n) items.push({ sep: true }, { label: t("app-inspect-menu-rename"), act: () => { selectOnly(n.key); startRename(); } }, { label: t("app-inspect-menu-delete"), act: () => { selectOnly(n.key); OPS.deleteNode(n); } });
     else if (e.kind === "view" && S.M.views.some((v) => v.name === e.name)) {
-      items.push({ sep: true }, { label: "図の名前を変更", act: () => void renameDiagram(e.name) }, { label: "図を削除", act: () => void deleteDiagram(e.name) });
+      items.push({ sep: true }, { label: t("app-inspect-menu-rename-diagram"), act: () => void renameDiagram(e.name) }, { label: t("app-inspect-menu-delete-diagram"), act: () => void deleteDiagram(e.name) });
     }
     closeCtx();
     openCtx(ev.clientX, ev.clientY, items);

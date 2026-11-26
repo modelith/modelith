@@ -4,6 +4,7 @@
 // ここは読み書きだけを行い、判断（上限・優先・行の作り方）は storage.ts と app/plugins.ts の純粋関数に任せる。
 
 import { channelName } from "../channel";
+import { t } from "../l10n";
 import type { PluginInfo } from "../core";
 
 /** このブラウザに追加したプラグイン 1 つ。 */
@@ -60,7 +61,7 @@ function openDb(): Promise<IDBDatabase> {
       req.result.createObjectStore(DATA, { keyPath: "id" });
     };
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error("このブラウザの保存場所（IndexedDB）を開けません"));
+    req.onerror = () => reject(req.error ?? new Error(t("plugins-store-open-failed")));
   });
 }
 
@@ -85,8 +86,8 @@ async function run<T>(store: string, mode: IDBTransactionMode, op: (s: IDBObject
         result = req.result as T;
       };
       tx.oncomplete = () => resolve(result);
-      tx.onerror = () => reject(tx.error ?? req.error ?? new Error("このブラウザの保存場所（IndexedDB）の操作に失敗しました"));
-      tx.onabort = () => reject(tx.error ?? new Error("このブラウザの保存場所（IndexedDB）の操作が中止されました"));
+      tx.onerror = () => reject(tx.error ?? req.error ?? new Error(t("plugins-store-failed")));
+      tx.onabort = () => reject(tx.error ?? new Error(t("plugins-store-aborted")));
     });
   } finally {
     db.close();

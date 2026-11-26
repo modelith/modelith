@@ -1,6 +1,7 @@
 // プロジェクト（ADR-0019、F-PROJ-1）の画面の言葉。判断だけの純粋関数。
 
 import type { ProjectFile, ProjectProblem } from "../core";
+import { t } from "../l10n";
 
 /**
  * エクスプローラーのフォルダの見出しに出す名前を決める。プロジェクト名があればそれ、無ければフォルダ名。
@@ -34,7 +35,7 @@ export function projectTitle(folderName: string, project: ProjectFile | null): s
 export function projectNotice(problems: readonly ProjectProblem[]): string | null {
   const first = problems.find((p) => p.severity === "error") ?? problems[0];
   if (!first) return null;
-  const head = first.severity === "error" ? "プロジェクトの設定（modelith.json）を読み込めません。" : "プロジェクトの設定（modelith.json）の ";
-  const more = problems.length > 1 ? `（ほかに ${problems.length - 1} 件）` : "";
-  return `${head}${first.line} 行目 ${first.column} 文字目：${first.message}${more}`;
+  const where = { line: String(first.line), column: String(first.column), message: first.message };
+  const more = problems.length > 1 ? t("app-files-project-more", { count: String(problems.length - 1) }) : "";
+  return (first.severity === "error" ? t("app-files-project-error", where) : t("app-files-project-warning", where)) + more;
 }

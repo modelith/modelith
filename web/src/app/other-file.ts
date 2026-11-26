@@ -2,6 +2,7 @@
 // ほかのファイルの要素を書き換えようとしたら、どのファイルにあるかを知らせ、そのファイルを開けるようにする。
 // 表示中のファイルの要素でも、ほかのファイルの図に出しているものは削除できないので、その図のあるファイルを知らせる（#297）。
 
+import { t } from "../l10n";
 import { ask } from "./dialog";
 
 let opener: (path: string) => void = () => {};
@@ -35,9 +36,9 @@ export function openProjectFile(path: string): void {
  * await guideToFile("parts.sysml") // → 「この要素は「parts.sysml」にあります。…」を出し、「そのファイルを開く」で開く
  */
 export async function guideToFile(path: string): Promise<void> {
-  const r = await ask("ほかのファイルの要素です", otherFileText(path), [
-    { id: "close", label: "閉じる" },
-    { id: "open", label: "そのファイルを開く", kind: "primary" },
+  const r = await ask(t("app-files-other-file-title"), otherFileText(path), [
+    { id: "close", label: t("app-files-other-file-close") },
+    { id: "open", label: t("app-files-other-file-open"), kind: "primary" },
   ]);
   if (r?.id === "open") openProjectFile(path);
 }
@@ -51,8 +52,7 @@ export async function guideToFile(path: string): Promise<void> {
  * otherFileText("parts.sysml")
  * // → "この要素は「parts.sysml」にあります。図から書き換えられるのは、表示中のファイルの要素だけです。そのファイルを開いて編集してください。"
  */
-export const otherFileText = (path: string): string =>
-  `この要素は「${path}」にあります。図から書き換えられるのは、表示中のファイルの要素だけです。そのファイルを開いて編集してください。`;
+export const otherFileText = (path: string): string => t("app-files-other-file-text", { path });
 
 /**
  * 表示中のファイルの要素を、ほかのファイルの作成した図が出しているので削除できないことを知らせ、そのファイルを開くかを尋ねる。開くを選べば開く。
@@ -63,9 +63,9 @@ export const otherFileText = (path: string): string =>
  * await guideToShowingFile("views.sysml") // → 「この要素は「views.sysml」の図に出しているので、削除できません。…」を出し、「そのファイルを開く」で開く
  */
 export async function guideToShowingFile(path: string): Promise<void> {
-  const r = await ask("ほかのファイルの図に出しています", shownInFileText(path), [
-    { id: "close", label: "閉じる" },
-    { id: "open", label: "そのファイルを開く", kind: "primary" },
+  const r = await ask(t("app-files-shown-in-file-title"), shownInFileText(path), [
+    { id: "close", label: t("app-files-other-file-close") },
+    { id: "open", label: t("app-files-other-file-open"), kind: "primary" },
   ]);
   if (r?.id === "open") openProjectFile(path);
 }
@@ -79,5 +79,4 @@ export async function guideToShowingFile(path: string): Promise<void> {
  * shownInFileText("views.sysml")
  * // → "この要素は「views.sysml」の図に出しているので、削除できません。先にそのファイルを開いて、図でこの要素を右クリックし、「この図から外す」を選んでください。"
  */
-export const shownInFileText = (path: string): string =>
-  `この要素は「${path}」の図に出しているので、削除できません。先にそのファイルを開いて、図でこの要素を右クリックし、「この図から外す」を選んでください。`;
+export const shownInFileText = (path: string): string => t("app-files-shown-in-file-text", { path });

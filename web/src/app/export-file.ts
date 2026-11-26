@@ -1,6 +1,7 @@
 // 図のエクスポートの形式の一覧と、ファイル名・画像の倍率の決め方（F-EXP-1〜F-EXP-4）。入出力を持たない。
 // 形式はデータで持ち、ダイアログの選択欄はこの一覧から作る（形式を足すときは、一覧に足して中身を作る関数をつなぐ）。
 
+import { t } from "../l10n";
 import { baseName } from "../plugins/transfer";
 
 /** エクスポートの形式 1 つ。 */
@@ -23,10 +24,10 @@ export interface ExportFormat {
 
 /** エクスポートできる形式（選択欄の並び順。先頭が既定）。 */
 export const EXPORT_FORMATS: readonly ExportFormat[] = [
-  { id: "svg", label: "SVG 画像（.svg）", extension: ".svg", mediaType: "image/svg+xml", image: true, raster: false, transparent: true },
-  { id: "png", label: "PNG 画像（.png）", extension: ".png", mediaType: "image/png", image: true, raster: true, transparent: true },
-  { id: "jpeg", label: "JPEG 画像（.jpg）", extension: ".jpg", mediaType: "image/jpeg", image: true, raster: true, transparent: false },
-  { id: "drawio", label: "draw.io（.drawio）", extension: ".drawio", mediaType: "application/vnd.jgraph.mxfile", image: false, raster: false, transparent: false },
+  { id: "svg", label: t("app-files-export-format-svg"), extension: ".svg", mediaType: "image/svg+xml", image: true, raster: false, transparent: true },
+  { id: "png", label: t("app-files-export-format-png"), extension: ".png", mediaType: "image/png", image: true, raster: true, transparent: true },
+  { id: "jpeg", label: t("app-files-export-format-jpeg"), extension: ".jpg", mediaType: "image/jpeg", image: true, raster: true, transparent: false },
+  { id: "drawio", label: t("app-files-export-format-drawio"), extension: ".drawio", mediaType: "application/vnd.jgraph.mxfile", image: false, raster: false, transparent: false },
 ];
 
 /** 選べる倍率（F-EXP-3）。 */
@@ -39,7 +40,7 @@ const MAX_SIDE = 16384;
 const MAX_AREA = 4096 * 4096;
 
 /** 名前が何も残らないときのファイル名（拡張子を除く）。 */
-const FALLBACK_NAME = "図";
+const FALLBACK_NAME = t("app-files-export-fallback-name");
 
 /**
  * ID からエクスポートの形式を探す。知らない ID なら先頭（既定）の形式を返す。

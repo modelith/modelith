@@ -1,17 +1,18 @@
 // v1 のプラグインの権限（ADR-0018 §3・§5）の画面の言葉と、隔離用のページの選び方。入出力を持たない。
 
+import { t } from "../l10n";
 import type { Permission } from "./generated/protocol";
 
 /** 権限の画面の言葉（画面の言葉の手引き：一般的なソフトウェアの言葉で、何ができるかを書く）。 */
 export const PERMISSION_WORDS: Record<Permission, string> = {
-  "model:read": "解析したモデル（要素と関係）を受け取り、問題一覧に結果を出す",
-  "edits:propose": "モデルのテキストを変更する（変更は元に戻せます）",
-  network: "インターネットなど外部と通信する",
-  storage: "このブラウザに、プラグイン用のデータを保存する",
+  "model:read": t("plugins-permission-model-read"),
+  "edits:propose": t("plugins-permission-edits-propose"),
+  network: t("plugins-permission-network"),
+  storage: t("plugins-permission-storage"),
 };
 
 /** 外部と通信できるプラグインについての注意（ADR-0018 §5。C-2 の例外を、利用者が選んだときだけにする）。 */
-export const NETWORK_WARNING = "このプラグインは、あなたのモデルを外部に送信できます。提供元を信頼できる場合だけ許可してください。";
+export const NETWORK_WARNING = t("plugins-network-warning");
 
 /** 外部と通信できない隔離用のページ（web/public。CSP の connect-src は 'none'）。 */
 export const SANDBOX_PAGE = "plugin-sandbox.html";
@@ -46,5 +47,5 @@ export function sandboxPage(permissions: readonly Permission[]): string {
  * permissionLines([])          // → ["追加の権限はありません"]
  */
 export function permissionLines(permissions: readonly Permission[]): string[] {
-  return permissions.length ? permissions.map((p) => `${PERMISSION_WORDS[p]}（${p}）`) : ["追加の権限はありません"];
+  return permissions.length ? permissions.map((p) => t("plugins-permission-line", { words: PERMISSION_WORDS[p], permission: p })) : [t("plugins-permission-none")];
 }

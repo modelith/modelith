@@ -3,10 +3,11 @@
 // 辞書のフォルダは、1 つの言語の .ftl（場所ごとのファイル）を置いたフォルダ（web/src/locales/ja）。
 // - 辞書のキーと値の名前が決まりどおりか。キーがファイルの名前で始まるか
 // - コードのフォルダ（テストと生成物を除く .ts）が使うキーが辞書にあり、辞書のキーがどれも使われているか
-// - 移し終えたフォルダのコードに、文が直接書かれていないか（移し終えたフォルダから順に足す）
+// - 移し終えたフォルダのコードに、文が直接書かれていないか（移し終えたフォルダから順に足す）。.html のファイルも渡せる（キーは data-l10n… に書く）
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { checkDictionaries, hardcodedText, keyUsage } from "./l10n.ts";
+import { hardcodedHtmlText } from "./l10n-html.ts";
 
 /**
  * 検査するファイルか（テスト・生成物・型定義・辞書を入れる層そのものを除く）。
@@ -54,11 +55,15 @@ const { keys, problems } = checkDictionaries(
 for (const p of problems) errors.push(`${join(dictionary, `${p.file}.ftl`)}:${p.line}: ${p.message}`);
 const usage = keyUsage(
   keys,
-  collect(codeRoot).map((file) => ({ file, source: readFileSync(file, "utf8") })),
+  // .html のキーは data-l10n…="キー" と書くので、コードと同じく文字列として拾える
+  [...collect(codeRoot), ...migrated.filter((path) => path.endsWith(".html"))].map((file) => ({ file, source: readFileSync(file, "utf8") })),
 );
 for (const u of usage.unknown) errors.push(`${u.file}:${u.line}: キー「${u.key}」が辞書（${dictionary}）にありません`);
 for (const key of usage.unused) errors.push(`${dictionary}: キー「${key}」は、どのコードも使っていません（消すか、使ってください）`);
-for (const file of migrated.flatMap(collect)) {
+for (const file of migrated.filter((path) => path.endsWith(".html"))) {
+  for (const f of hardcodedHtmlText(readFileSync(file, "utf8"))) errors.push(`${file}:${f.line}: 文が直接書かれています（辞書に移し、data-l10n="キー" で使ってください）：${f.message}`);
+}
+for (const file of migrated.filter((path) => !path.endsWith(".html")).flatMap(collect)) {
   for (const f of hardcodedText(readFileSync(file, "utf8"))) errors.push(`${file}:${f.line}: 文が直接書かれています（辞書に移し、t("キー") で使ってください）：${f.message}`);
 }
 for (const e of errors) console.error(e);

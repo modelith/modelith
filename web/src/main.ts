@@ -1,6 +1,7 @@
 // Modelith の起動。各モジュールのイベントを登録し、前回の続き（無ければ公開サンプル）を読み込む。
 // 辞書は、文言を使うほかのモジュールより先に入れる（ADR-0027）
 import "./l10n/setup";
+import { t } from "./l10n";
 import "@fontsource/ibm-plex-sans-jp/400.css";
 import "@fontsource/ibm-plex-sans-jp/500.css";
 import "@fontsource/ibm-plex-sans-jp/700.css";
@@ -44,7 +45,7 @@ const EDGE_KEY = "modelith-edgestyle";
 
 // 予期しない例外（捕まえていない例外・結果を待たない処理の失敗）の受け口は、ここに 1 つだけ置く（Q-7）。
 // 黙って止まらずにトーストで知らせ、詳しい内容はコンソールに残す
-installUnexpectedErrorHandlers(window, toast, (detail) => console.error("予期しない問題:", detail));
+installUnexpectedErrorHandlers(window, toast, (detail) => console.error("unexpected problem:", detail));
 
 /**
  * 線の描き方を切り替え、図のツールバーのボタンの文言と、表示のメニューの「線の形」の ✓ を合わせ、
@@ -54,7 +55,7 @@ installUnexpectedErrorHandlers(window, toast, (detail) => console.error("予期�
  */
 function setEdgeStyle(s: "ortho" | "curve"): void {
   S.edgeStyle = s;
-  $("#btnEdge").textContent = s === "curve" ? "線：曲線" : "線：直角";
+  $("#btnEdge").textContent = s === "curve" ? t("shell-edge-toggle-curve") : t("shell-edge-toggle-ortho");
   $("#menuEdgeOrtho").setAttribute("aria-pressed", String(s === "ortho"));
   $("#menuEdgeCurve").setAttribute("aria-pressed", String(s === "curve"));
   store.set(EDGE_KEY, s);
@@ -81,9 +82,9 @@ function initMenus(): void {
   badge.hidden = !stage;
   if (stage) {
     badge.textContent = stage.badge;
-    badge.title = `${stage.note}です。保存形式や操作は予告なく変わります`;
+    badge.title = t("shell-stage-hint", { note: stage.note });
   }
-  $("#stageNote").textContent = stage ? `（${stage.note}）` : "";
+  $("#stageNote").textContent = stage ? t("shell-stage-note", { note: stage.note }) : "";
   $("#appCopyright").textContent = __APP_COPYRIGHT__;
   // AGPL §13：動いている版のソースを指す
   if (__APP_COMMIT__) $<HTMLAnchorElement>("#sourceLink").href = `https://github.com/modelith/modelith/tree/${__APP_COMMIT__}`;
@@ -110,7 +111,7 @@ function chooseEdgeStyle(s: "ortho" | "curve"): void {
 function relayoutView(): void {
   relayout();
   fit();
-  toast("このビューを並べ直しました");
+  toast(t("shell-layout-done"));
 }
 
 /** 全体図（ミニマップ）の表示を切り替え、設定を保存する（図の右下の「全体図」と、表示のメニューの「全体図」）。 */
@@ -271,7 +272,7 @@ try {
   applyPanes();
   initTabs();
 } catch (e) {
-  console.error("起動に失敗:", e);
+  console.error("startup failed:", e);
   const box = showStartupBox(recoveryHtml(e));
   box.querySelector<HTMLButtonElement>("#btnResetSettings")?.addEventListener("click", resetSettingsAndReload);
 }

@@ -525,7 +525,7 @@ package ModelithRequirements {
         }
         requirement def <'F-L10N-3'> DictionaryReq {
             doc /* 画面の文言を、言語ごとの辞書（Fluent の .ftl）に置き、コードはキーと値を渡して文を受け取る。辞書を足せば、コードを変えずに言語を増やせる。
-                   0.3.0 の間は日本語の辞書だけで、画面の言葉は変わらない。移し終えたフォルダのコードに文を直接書くと、検査で止まる。
+                   0.3.0 の間は日本語の辞書だけで、画面の言葉は変わらない。移し終えたフォルダのコードに文を直接書くと、検査で止まる。画面の骨組み（index.html）にはキーを書き、ビルドのときに辞書の文で埋める（スクリプトを読み込む前から文が見える）。
                    値に書かれたタグは文字として入り、値の前後に見えない記号を入れない */
         }
         requirement def <'F-L10N-2'> LocalizedProblemsReq {
@@ -1632,7 +1632,8 @@ package ModelithRequirements {
         verification def DictionaryTest {
             doc /* web/src/l10n/translator.test.ts：辞書から文を作る（値の差し込み・見えない記号を入れない・値のタグと波かっこを文字として入れる・先の辞書に無いキーは次の辞書・数での複数形の選び分け・無いキーと足りない値の知らせ）。
                    web/tools/l10n.test.ts と scripts/check.sh の静的検査（web/tools/l10n-cli.ts）：辞書のキーと値の名前の形、キーが辞書のファイルの名前で始まること、コードが使うキーが辞書にあること、使われていないキーが無いこと、移し終えたフォルダに文が直接書かれていないこと（コメントは見ない）。
-                   cli/src/mcp-server.test.ts：書き出した図の中の文が、辞書の文であること。web/src/render/boundary.test.ts：描画が、文言の口（辞書は呼ぶ側が入れる）のほかに頼らないこと。scripts/build-cli.sh --smoke：配る cli に、図に描く文の辞書が入っていること */
+                   cli/src/mcp-server.test.ts：書き出した図の中の文が、辞書の文であること。web/src/render/boundary.test.ts：描画が、文言の口（辞書は呼ぶ側が入れる）のほかに頼らないこと。scripts/build-cli.sh --smoke：配る cli に、図に描く文の辞書が入っていること。
+                   web/tools/l10n-html.test.ts：画面の骨組み（index.html）に書いたキーを、ビルドのときに辞書の文で埋めること（要素の中身と属性・文のタグを文字として入れる・中身が空でない要素を止める）と、骨組みに直接書いた文を見つけること */
             objective {
                 verify DictionaryReq;
             }

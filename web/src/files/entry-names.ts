@@ -1,5 +1,6 @@
 // フォルダの中のファイルとフォルダの名前とパスの決まり（F-FILE-19）。名前の変更・新しいファイル・新しいフォルダで使う、判断だけの純粋関数。
 
+import { t } from "../l10n";
 import { isModelFile } from "./types";
 
 /** ファイルやフォルダの名前に使えない文字（Windows でも開けるように、Windows で使えない文字も除く）。 */
@@ -23,13 +24,13 @@ const BAD_CHARS = /[\\/:*?"<>|]/;
  */
 export function nameProblem(name: string, siblings: readonly string[], opts: { model?: boolean; folder?: boolean } = {}): string | null {
   const n = name.trim();
-  if (!n) return "名前を入力してください";
-  if (BAD_CHARS.test(n)) return '名前に \\ / : * ? " < > | は使えません';
-  if (n === "." || n === ".." || n.endsWith(".")) return "名前の終わりに「.」は使えません";
+  if (!n) return t("files-name-empty");
+  if (BAD_CHARS.test(n)) return t("files-name-bad-chars");
+  if (n === "." || n === ".." || n.endsWith(".")) return t("files-name-ends-with-dot");
   const same = siblings.find((s) => s.toLowerCase() === n.toLowerCase());
-  if (same !== undefined) return `同じ場所に「${same}」があります`;
-  if (opts.folder && n.toLowerCase().endsWith(".layout.json")) return "フォルダには、図の配置のファイルと同じ「.layout.json」で終わる名前を付けられません";
-  if (opts.model && !isModelFile(n)) return "モデルのファイルの名前は「.sysml」か「.kerml」で終わるようにしてください";
+  if (same !== undefined) return t("files-name-taken", { name: same });
+  if (opts.folder && n.toLowerCase().endsWith(".layout.json")) return t("files-name-folder-layout");
+  if (opts.model && !isModelFile(n)) return t("files-name-model-extension");
   return null;
 }
 

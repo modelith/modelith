@@ -1,6 +1,7 @@
 // ローカルのフォルダとファイルを File System Access API で扱うプロバイダ（ADR-0010、F-FILE-1・2・3・9）。
 // ブラウザの API は FsApi として外から渡し、単体テストでは偽のハンドルに差し替える。
 
+import { t } from "../l10n";
 import {
   ConflictError,
   isModelFile,
@@ -135,7 +136,7 @@ export const MAX_TREE_FILES = 200;
  */
 export function segmentsOf(path: string): string[] {
   const segs = path.split("/").filter(Boolean);
-  if (segs.some((s) => s === "." || s === ".." || s.includes("\\"))) throw new Error(`パス「${path}」は、フォルダの外を指しています`);
+  if (segs.some((s) => s === "." || s === ".." || s.includes("\\"))) throw new Error(t("files-path-outside", { path }));
   return segs;
 }
 
@@ -143,7 +144,7 @@ export class LocalFolderProvider
   implements Readable, Writable, FolderSource, FilePicker, RecentFolders, SiblingFiles, FileLocator, FolderFiles, FolderTrees, FolderEdits
 {
   readonly id = "local";
-  readonly label = "このコンピュータ";
+  readonly label = t("files-provider-local");
   private readonly files = new Map<string, FileHandleLike>();
   private readonly folders = new Map<string, DirHandleLike>();
   /** 開いたフォルダの参照の id → プロジェクトの一覧の項目の名前。 */
@@ -371,10 +372,10 @@ export class LocalFolderProvider
   async createFile(folder: FolderRef, path: string, text: string): Promise<FileRef> {
     const segs = segmentsOf(path);
     const name = segs.pop();
-    if (!name) throw new Error("ファイル名がありません");
+    if (!name) throw new Error(t("files-no-file-name"));
     let dir = this.folderHandle(folder);
     for (const s of segs) dir = await dir.getDirectoryHandle(s, { create: true });
-    if (await exists(dir, name)) throw new Error(`「${path}」は既にあります`);
+    if (await exists(dir, name)) throw new Error(t("files-already-exists", { path }));
     const fh = await dir.getFileHandle(name, { create: true });
     await writeText(fh, text);
     return this.addFile(fh, `${folder.id}/${segs.concat(name).join("/")}`, segs.concat(name).join("/"));
@@ -537,7 +538,7 @@ export class LocalFolderProvider
   async writeInFolder(folder: FolderRef, path: string, text: string): Promise<void> {
     const segs = segmentsOf(path);
     const name = segs.pop();
-    if (!name) throw new Error("ファイル名がありません");
+    if (!name) throw new Error(t("files-no-file-name"));
     let dir = this.folderHandle(folder);
     for (const s of segs) dir = await dir.getDirectoryHandle(s, { create: true });
     await writeText(await dir.getFileHandle(name, { create: true }), text);
@@ -595,7 +596,7 @@ export class LocalFolderProvider
   async removeInFolder(folder: FolderRef, path: string): Promise<boolean> {
     const segs = segmentsOf(path);
     const name = segs.pop();
-    if (!name) throw new Error("消す場所がありません");
+    if (!name) throw new Error(t("files-nothing-to-remove"));
     const dir = await descend(this.folderHandle(folder), segs);
     if (!dir || !((await exists(dir, name)) || (await childDir(dir, name)))) return false;
     await dir.removeEntry(name, { recursive: true });
@@ -613,7 +614,7 @@ export class LocalFolderProvider
    */
   async removeFolder(folder: FolderRef): Promise<void> {
     const dir = this.folderHandle(folder);
-    if (!dir.remove) throw new Error("このブラウザでは、フォルダそのものを削除できません");
+    if (!dir.remove) throw new Error(t("files-cannot-remove-folder-itself"));
     await dir.remove({ recursive: true });
     this.folders.delete(folder.id);
     const id = this.recentIds.get(folder.id);
@@ -650,10 +651,10 @@ export class LocalFolderProvider
   async createFolder(folder: FolderRef, path: string): Promise<void> {
     const segs = segmentsOf(path);
     const name = segs.pop();
-    if (!name) throw new Error("フォルダ名がありません");
+    if (!name) throw new Error(t("files-no-folder-name"));
     let dir = this.folderHandle(folder);
     for (const s of segs) dir = await dir.getDirectoryHandle(s, { create: true });
-    if ((await exists(dir, name)) || (await childDir(dir, name))) throw new Error(`「${path}」は既にあります`);
+    if ((await exists(dir, name)) || (await childDir(dir, name))) throw new Error(t("files-already-exists", { path }));
     await dir.getDirectoryHandle(name, { create: true });
   }
 
@@ -675,16 +676,16 @@ export class LocalFolderProvider
     const dst = segmentsOf(to);
     const srcName = src.pop();
     const dstName = dst.pop();
-    if (!srcName || !dstName) throw new Error("動かす場所がありません");
-    if (to.startsWith(`${from}/`)) throw new Error(`「${from}」を、その中へは動かせません`);
+    if (!srcName || !dstName) throw new Error(t("files-nothing-to-move"));
+    if (to.startsWith(`${from}/`)) throw new Error(t("files-move-into-itself", { from }));
     const root = this.folderHandle(folder);
     const srcDir = await descend(root, src);
     const file = srcDir && (await exists(srcDir, srcName)) ? await srcDir.getFileHandle(srcName) : null;
     const dir = srcDir && !file ? await childDir(srcDir, srcName) : null;
-    if (!srcDir || (!file && !dir)) throw new Error(`「${from}」が見つかりません`);
+    if (!srcDir || (!file && !dir)) throw new Error(t("files-not-found", { path: from }));
     let dstDir = root;
     for (const s of dst) dstDir = await dstDir.getDirectoryHandle(s, { create: true });
-    if ((await exists(dstDir, dstName)) || (await childDir(dstDir, dstName))) throw new Error(`「${to}」は既にあります`);
+    if ((await exists(dstDir, dstName)) || (await childDir(dstDir, dstName))) throw new Error(t("files-already-exists", { path: to }));
     if (file) await copyFile(file, await dstDir.getFileHandle(dstName, { create: true }));
     else if (dir) await copyDir(dir, await dstDir.getDirectoryHandle(dstName, { create: true }));
     await srcDir.removeEntry(srcName, { recursive: true });
@@ -719,7 +720,7 @@ export class LocalFolderProvider
    */
   private async parentDir(ref: FileRef): Promise<DirHandleLike> {
     const p = this.parentOf(ref);
-    if (!p) throw new Error(`「${ref.name}」の隣のファイルは扱えません（フォルダを開いてください）`);
+    if (!p) throw new Error(t("files-no-sibling", { name: ref.name }));
     let dir = p.folder;
     for (const s of p.segs) dir = await dir.getDirectoryHandle(s);
     return dir;
@@ -775,7 +776,7 @@ export class LocalFolderProvider
    */
   private folderHandle(folder: FolderRef): DirHandleLike {
     const dir = this.folders.get(folder.id);
-    if (!dir) throw new Error(`フォルダ「${folder.name}」は開かれていません`);
+    if (!dir) throw new Error(t("files-folder-not-open", { name: folder.name }));
     return dir;
   }
 
@@ -790,7 +791,7 @@ export class LocalFolderProvider
    */
   private fileHandle(ref: FileRef): FileHandleLike {
     const fh = this.files.get(ref.id);
-    if (!fh) throw new Error(`ファイル「${ref.path}」は開かれていません`);
+    if (!fh) throw new Error(t("files-not-open", { name: ref.path }));
     return fh;
   }
 
@@ -940,7 +941,7 @@ async function readAll(dir: DirHandleLike, prefix: string, out: Record<string, s
       await readAll(h, path, out);
       continue;
     }
-    if (Object.keys(out).length >= MAX_TREE_FILES) throw new Error(`ファイルが多すぎます（${MAX_TREE_FILES} 件まで）。プラグインのフォルダを選んでください`);
+    if (Object.keys(out).length >= MAX_TREE_FILES) throw new Error(t("files-too-many", { max: String(MAX_TREE_FILES) }));
     out[path] = await (await h.getFile()).text();
   }
 }

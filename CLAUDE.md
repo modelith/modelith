@@ -39,6 +39,7 @@ Rust のコアをブラウザ（wasm）・CLI・サーバで共有する。全�
   モックのコードは `web/` へ TypeScript として移植してよい（ADR-0009）。ただし解析・モデル構築・図の操作は Rust のコアに置き、TS に写さない（暫定の TS コアは beta.1 で削除した。ADR-0016）。
   モックと同じ振る舞いを確かめるケースは `reference/golden/cases/` に足し、`node reference/tools/gen-golden.mjs` で再生成する。
 - **画面の言葉は、SysML v2 の構文を知らない人に合わせる**（ADR-0014）。トースト・ダイアログ・案内などの文言は [画面の言葉の手引き](docs/development/ui-writing.md) に従う。
+  文はコードに直接書かず、辞書（`web/src/locales/*.ftl`）に置いて `t("キー", 値)` で使う（ADR-0027。書き方は [文言の辞書](docs/development/l10n.md)）。
 - **プラグインとの契約は plugin-sdk に置く**（ADR-0004）。本リポジトリでプラグイン向けの型を独自に定義しない。
 - ADR に反する変更が必要なら、実装より先に ADR を追加・更新する PR を出す。
 

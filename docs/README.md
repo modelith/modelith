@@ -32,6 +32,8 @@
   - [リリース計画（0.2.0）](development/release-plan-0.2.0.md)
   - [リリース計画（0.3.0 から先：AI と共同編集）](development/release-plan-0.3.0.md)
   - [テスト](development/testing.md)
+  - [画面の言葉の手引き](development/ui-writing.md)
+  - [文言の辞書](development/l10n.md)
 - [設計判断（ADR）](adr/README.md)
 
 ## API ドキュメント

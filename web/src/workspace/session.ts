@@ -1,6 +1,7 @@
 // 前回の続き（F-FILE-13）：開いていたフォルダとファイル、表示していたファイルを覚え、起動したときに何を戻すかを決める。
 // 判断はすべてここの純粋な関数にし、保存先（localStorage）とブラウザの許可の確かめ方は呼ぶ側が渡す。
 
+import { t } from "../l10n";
 import type { DirEntry, FileRef, RecentAccess } from "../files/types";
 import type { KeyValue } from "./drafts";
 import type { StartWith } from "./workspace";
@@ -280,9 +281,9 @@ export function kvSessionStore(kv: KeyValue): SessionStore {
  */
 export function keptDraftsNotice(kept: { unused: number; locked: boolean }): string | null {
   if (kept.locked) {
-    return "前回の下書きは、新しい版の Modelith が残した形のため、この版では開けません。消さずに残しますが、この版で作った無題の文書は下書きに残りません。手元に残すには「名前を付けて保存」で保存してください";
+    return t("workspace-drafts-locked");
   }
-  if (kept.unused > 0) return `新しい版の Modelith が残した下書きが ${kept.unused} 件あり、この版では開けません。消さずに残します`;
+  if (kept.unused > 0) return t("workspace-drafts-unused", { count: String(kept.unused) });
   return null;
 }
 
@@ -296,6 +297,6 @@ export function keptDraftsNotice(kept: { unused: number; locked: boolean }): str
  * lostDraftsNotice(true)  // → "この文書は下書きに残りません（新しい版の Modelith が残した下書きがあるため）。「名前を付けて保存」で保存してください"
  */
 export function lostDraftsNotice(locked: boolean): string {
-  if (locked) return "この文書は下書きに残りません（新しい版の Modelith が残した下書きがあるため）。「名前を付けて保存」で保存してください";
-  return "下書きを保存できません（ブラウザの保存領域がいっぱいです）。「名前を付けて保存」で保存してください";
+  if (locked) return t("workspace-draft-not-kept-locked");
+  return t("workspace-draft-not-kept-full");
 }

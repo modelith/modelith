@@ -8,7 +8,6 @@ import { cancelConnect, S } from "./state";
 import { problemCopyRows, reparse, notifyTextChange, setSync, toast } from "./sync";
 import { copiedText, problemsText } from "./problem-copy";
 import { showLevelsDialog } from "./levels-dialog";
-import { diagramName } from "../render/labels";
 import { goToGap } from "./gap-guide";
 import { isNarrow } from "./panels";
 import { gapScreen } from "./trace-gap";
@@ -63,7 +62,7 @@ function caretToNode(): void {
   renderInspector();
   if (!key || !best) return;
   const v = curView();
-  if (!viewContent(S.M, v).nodes.some((n) => n.key === key)) toast(`「${best.name}」は「${diagramName(v.label)}」には出ていません`);
+  if (!viewContent(S.M, v).nodes.some((n) => n.key === key)) toast(`「${best.name}」は「${v.diagramName}」には出ていません`);
   else centerOn(key, true);
 }
 

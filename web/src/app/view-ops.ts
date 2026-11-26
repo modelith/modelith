@@ -5,7 +5,6 @@ import { inOpenFile, type Entry, type ModelNode, type ViewKind } from "../core";
 import { type AskOption, ask } from "./dialog";
 import { perform } from "./intent";
 import { boxesOf, freeSpot, nodeH, nodeW } from "../render/geometry";
-import { diagramName } from "../render/labels";
 import { DIAGRAM_KINDS, type DiagramKind, renameViewLayout, renameViewTabs, targetCandidates } from "./diagram-kinds";
 import { closeViewTabs, openModelView, saveTabs } from "./panels";
 import { S } from "./state";
@@ -87,7 +86,7 @@ export async function createDiagram(): Promise<void> {
     ...DIAGRAM_KINDS.map((k) => ({ id: k.id, label: k.label, note: k.note, confirm: k.def ? "次へ" : "作成" })),
   ];
   let option = options[0]?.id ?? "general";
-  let value = suggestName(asIs ? diagramName(curView().label) : "新しい図");
+  let value = suggestName(asIs ? curView().diagramName : "新しい図");
   // 描く対象は、図の種類ごとに一度だけ選ぶ（名前を断られて尋ね直しても、新しく作った定義を重ねない）
   const picked = new Map<string, string[]>();
   for (;;) {

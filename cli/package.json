@@ -27,6 +27,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fluent/bundle": "0.19.1",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "zod": "^4.0.0"
   },

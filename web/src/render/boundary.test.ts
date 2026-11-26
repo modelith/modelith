@@ -99,9 +99,9 @@ describe("valueImports（型だけでない import を集める）", () => {
 describe("描画（src/render）の境目（ADR-0024 の 3）", () => {
   const { files, packages } = reachable(ENTRY);
 
-  it("入口から読み込むのは src/render と、コアの DOM に触れない部分だけ", () => {
+  it("入口から読み込むのは src/render と、コアの DOM に触れない部分と、文言の口（辞書は呼ぶ側が入れる）だけ", () => {
     // Act
-    const outside = files.filter((f) => !f.startsWith("render/") && !["core/views.ts", "core/rust.ts", "core/text.ts"].includes(f) && !f.startsWith("core/wasm/"));
+    const outside = files.filter((f) => !f.startsWith("render/") && !["core/views.ts", "core/rust.ts", "core/text.ts", "l10n/index.ts"].includes(f) && !f.startsWith("core/wasm/"));
     // Assert
     expect(outside).toEqual([]);
   });

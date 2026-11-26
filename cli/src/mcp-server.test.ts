@@ -315,6 +315,17 @@ describe("MCP のサーバ：図を書き出す", () => {
     expect(got.content).toContain("satisfy");
   });
 
+  it("F-L10N-3: 図の中の文は、辞書の文で描く（キーのままにならない）", async () => {
+    // Arrange（区画の行が 8 行を超える部品定義。超えた分は「… ほか N 行」にまとめる）
+    const attrs = Array.from({ length: 10 }, (_, i) => `attribute a${i} : Real;`).join(" ");
+    writeFileSync(join(folder, "many.sysml"), `package Many { part def Big { ${attrs} } }`);
+    // Act
+    const got = await json<{ content: string }>("export_diagram", { format: "svg", file: "many.sysml" });
+    // Assert
+    expect(got.content).toContain("… ほか 3 行");
+    expect(got.content).not.toContain("render-");
+  });
+
   it("F-AI-3: 要素を対象に指すと、テキストに図を書いていなくても、内部ブロック図・状態遷移図・アクティビティ図・シーケンス図を書き出せる（正常系）", async () => {
     // Arrange（図を 1 つも書いていないモデル。同じ種類の定義を 2 つずつ置き、後ろのほうを指す）
     write("car.sysml", [

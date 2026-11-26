@@ -1,6 +1,7 @@
 // 標準ビュー定義の名前と、画面での名前（ADR-0014、F-VIEW-7）。
 // view を描く要素と描き方に解決するのは Rust のコア（crates/modelith-core/src/model/views.rs、ADR-0016）。
 // 仕様：9.2.20 標準ビュー定義（StandardViewDefinitions）。
+import { t } from "../l10n/index.ts";
 
 /** 標準ビュー定義の名前と短い名前から、標準ビュー定義の名前への対応。 */
 const STANDARD_VIEWS: Record<string, string> = {};
@@ -19,8 +20,8 @@ for (const [name, short] of [
 
 /** 標準ビュー定義の、画面での名前（ADR-0014）。 */
 const STD_LABEL: Record<string, string> = {
-  GeneralView: "一般ビュー", InterconnectionView: "内部ブロック図", ActionFlowView: "アクティビティ図", StateTransitionView: "状態遷移図",
-  SequenceView: "シーケンス図", GeometryView: "ジオメトリビュー", GridView: "グリッドビュー", BrowserView: "ブラウザビュー",
+  GeneralView: t("core-std-view-general"), InterconnectionView: t("core-std-view-interconnection"), ActionFlowView: t("core-std-view-action-flow"), StateTransitionView: t("core-std-view-state-transition"),
+  SequenceView: t("core-std-view-sequence"), GeometryView: t("core-std-view-geometry"), GridView: t("core-std-view-grid"), BrowserView: t("core-std-view-browser"),
 };
 /**
  * 図の種類の、画面での名前（ADR-0014）。
@@ -32,7 +33,7 @@ const STD_LABEL: Record<string, string> = {
  * stdViewLabel(null)           // → "一般ビュー"
  * stdViewLabel("MyView")       // → "MyView"（知らない名前）
  */
-export const stdViewLabel = (std: string | null): string => (std ? (STD_LABEL[std] ?? std) : "一般ビュー");
+export const stdViewLabel = (std: string | null): string => (std ? (STD_LABEL[std] ?? std) : t("core-std-view-general"));
 
 /**
  * 標準ビュー定義の名前か短い名前を、標準ビュー定義の名前にそろえる（短い名前 `afv` → `ActionFlowView`）。

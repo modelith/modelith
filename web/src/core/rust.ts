@@ -3,6 +3,7 @@
 // モデル（ADR-0016 の手順 A）も同じく番号で返るので、`build` でオブジェクトの参照に戻す。
 // `@layout` コメント（移行期の形式）の中身は、ここで読む（読み取れないことは Rust が構文エラーとして返す）。
 
+import { t } from "../l10n/index.ts";
 import { readLayout } from "./text.ts";
 import type {
   Block, Entry, Model, ModelEdge, ModelNode, ModelView, ParseResult, PhaseInfo, Port, Problem, Rel, Scope, Unsupported,
@@ -75,7 +76,7 @@ export function safeParse(text: string, analyzeJson: (text: string) => string): 
     ruleFindings.set(P, Array.isArray(raw.findings) ? raw.findings : []);
     return P;
   } catch (e) {
-    const errors = [{ pos: 0, msg: `テキストを解析できませんでした。テキストはそのまま残っています（${e instanceof Error ? e.message : String(e)}）` }];
+    const errors = [{ pos: 0, msg: t("core-analyze-failed", { reason: e instanceof Error ? e.message : String(e) }) }];
     const P: ParseResult = { entries: [], rels: [], errors, layout: readLayout(text, errors), unsupported: [] };
     models.set(P, { nodes: [], views: [], edges: [], problems: [...errors], phases: null, phaseEnum: null });
     return P;
@@ -234,7 +235,7 @@ export interface RawModel {
  */
 export function build(P: ParseResult): Model {
   const raw = models.get(P);
-  if (!raw) throw new Error("build には、parse（Rust）が返した解析結果を渡してください");
+  if (!raw) throw new Error(t("core-build-needs-parse"));
   return toModel(raw, P);
 }
 
@@ -250,7 +251,7 @@ export function build(P: ParseResult): Model {
 function toModel(raw: RawModel, P: ParseResult): Model {
   const entry = (i: number): Entry => {
     const e = P.entries[i];
-    if (!e) throw new Error(`モデルが指す宣言（${i}）がありません`);
+    if (!e) throw new Error(t("core-missing-entry", { index: String(i) }));
     return e;
   };
   const nodes: ModelNode[] = raw.nodes.map(({ file, ...n }) => {
@@ -304,7 +305,7 @@ function toModel(raw: RawModel, P: ParseResult): Model {
   }));
   const rel = (i: number): Rel => {
     const r = P.rels[i];
-    if (!r) throw new Error(`モデルが指す関係（${i}）がありません`);
+    if (!r) throw new Error(t("core-missing-relation", { index: String(i) }));
     return r;
   };
   const sequences = (raw.sequences ?? []).map((s) => ({
@@ -570,6 +571,6 @@ export function safeEdit(text: string, intent: Intent, editJson: (text: string, 
   try {
     return JSON.parse(editJson(text, JSON.stringify(intent))) as EditResult | Refused;
   } catch (e) {
-    return { refused: `操作できませんでした。テキストはそのまま残っています（${e instanceof Error ? e.message : String(e)}）` };
+    return { refused: t("core-edit-failed-kept", { reason: e instanceof Error ? e.message : String(e) }) };
   }
 }

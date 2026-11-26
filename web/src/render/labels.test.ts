@@ -1,35 +1,35 @@
 // 画面に出す名前（ADR-0014、docs/development/ui-writing.md）。
 import { describe, expect, it } from "vitest";
 import { standardViewName, stdViewLabel } from "../core";
-import { attrText, diagramName, docChangedMessage, savedViewHint, shownEdgeLabel, shownName, tabTitle, typeText, v2ViewNote, viewHint } from "./labels";
+import { attrText, docChangedMessage, savedViewHint, shownEdgeLabel, shownName, tabTitle, typeText, v2ViewNote, viewHint } from "./labels";
 import { VIEWS } from "./view-content";
 
-describe("diagramName（ビューの名前を「〜の図」と呼べる形にする）", () => {
-  it("「図」で終わらない名前には「の図」を付ける", () => {
+describe("図の種類の呼び名（ViewDef.diagramName）", () => {
+  it("名前が「図」で終わらない図の種類は、「〜の図」と呼ぶ", () => {
     // Arrange
-    const label = "トレーサビリティ";
+    const ids = ["trace", "control", "behavior", "all"];
     // Act
-    const name = diagramName(label);
+    const names = ids.map((id) => VIEWS.find((v) => v.id === id)?.diagramName);
     // Assert
-    expect(name).toBe("トレーサビリティの図");
+    expect(names).toEqual(["トレーサビリティの図", "制御ループの図", "振る舞いの図", "すべての図"]);
   });
 
-  it("「図」で終わる名前はそのまま返す（「ブロック定義図の図」にしない）", () => {
+  it("名前が「図」で終わる図の種類は、名前のまま呼ぶ（「ブロック定義図の図」にしない）", () => {
     // Arrange
-    const label = "ブロック定義図";
+    const ids = ["structure", "ibd", "seq", "afv", "stm"];
     // Act
-    const name = diagramName(label);
+    const names = ids.map((id) => VIEWS.find((v) => v.id === id)?.diagramName);
     // Assert
-    expect(name).toBe("ブロック定義図");
+    expect(names).toEqual(["ブロック定義図", "内部ブロック図", "シーケンス図", "アクティビティ図", "状態遷移図"]);
   });
 
-  it("「図」が途中にあるだけなら「の図」を付ける（境界値）", () => {
+  it("どの図の種類にも、呼び名がある", () => {
     // Arrange
-    const label = "図面";
+    const missing = VIEWS.filter((v) => !v.diagramName);
     // Act
-    const name = diagramName(label);
+    const ids = missing.map((v) => v.id);
     // Assert
-    expect(name).toBe("図面の図");
+    expect(ids).toEqual([]);
   });
 });
 
@@ -175,7 +175,7 @@ describe("tabTitle（タブのツールチップ）", () => {
     // Arrange
     const hint = "すべて（SysML v2 では GeneralView で描く図）";
     // Act
-    const title = tabTitle("すべて", hint);
+    const title = tabTitle("すべて", "すべて", hint);
     // Assert
     expect(title).toBe(hint);
   });
@@ -184,7 +184,7 @@ describe("tabTitle（タブのツールチップ）", () => {
     // Arrange
     const hint = "内部ブロック図（SysML v2 では InterconnectionView）";
     // Act
-    const title = tabTitle("ibd Vehicle", hint);
+    const title = tabTitle("ibd Vehicle", "内部ブロック図", hint);
     // Assert
     expect(title).toBe("ibd Vehicle\n内部ブロック図（SysML v2 では InterconnectionView）");
   });
@@ -193,7 +193,7 @@ describe("tabTitle（タブのツールチップ）", () => {
     // Arrange
     const hint = "すべて（SysML v2 では GeneralView で描く図）";
     // Act
-    const title = tabTitle("すべ", hint);
+    const title = tabTitle("すべ", "すべて", hint);
     // Assert
     expect(title).toBe(`すべ\n${hint}`);
   });

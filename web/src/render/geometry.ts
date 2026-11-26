@@ -1,5 +1,6 @@
 // 図の幾何計算（ノードの大きさ・接続点・線の経路・自動配置）。DOM に依存しない純粋関数。
 
+import { t } from "../l10n/index.ts";
 import type { Entry, Expr, ModelEdge, ModelLane, ModelNode, Port, PortDir } from "../core/types.ts";
 import { flowBodyLines, flowDetail, flowShape } from "./action-flow.ts";
 import { isPseudoState, stateActionLines } from "./state-machine.ts";
@@ -20,7 +21,7 @@ export const LH = 15;
  * cw("a")  // → 6.3
  * cw("部") // → 11
  */
-const cw = (ch: string): number => (/[　-鿿＀-￯]/.test(ch) ? 11 : 6.3);
+const cw = (ch: string): number => (/[　-鿿＀-￯]/.test(ch) ? 11 : 6.3); // l10n-ignore: 全角の文字かを調べる
 /**
  * 文字列の幅の目安（11px の文字）。1 文字ずつの幅（全角 11・半角 6.3）を足す。
  *
@@ -215,7 +216,7 @@ export function compartment(n: ModelNode): Line[] {
   if (L.length > MAX) {
     const rest = L.length - (MAX - 1);
     L.length = MAX - 1;
-    L.push({ t: `… ほか ${rest} 行`, cls: "more" });
+    L.push({ t: t("render-more-rows", { count: String(rest) }), cls: "more" });
   }
   return L;
 }

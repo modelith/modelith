@@ -1,6 +1,7 @@
 // コアの Worker が止まった・返事をしないときに作り直す（Q-7、ADR-0016）。
 // 判断（作り直してよいか）は restartAllowed に集め、Worker の起動と終了はここで行う。
 
+import { t } from "../l10n";
 import { CORE_REPLY_TIMEOUT_MS, CoreClient, initWorker, type AnalyzedListener, type CorePort } from "./client";
 
 /** 1 分（RESTART_WINDOW_MS）の間に作り直す回数の上限。これを超えたらあきらめる。 */
@@ -10,7 +11,7 @@ export const MAX_RESTARTS = 3;
 export const RESTART_WINDOW_MS = 60_000;
 
 /** 作り直した Worker が、期限（返事の期限と同じ）までに `ready` を返さなかったときの理由（止まったものとして扱う）。 */
-export const RESTART_TIMED_OUT = "作り直したコアが期限までに起動しませんでした";
+export const RESTART_TIMED_OUT = t("core-restart-timed-out");
 
 /** コアが止まったとき・あきらめたときに、画面に知らせる処理。作り直せたときは、送り直したテキストの解析結果が届く。 */
 export interface CoreSupervisorHooks {

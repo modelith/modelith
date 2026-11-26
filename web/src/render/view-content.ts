@@ -1,6 +1,7 @@
 // ビュー（図の種類）ごとに、モデルのどの要素・関係を表示するかを決める。画面の状態（S）には触れず、どの図かは ViewTarget で受け取る。
 // 画面（app/views.ts）と、画面の外（Node）の図の書き出し（render/index.ts）で共用する（ADR-0024）。
 
+import { t } from "../l10n/index.ts";
 import type { EdgeKind, Entry, Model, ModelEdge, ModelLane, ModelNode, ModelSequenceEvent, ModelView, ViewKind } from "../core/types.ts";
 import { defaultFlowContext, flowContentOf, flowContexts, flowLayers } from "./action-flow.ts";
 import { ibdContentOf } from "./ibd.ts";
@@ -12,6 +13,8 @@ import { withNotes } from "./notes.ts";
 export interface ViewDef {
   id: string;
   label: string;
+  /** この図を「〜の図」と呼ぶときの名前。保存する図の名前の候補や、トーストの「〜には出ていません」に使う。 */
+  diagramName: string;
   /** この図に当たる SysML v2 の標準ビュー定義（`GeneralView` など）。ツールチップの補足に出す（ADR-0014）。 */
   std: string;
   /** 表示する要素の種類（null はすべて）。 */
@@ -61,20 +64,20 @@ export interface ViewContent {
 }
 
 export const VIEWS: ViewDef[] = [
-  { id: "trace", label: "トレーサビリティ", std: "GeneralView", kinds: ["concern def", "requirement def", "requirement", "verification def", "analysis def"], pull: ["satisfy"], edges: ["satisfy", "verify", "frame", "comp", "defined", "derive"] },
-  { id: "structure", label: "ブロック定義図", std: "GeneralView", kinds: ["part def", "part", "attribute def"], edges: ["comp", "defined", "specialize", "subset", "redefine", "reference"], depth: true },
-  { id: "control", label: "制御ループ", std: "GeneralView", kinds: ["constraint def", "calc def"], pull: ["flow"], edges: ["flow", "comp"] },
-  { id: "ibd", label: "内部ブロック図", std: "InterconnectionView" },
-  { id: "behavior", label: "振る舞い", std: "GeneralView", kinds: ["state def", "action def", "occurrence def"], pullComp: true, edges: ["comp"] },
-  { id: "seq", label: "シーケンス図", std: "SequenceView" },
-  { id: "afv", label: "アクティビティ図", std: "ActionFlowView", layer: flowLayers },
+  { id: "trace", label: t("render-view-trace"), diagramName: t("render-view-trace-diagram"), std: "GeneralView", kinds: ["concern def", "requirement def", "requirement", "verification def", "analysis def"], pull: ["satisfy"], edges: ["satisfy", "verify", "frame", "comp", "defined", "derive"] },
+  { id: "structure", label: t("render-view-structure"), diagramName: t("render-view-structure-diagram"), std: "GeneralView", kinds: ["part def", "part", "attribute def"], edges: ["comp", "defined", "specialize", "subset", "redefine", "reference"], depth: true },
+  { id: "control", label: t("render-view-control"), diagramName: t("render-view-control-diagram"), std: "GeneralView", kinds: ["constraint def", "calc def"], pull: ["flow"], edges: ["flow", "comp"] },
+  { id: "ibd", label: t("render-view-ibd"), diagramName: t("render-view-ibd-diagram"), std: "InterconnectionView" },
+  { id: "behavior", label: t("render-view-behavior"), diagramName: t("render-view-behavior-diagram"), std: "GeneralView", kinds: ["state def", "action def", "occurrence def"], pullComp: true, edges: ["comp"] },
+  { id: "seq", label: t("render-view-seq"), diagramName: t("render-view-seq-diagram"), std: "SequenceView" },
+  { id: "afv", label: t("render-view-afv"), diagramName: t("render-view-afv-diagram"), std: "ActionFlowView", layer: flowLayers },
   // 状態遷移図（StateTransitionView、8.2.3.18）。組み込みのビューの一覧（F-VIEW-1）には出さない
-  { id: "stm", label: "状態遷移図", std: "StateTransitionView", hidden: true },
-  { id: "all", label: "すべて", std: "GeneralView", kinds: null, edges: null },
+  { id: "stm", label: t("render-view-stm"), diagramName: t("render-view-stm-diagram"), std: "StateTransitionView", hidden: true },
+  { id: "all", label: t("render-view-all"), diagramName: t("render-view-all-diagram"), std: "GeneralView", kinds: null, edges: null },
 ];
 
 const PHASE_LABEL: Record<string, string> = {
-  StakeholderNeeds: "利用者要求", SystemRequirements: "システム要求", Architecture: "方式設計", Verification: "検証",
+  StakeholderNeeds: t("render-phase-stakeholder-needs"), SystemRequirements: t("render-phase-system-requirements"), Architecture: t("render-phase-architecture"), Verification: t("render-phase-verification"),
 };
 /**
  * 工程（@Phase の値）の画面の名前を返す（F-TRACE-1）。知らない値はそのまま返す。
@@ -213,7 +216,7 @@ export function defaultIbdContext(M: Model): ModelNode | null {
  */
 function ibdContent(M: Model, key: string | null): ViewContent {
   const ctx = ibdContexts(M).find((n) => n.key === key);
-  if (!ctx) return { nodes: [], edges: [], empty: "中に部品を持つ部品定義がまだありません。「ブロック定義図」で、部品定義から別の部品定義へ線を引き、「部品として持つ」を選ぶと作れます。" };
+  if (!ctx) return { nodes: [], edges: [], empty: t("render-empty-ibd") };
   return { ...ibdContentOf(M, ctx), frame: { kind: "part def", title: ctx.name }, ctx };
 }
 
@@ -232,7 +235,7 @@ function ibdContent(M: Model, key: string | null): ViewContent {
  */
 function seqContent(M: Model, key: string | null): ViewContent {
   const ctx = seqContexts(M).find((n) => n.key === key);
-  if (!ctx) return { nodes: [], edges: [], seq: true, empty: "シナリオがまだありません。上のパレットの「シナリオ」から作れます。" };
+  if (!ctx) return { nodes: [], edges: [], seq: true, empty: t("render-empty-seq") };
   return { ...seqContentOf(M, ctx), seq: true, ctx };
 }
 
@@ -250,9 +253,9 @@ function seqContent(M: Model, key: string | null): ViewContent {
  */
 function flowContent(M: Model, key: string | null): ViewContent {
   const ctx = flowContexts(M).find((n) => n.key === key);
-  if (!ctx) return { nodes: [], edges: [], empty: "アクション定義がまだありません。「振る舞い」の図のパレットの「アクション定義」から作れます。" };
+  if (!ctx) return { nodes: [], edges: [], empty: t("render-empty-afv") };
   const c = flowContentOf(M, ctx);
-  if (!c.nodes.length) return { ...c, empty: `「${ctx.name}」には、まだアクションがありません。テキストに action や順序（first … then）を書くと、ここに流れが出ます。`, ctx };
+  if (!c.nodes.length) return { ...c, empty: t("render-empty-afv-actions", { name: ctx.name }), ctx };
   return { ...c, frame: { kind: "action def", title: ctx.name }, ctx };
 }
 
@@ -270,9 +273,9 @@ function flowContent(M: Model, key: string | null): ViewContent {
  */
 function stateContent(M: Model, key: string | null): ViewContent {
   const ctx = stateContexts(M).find((n) => n.key === key);
-  if (!ctx) return { nodes: [], edges: [], empty: "状態定義がまだありません。「振る舞い」の図のパレットの「状態定義」から作れます。" };
+  if (!ctx) return { nodes: [], edges: [], empty: t("render-empty-stm") };
   const c = stateContentOf(M, ctx);
-  if (!c.nodes.length) return { ...c, empty: `「${ctx.name}」には、まだ状態がありません。テキストに state や遷移（transition）を書くと、ここに図が出ます。`, ctx };
+  if (!c.nodes.length) return { ...c, empty: t("render-empty-stm-states", { name: ctx.name }), ctx };
   return { ...c, frame: { kind: "state def", title: ctx.name }, ctx };
 }
 
@@ -321,30 +324,32 @@ function packageFrames(mv: ModelView, shown: Set<string>): PackageFrame[] {
  *
  * @param M モデル
  * @param mv 表示する view。テキストから消えていれば null
- * @param t 図の対象（resolveTarget で選び直したもの）
+ * @param target 図の対象（resolveTarget で選び直したもの）
  * @returns 表示する要素・関係・package の枠。出せる要素が無ければ空で、理由の案内（empty）を付ける
  * @example
  * // general の view Overview が A と B を expose し、A から B へ線 e がある
  * modelViewContent(M, mv, t) // → { nodes: [A, B], edges: [e], packages: [] }
  * modelViewContent(M, null, { ...t, modelView: "Gone" }) // → { nodes: [], edges: [], empty: "作成した図「Gone」は、モデルから消えています。" }
  */
-function modelViewContent(M: Model, mv: ModelView | null, t: ViewTarget): ViewContent {
-  if (!mv) return { nodes: [], edges: [], empty: `作成した図「${t.modelView ?? ""}」は、モデルから消えています。` };
+function modelViewContent(M: Model, mv: ModelView | null, target: ViewTarget): ViewContent {
+  if (!mv) return { nodes: [], edges: [], empty: t("render-empty-view-gone", { name: target.modelView ?? "" }) };
   if (mv.kind === "interconnection")
-    return t.ibdCtx ? ibdContent(M, t.ibdCtx) : { nodes: [], edges: [], empty: `図「${mv.name}」に、中に部品を持つ部品定義が含まれていません。` };
+    return target.ibdCtx ? ibdContent(M, target.ibdCtx) : { nodes: [], edges: [], empty: t("render-empty-view-no-ibd", { name: mv.name }) };
   if (mv.kind === "actionFlow")
-    return t.flowCtx ? flowContent(M, t.flowCtx) : { nodes: [], edges: [], empty: `図「${mv.name}」に、アクション定義が含まれていません。` };
+    return target.flowCtx ? flowContent(M, target.flowCtx) : { nodes: [], edges: [], empty: t("render-empty-view-no-afv", { name: mv.name }) };
   if (mv.kind === "stateTransition")
-    return t.stateCtx ? stateContent(M, t.stateCtx) : { nodes: [], edges: [], empty: `図「${mv.name}」に、状態定義が含まれていません。` };
+    return target.stateCtx ? stateContent(M, target.stateCtx) : { nodes: [], edges: [], empty: t("render-empty-view-no-stm", { name: mv.name }) };
   if (mv.kind === "sequence")
-    return t.seqCtx ? seqContent(M, t.seqCtx) : { nodes: [], edges: [], seq: true, empty: `図「${mv.name}」に、シナリオが含まれていません。` };
+    return target.seqCtx ? seqContent(M, target.seqCtx) : { nodes: [], edges: [], seq: true, empty: t("render-empty-view-no-seq", { name: mv.name }) };
   const keys = new Set(mv.nodeKeys);
   const nodes = M.nodes.filter((n) => keys.has(n.key));
   if (!nodes.length) {
-    const where = mv.frames.length ? `パッケージ（${mv.frames.map((f) => f.name).join("・")}）の中に、` : "";
-    return { nodes, edges: [], empty: `図「${mv.name}」に、${where}図に出せる要素がありません。` };
+    const empty = mv.frames.length
+      ? t("render-empty-view-in-packages", { name: mv.name, packages: mv.frames.map((f) => f.name).join(t("render-list-separator")) })
+      : t("render-empty-view", { name: mv.name });
+    return { nodes, edges: [], empty };
   }
-  const content = phaseFilter(M, t.phase, { nodes, edges: M.edges.filter((e) => keys.has(e.from) && keys.has(e.to)) });
+  const content = phaseFilter(M, target.phase, { nodes, edges: M.edges.filter((e) => keys.has(e.from) && keys.has(e.to)) });
   const framed = { ...content, packages: packageFrames(mv, new Set(content.nodes.map((n) => n.key))) };
   return mv.kind === "general" ? withNotes(M.notes, framed) : framed;
 }

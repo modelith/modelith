@@ -2,31 +2,32 @@
 // 利用者は SysML v2 の構文を覚えていないので、画面では図の言葉を使い、キーワードは補足にする。
 
 import type { Entry } from "../core/types.ts";
+import { t } from "../l10n/index.ts";
 import { stdViewLabel } from "../core/views.ts";
 
 const KIND_LABEL: Record<string, string> = {
-  "part def": "部品定義", part: "部品", "attribute def": "属性定義", attribute: "属性", "port def": "ポート定義", port: "ポート",
-  "item def": "アイテム定義", item: "アイテム", "requirement def": "要求", requirement: "要求", "concern def": "関心事", concern: "関心事",
-  "verification def": "検証", verification: "検証", "analysis def": "解析", analysis: "解析", "constraint def": "制約定義", constraint: "制約",
-  "calc def": "計算定義", calc: "計算", "state def": "状態定義", state: "状態", "action def": "アクション定義", action: "アクション",
-  "exhibit state": "状態", "perform action": "アクション",
-  "occurrence def": "シナリオ", occurrence: "出来事", "interface def": "インタフェース定義", "connection def": "接続定義",
-  "allocation def": "割り当て定義", allocation: "割り当て", connection: "接続", binding: "結び付け",
-  "flow def": "流れの定義", flow: "流れ",
-  "use case def": "ユースケース定義", "enum def": "列挙定義", "metadata def": "メタデータ定義", "view def": "図の定義", view: "作成した図",
-  package: "パッケージ",
+  "part def": t("render-kind-part-def"), part: t("render-kind-part"), "attribute def": t("render-kind-attribute-def"), attribute: t("render-kind-attribute"), "port def": t("render-kind-port-def"), port: t("render-kind-port"),
+  "item def": t("render-kind-item-def"), item: t("render-kind-item"), "requirement def": t("render-kind-requirement-def"), requirement: t("render-kind-requirement"), "concern def": t("render-kind-concern-def"), concern: t("render-kind-concern"),
+  "verification def": t("render-kind-verification-def"), verification: t("render-kind-verification"), "analysis def": t("render-kind-analysis-def"), analysis: t("render-kind-analysis"), "constraint def": t("render-kind-constraint-def"), constraint: t("render-kind-constraint"),
+  "calc def": t("render-kind-calc-def"), calc: t("render-kind-calc"), "state def": t("render-kind-state-def"), state: t("render-kind-state"), "action def": t("render-kind-action-def"), action: t("render-kind-action"),
+  "exhibit state": t("render-kind-exhibit-state"), "perform action": t("render-kind-perform-action"),
+  "occurrence def": t("render-kind-occurrence-def"), occurrence: t("render-kind-occurrence"), "interface def": t("render-kind-interface-def"), "connection def": t("render-kind-connection-def"),
+  "allocation def": t("render-kind-allocation-def"), allocation: t("render-kind-allocation"), connection: t("render-kind-connection"), binding: t("render-kind-binding"),
+  "flow def": t("render-kind-flow-def"), flow: t("render-kind-flow"),
+  "use case def": t("render-kind-use-case-def"), "enum def": t("render-kind-enum-def"), "metadata def": t("render-kind-metadata-def"), "view def": t("render-kind-view-def"), view: t("render-kind-view"),
+  package: t("render-kind-package"),
   // alpha.7 で読むようにした種類（ツリーとツールチップに出る）
-  "case def": "ケース定義", case: "ケース", actor: "アクター", "include use case": "含めるユースケース", enum: "列挙",
-  "event occurrence": "出来事", timeslice: "期間の出来事", snapshot: "時点の出来事", variant: "バリアント",
-  "viewpoint def": "視点の定義", viewpoint: "視点", "rendering def": "描き方の定義", rendering: "描き方",
-  def: "定義（利用者定義のキーワード）", usage: "使用（利用者定義のキーワード）",
+  "case def": t("render-kind-case-def"), case: t("render-kind-case"), actor: t("render-kind-actor"), "include use case": t("render-kind-include-use-case"), enum: t("render-kind-enum"),
+  "event occurrence": t("render-kind-event-occurrence"), timeslice: t("render-kind-timeslice"), snapshot: t("render-kind-snapshot"), variant: t("render-kind-variant"),
+  "viewpoint def": t("render-kind-viewpoint-def"), viewpoint: t("render-kind-viewpoint"), "rendering def": t("render-kind-rendering-def"), rendering: t("render-kind-rendering"),
+  def: t("render-kind-def"), usage: t("render-kind-usage"),
   // alpha.8 で読むようにした種類
-  comment: "メモ",
+  comment: t("render-kind-comment"),
   // alpha.9 で読むようにした種類（アクションの流れ、8.2.2.17）
-  fork: "分岐（並行）", join: "合流（並行）", decide: "分岐（条件）", merge: "合流（条件）",
-  send: "送信", accept: "受信", assign: "代入", terminate: "打ち切り",
-  if: "条件付きの実行", while: "繰り返し", loop: "繰り返し", for: "要素ごとの繰り返し",
-  start: "開始", done: "終了", "succession flow": "順序付きの流れ",
+  fork: t("render-kind-fork"), join: t("render-kind-join"), decide: t("render-kind-decide"), merge: t("render-kind-merge"),
+  send: t("render-kind-send"), accept: t("render-kind-accept"), assign: t("render-kind-assign"), terminate: t("render-kind-terminate"),
+  if: t("render-kind-if"), while: t("render-kind-while"), loop: t("render-kind-loop"), for: t("render-kind-for"),
+  start: t("render-kind-start"), done: t("render-kind-done"), "succession flow": t("render-kind-succession-flow"),
 };
 
 /**
@@ -44,19 +45,6 @@ const KIND_LABEL: Record<string, string> = {
 export const kindLabel = (kind: string): string => KIND_LABEL[kind] ?? kind;
 
 /**
- * ビュー（図の種類）の名前を、「〜の図」と呼べる形にする。名前が「図」で終わればそのまま、そうでなければ「の図」を付ける。
- * 保存する図の名前の候補や、トーストの「〜には出ていません」に使う。
- *
- * @param label ビューの画面での名前（「トレーサビリティ」・「ブロック定義図」など）
- * @returns 図の呼び名
- * @example
- * diagramName("トレーサビリティ") // → "トレーサビリティの図"
- * diagramName("ブロック定義図")   // → "ブロック定義図"（「図」で終わる）
- * diagramName("")                 // → "の図"（空の名前）
- */
-export const diagramName = (label: string): string => (label.endsWith("図") ? label : `${label}の図`);
-
-/**
  * 図の種類に当たる SysML v2 の標準ビューを、補足の一言にする（ui-writing の決まり 9）。
  * 画面の名前がその標準ビューの名前と同じなら標準ビューの名前だけを、Modelith 独自の図なら「〜で描く図」と書く。
  *
@@ -68,7 +56,7 @@ export const diagramName = (label: string): string => (label.endsWith("図") ? l
  * v2ViewNote("トレーサビリティ", "GeneralView")     // → "SysML v2 では GeneralView で描く図"（独自の図）
  */
 export const v2ViewNote = (label: string, std: string): string =>
-  stdViewLabel(std) === label ? `SysML v2 では ${std}` : `SysML v2 では ${std} で描く図`;
+  stdViewLabel(std) === label ? t("render-v2-view", { std }) : t("render-v2-view-drawn", { std });
 
 /**
  * 図の種類のツールチップ。画面の名前に、SysML v2 の標準ビューの補足を括弧で添える（ui-writing の決まり 3・9）。
@@ -80,7 +68,7 @@ export const v2ViewNote = (label: string, std: string): string =>
  * viewHint("アクティビティ図", "ActionFlowView") // → "アクティビティ図（SysML v2 では ActionFlowView）"
  * viewHint("すべて", "GeneralView")              // → "すべて（SysML v2 では GeneralView で描く図）"
  */
-export const viewHint = (label: string, std: string): string => `${label}（${v2ViewNote(label, std)}）`;
+export const viewHint = (label: string, std: string): string => t("render-view-hint", { label, note: v2ViewNote(label, std) });
 
 /**
  * 作成した図（テキストの view）の種類のツールチップ。型の無い view は一般ビュー（GeneralView）として描くので、そう書く。
@@ -98,14 +86,15 @@ export const savedViewHint = (std: string | null): string => viewHint(stdViewLab
  * タブの名前の下の行に補足つきの文を出す。
  *
  * @param name タブの名前（「ibd Vehicle」・「作成した図「概要」」など）
+ * @param label 図の種類の、画面での名前（「すべて」・「内部ブロック図」など）
  * @param hint 図の種類のツールチップ（viewHint・savedViewHint）
  * @returns タブのツールチップの文
  * @example
- * tabTitle("すべて", "すべて（SysML v2 では GeneralView で描く図）")  // → "すべて（SysML v2 では GeneralView で描く図）"
- * tabTitle("ibd Vehicle", "内部ブロック図（SysML v2 では InterconnectionView）")
+ * tabTitle("すべて", "すべて", "すべて（SysML v2 では GeneralView で描く図）")  // → "すべて（SysML v2 では GeneralView で描く図）"
+ * tabTitle("ibd Vehicle", "内部ブロック図", "内部ブロック図（SysML v2 では InterconnectionView）")
  * // → "ibd Vehicle\n内部ブロック図（SysML v2 では InterconnectionView）"
  */
-export const tabTitle = (name: string, hint: string): string => (hint.startsWith(`${name}（`) ? hint : `${name}\n${hint}`);
+export const tabTitle = (name: string, label: string, hint: string): string => (name === label ? hint : `${name}\n${hint}`);
 
 /**
  * 要素の名前（と型の名前）を、画面に出す形にする。引用名の中のエスケープ（`\'`・`\"`・`\\`。KerML 8.2.2.1）を、表す文字に戻す（#297）。
@@ -177,7 +166,6 @@ export function attrText(a: Pick<Entry, "name" | "type"> & { value?: string | un
  * docChangedMessage("A", "説明", "a *\/ b")            // → "「A」の説明を変えました。「*\/」はテキストに書けないため「* /」にしました"
  */
 export function docChangedMessage(name: string, label: string, text: string): string {
-  if (!text.trim()) return `「${name}」の${label}を消しました`;
-  const done = `「${name}」の${label}を変えました`;
-  return text.includes("*/") ? `${done}。「*/」はテキストに書けないため「* /」にしました` : done;
+  if (!text.trim()) return t("render-doc-removed", { name, label });
+  return t(text.includes("*/") ? "render-doc-changed-escaped" : "render-doc-changed", { name, label });
 }

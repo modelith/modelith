@@ -1,6 +1,7 @@
 // 配置ファイル（model.sysml の隣の model.layout.json、ADR-0005）の読み書き。判断だけの純粋関数。
 // 差分とマージを読みやすくするため、キー順を固定し、要素ごとに 1 行で書く。
 
+import { t } from "../l10n/index.ts";
 import { emptyView, isLayoutJson, layoutFromJson, layoutToJson, type Layout } from "./layout.ts";
 
 /** 配置ファイルの形式の版。古い版が読み違える変更をしたときだけ上げる（ADR-0023 §3）。 */
@@ -151,20 +152,20 @@ function readRaw(text: string): { top: Record<string, unknown>; views: Record<st
   try {
     raw = JSON.parse(text);
   } catch {
-    return { error: "配置ファイルを読めません（JSON の形が壊れています）" };
+    return { error: t("render-layout-broken-json") };
   }
   // 中身の無いオブジェクト（手で作った `{}` など）は、失うものが無いので空のファイルと同じに扱う
   if (raw && typeof raw === "object" && !Array.isArray(raw) && !Object.keys(raw).length) return "empty";
   const o = raw as { modelith?: unknown; format?: unknown; views?: unknown } | null;
   // views は名前で引くオブジェクト。配列（[]）も typeof は object なので、別に断る（#267）
   if (!o || typeof o !== "object" || o.modelith !== "layout" || typeof o.views !== "object" || o.views === null || Array.isArray(o.views)) {
-    return { error: "配置ファイルの形が違います" };
+    return { error: t("render-layout-wrong-shape") };
   }
   // 数でない形式（"1" など）は、対応しない版の数と取り違えないよう別の文にする（#243）
-  if (typeof o.format !== "number") return { error: "配置ファイルの形式の書き方が違います" };
-  if (o.format !== LAYOUT_FORMAT) return { error: `配置ファイルの形式（${String(o.format)}）に対応していません` };
+  if (typeof o.format !== "number") return { error: t("render-layout-wrong-format") };
+  if (o.format !== LAYOUT_FORMAT) return { error: t("render-layout-unknown-format", { format: String(o.format) }) };
   // 知っている項目の形が違えば、読み飛ばして保存で消さないよう、読めないファイルとして扱う（C-11、#244）
-  if (!isLayoutJson(o.views as Record<string, unknown>)) return { error: "配置ファイルの形が違います" };
+  if (!isLayoutJson(o.views as Record<string, unknown>)) return { error: t("render-layout-wrong-shape") };
   return { top: o as Record<string, unknown>, views: o.views as Record<string, unknown> };
 }
 
@@ -207,12 +208,12 @@ export function layoutExtras(text: string): LayoutExtras {
 export function writeLock(text: string): string | null {
   const raw = readRaw(text);
   if (raw === "empty") return null;
-  if ("error" in raw) return `${raw.error}。ファイルを守るため、この版では図の配置を保存しません`;
+  if ("error" in raw) return t("render-layout-locked", { reason: raw.error });
   const req = raw.top["requires"];
   const names = Array.isArray(req) ? req.map(String) : req === undefined ? [] : [String(req)];
   const unknown = names.filter((n) => !KNOWN_FEATURES.has(n));
   if (!unknown.length) return null;
-  return `配置ファイルに、新しい版の Modelith で使った機能（${unknown.join("・")}）が入っています。ファイルを守るため、この版では図の配置を保存しません`;
+  return t("render-layout-locked-features", { features: unknown.join(t("render-list-separator")) });
 }
 
 /**
@@ -224,7 +225,7 @@ export function writeLock(text: string): string | null {
  * layoutNotSavedNote("")                                             // → ""
  * layoutNotSavedNote('{"modelith":"layout","format":2,"views":{}}') // → "。図の配置は、ファイルを守るため保存していません"
  */
-export const layoutNotSavedNote = (savedLayout: string): string => (writeLock(savedLayout) ? "。図の配置は、ファイルを守るため保存していません" : "");
+export const layoutNotSavedNote = (savedLayout: string): string => (writeLock(savedLayout) ? t("render-layout-not-saved-note") : "");
 
 /**
  * 配置ファイルの中身に、読んだときのファイルにあった、この版の知らない項目を書き戻す（ADR-0023 §3）。

@@ -1,6 +1,7 @@
 // 画面の側から見たコア（ADR-0016 §4）。テキストを変えるたびに版を 1 つ上げてコアに送り、
 // 返ってきた結果の版が今の版と同じときだけ使う。違えば捨てる（解析なら次の結果を待ち、編集なら適用しない）。
 
+import { t } from "../l10n";
 import { failedReply, projectReadProblem, type CoreReply, type CoreRequest, type CoreResponse, type ProjectFileText } from "./protocol";
 import type { Permission } from "../plugins/generated/protocol";
 import {
@@ -18,10 +19,10 @@ export interface CorePort {
 }
 
 /** 編集の返事が古かったときの断り（ADR-0014 の言葉）。 */
-export const STALE_EDIT = "テキストが変わったため、この操作はやめました。もう一度操作してください";
+export const STALE_EDIT = t("core-stale-edit");
 
 /** コアが止まった・返事をしないときに、待っていた図の操作に返す断りと、画面に出す知らせ（Q-7）。 */
-export const CORE_STOPPED = "図の操作をやめました。テキストはそのまま残っています";
+export const CORE_STOPPED = t("core-stopped");
 
 /** コアの返事を待つ期限（ミリ秒）。これを過ぎたら、コアは止まったと見なす（Q-7）。 */
 export const CORE_REPLY_TIMEOUT_MS = 10_000;
@@ -325,7 +326,7 @@ export class CoreClient {
    * await c.updateProjectPlugin("{}", "jp.x", { op: "remove" })                // → { refused: "プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません" }
    */
   async updateProjectPlugin(text: string, plugin: string, change: PluginChange): Promise<CreatedProjectFile | Refused> {
-    return parseText(await this.request((id) => ({ type: "updateProject", id, text, plugin, change })), "プロジェクトの設定を変更できませんでした");
+    return parseText(await this.request((id) => ({ type: "updateProject", id, text, plugin, change })), t("core-project-update-failed"));
   }
 
   /**
@@ -340,7 +341,7 @@ export class CoreClient {
    * await c.updateProjectLevel("{", "unsupported", null)   // → { refused: "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。…" }
    */
   async updateProjectLevel(text: string, kind: string, level: ProblemLevel | null): Promise<CreatedProjectFile | Refused> {
-    return parseText(await this.request((id) => ({ type: "updateLevel", id, text, kind, level: level ?? "" })), "プロジェクトの設定を変更できませんでした");
+    return parseText(await this.request((id) => ({ type: "updateLevel", id, text, kind, level: level ?? "" })), t("core-project-update-failed"));
   }
 
   /**
@@ -490,10 +491,10 @@ export class CoreClient {
    */
   private post(req: CoreRequest, key: string, fail: (reason: string) => void): void {
     if (!this.port) {
-      fail("図を読み込み直しています");
+      fail(t("core-reloading"));
       return;
     }
-    const timer = setTimeout(() => this.down(`${this.timeoutMs / 1000} 秒たっても返事がありません`), this.timeoutMs);
+    const timer = setTimeout(() => this.down(t("core-no-reply", { seconds: String(this.timeoutMs / 1000) })), this.timeoutMs);
     this.pending.set(key, { timer, fail });
     this.port.post(req);
   }
@@ -589,7 +590,7 @@ function parseEdited(json: string): EditResult | Refused {
   try {
     return JSON.parse(json) as EditResult | Refused;
   } catch (e) {
-    return { refused: `操作できませんでした。テキストはそのまま残っています（${e instanceof Error ? e.message : String(e)}）` };
+    return { refused: t("core-edit-failed-kept", { reason: e instanceof Error ? e.message : String(e) }) };
   }
 }
 
@@ -607,7 +608,7 @@ function parseProjectResult(json: string): ProjectFileResult {
   try {
     const r = JSON.parse(json) as Partial<ProjectFileResult> & { error?: string };
     if (Array.isArray(r.problems) && r.project !== undefined) return { project: r.project, problems: r.problems };
-    return { project: null, problems: [projectReadProblem(r.error ?? "コアの返事の形が違います")] };
+    return { project: null, problems: [projectReadProblem(r.error ?? t("core-bad-reply"))] };
   } catch (e) {
     return { project: null, problems: [projectReadProblem(e instanceof Error ? e.message : String(e))] };
   }
@@ -624,7 +625,7 @@ function parseProjectResult(json: string): ProjectFileResult {
  * parseCreated("{")                  // → { refused: "プロジェクトの設定ファイルを作成できませんでした（…）" }
  */
 function parseCreated(json: string): CreatedProjectFile | Refused {
-  return parseText(json, "プロジェクトの設定ファイルを作成できませんでした");
+  return parseText(json, t("core-project-create-failed"));
 }
 
 /**
@@ -643,9 +644,9 @@ function parseText(json: string, failure: string): CreatedProjectFile | Refused 
     const r = JSON.parse(json) as Partial<CreatedProjectFile & Refused>;
     if (typeof r.text === "string") return { text: r.text };
     if (typeof r.refused === "string") return { refused: r.refused };
-    return { refused: `${failure}（コアの返事の形が違います）` };
+    return { refused: t("core-failure-with-reason", { failure, reason: t("core-bad-reply") }) };
   } catch (e) {
-    return { refused: `${failure}（${e instanceof Error ? e.message : String(e)}）` };
+    return { refused: t("core-failure-with-reason", { failure, reason: e instanceof Error ? e.message : String(e) }) };
   }
 }
 
@@ -663,9 +664,9 @@ function parsePlugins(json: string): PluginsResult {
   try {
     const r = JSON.parse(json) as Partial<PluginsResult>;
     if (Array.isArray(r.plugins)) return { plugins: r.plugins };
-    return { plugins: [], error: r.error ?? "プラグインを読み込めませんでした（コアの返事の形が違います）" };
+    return { plugins: [], error: r.error ?? t("core-failure-with-reason", { failure: t("core-plugins-load-failed"), reason: t("core-bad-reply") }) };
   } catch (e) {
-    return { plugins: [], error: `プラグインを読み込めませんでした（${e instanceof Error ? e.message : String(e)}）` };
+    return { plugins: [], error: t("core-failure-with-reason", { failure: t("core-plugins-load-failed"), reason: e instanceof Error ? e.message : String(e) }) };
   }
 }
 
@@ -684,9 +685,9 @@ function parseDescribed(json: string): DescribedPlugin | Refused {
     const r = JSON.parse(json) as Partial<DescribedPlugin & Refused>;
     if (r.plugin && typeof r.plugin.id === "string") return { plugin: r.plugin };
     if (typeof r.refused === "string") return { refused: r.refused };
-    return { refused: "プラグインを読み込めませんでした（コアの返事の形が違います）" };
+    return { refused: t("core-failure-with-reason", { failure: t("core-plugins-load-failed"), reason: t("core-bad-reply") }) };
   } catch (e) {
-    return { refused: `プラグインを読み込めませんでした（${e instanceof Error ? e.message : String(e)}）` };
+    return { refused: t("core-failure-with-reason", { failure: t("core-plugins-load-failed"), reason: e instanceof Error ? e.message : String(e) }) };
   }
 }
 
@@ -726,9 +727,9 @@ function parseChecked(json: string): CheckedPluginMessage | Refused {
     const r = JSON.parse(json) as Partial<CheckedPluginMessage & Refused>;
     if (r.message && typeof r.message.type === "string") return { message: r.message, edits: r.edits, diagnostics: r.diagnostics };
     if (typeof r.refused === "string") return { refused: r.refused };
-    return { refused: "メッセージを確かめられませんでした（コアの返事の形が違います）" };
+    return { refused: t("core-failure-with-reason", { failure: t("core-message-check-failed"), reason: t("core-bad-reply") }) };
   } catch (e) {
-    return { refused: `メッセージを確かめられませんでした（${e instanceof Error ? e.message : String(e)}）` };
+    return { refused: t("core-failure-with-reason", { failure: t("core-message-check-failed"), reason: e instanceof Error ? e.message : String(e) }) };
   }
 }
 
@@ -749,9 +750,9 @@ export function workerPort(worker: Worker): CorePort {
     listenFailure: (fn) => {
       worker.addEventListener("error", (ev) => {
         ev.preventDefault();
-        fn(ev.message || "コアの Worker でエラーが起きました");
+        fn(ev.message || t("core-worker-error"));
       });
-      worker.addEventListener("messageerror", () => fn("コアの Worker からの返事を読めませんでした"));
+      worker.addEventListener("messageerror", () => fn(t("core-worker-unreadable")));
     },
   };
 }
@@ -777,7 +778,7 @@ export function initWorker(worker: Worker, wasmUrl: string): Promise<CorePort> {
       worker.removeEventListener("message", first);
     };
     worker.addEventListener("message", first);
-    worker.addEventListener("error", (ev) => reject(new Error(ev.message || "コアの Worker を起動できませんでした")), { once: true });
+    worker.addEventListener("error", (ev) => reject(new Error(ev.message || t("core-worker-start-failed"))), { once: true });
     port.post({ type: "init", wasmUrl });
   });
 }

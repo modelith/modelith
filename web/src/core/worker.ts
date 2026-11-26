@@ -1,6 +1,8 @@
 // コアを動かす Web Worker（ADR-0003・ADR-0016）。テキストと解析を Worker の中で持ち、画面のスレッドを止めない。
 
 /// <reference lib="webworker" />
+// 辞書は、文言を使うほかのモジュールより先に入れる（ADR-0027）。Worker は画面とは別に辞書を持つ
+import "../l10n/setup";
 import initWasm, {
   analyze, checkPluginMessage, clearProjectFiles, createProjectFile, describePlugin, edit, modelSnapshot, parseProjectFile, problemKinds, projectProblems, removeProjectFile, RulePlugins,
   setFocusFile, setProblemLevels, setProjectFile, updateProjectLevel, updateProjectPlugin,

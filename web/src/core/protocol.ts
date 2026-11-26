@@ -1,5 +1,6 @@
 // 画面とコア（Worker）のやり取り（ADR-0016 §4）。LSP と同じく、テキストに版を付けて送り、結果にも版を付けて返す。
 
+import { t } from "../l10n";
 import type { Permission } from "../plugins/generated/protocol";
 import type { Intent, PluginChange, PluginFiles, ProjectProblem } from "./rust";
 
@@ -234,26 +235,26 @@ function failedReplyBody(req: Exclude<CoreRequest, { type: "init" }>, message: s
     case "didChange":
       return { type: "analyzed", version: req.version, json: JSON.stringify({ error: message }) };
     case "edit":
-      return { type: "edited", version: req.version, id: req.id, json: JSON.stringify({ refused: `操作できませんでした（${message}）` }) };
+      return { type: "edited", version: req.version, id: req.id, json: JSON.stringify({ refused: t("core-failure-with-reason", { failure: t("core-edit-failed"), reason: message }) }) };
     case "parseProject":
       return { type: "projectParsed", id: req.id, json: JSON.stringify({ project: null, problems: [projectReadProblem(message)] }) };
     case "createProject":
-      return { type: "projectCreated", id: req.id, json: JSON.stringify({ refused: `プロジェクトの設定ファイルを作成できませんでした（${message}）` }) };
+      return { type: "projectCreated", id: req.id, json: JSON.stringify({ refused: t("core-failure-with-reason", { failure: t("core-project-create-failed"), reason: message }) }) };
     case "updateProject":
     case "updateLevel":
-      return { type: "projectUpdated", id: req.id, json: JSON.stringify({ refused: `プロジェクトの設定を変更できませんでした（${message}）` }) };
+      return { type: "projectUpdated", id: req.id, json: JSON.stringify({ refused: t("core-failure-with-reason", { failure: t("core-project-update-failed"), reason: message }) }) };
     case "setLevels":
       return { type: "levelsSet", id: req.id, json: JSON.stringify({ error: message }) };
     case "problemKinds":
       return { type: "kindsListed", id: req.id, json: "[]" };
     case "setPlugins":
-      return { type: "pluginsSet", id: req.id, json: JSON.stringify({ error: `プラグインを読み込めませんでした（${message}）` }) };
+      return { type: "pluginsSet", id: req.id, json: JSON.stringify({ error: t("core-failure-with-reason", { failure: t("core-plugins-load-failed"), reason: message }) }) };
     case "describePlugin":
-      return { type: "pluginDescribed", id: req.id, json: JSON.stringify({ refused: `プラグインを読み込めませんでした（${message}）` }) };
+      return { type: "pluginDescribed", id: req.id, json: JSON.stringify({ refused: t("core-failure-with-reason", { failure: t("core-plugins-load-failed"), reason: message }) }) };
     case "modelSnapshot":
       return { type: "snapshotMade", version: req.version, id: req.id, json: JSON.stringify({ error: message }) };
     case "checkPluginMessage":
-      return { type: "pluginMessageChecked", version: req.version, id: req.id, json: JSON.stringify({ refused: `メッセージを確かめられませんでした（${message}）` }) };
+      return { type: "pluginMessageChecked", version: req.version, id: req.id, json: JSON.stringify({ refused: t("core-failure-with-reason", { failure: t("core-message-check-failed"), reason: message }) }) };
     case "projectFiles":
       return { type: "projectFilesSet", id: req.id, json: JSON.stringify({ error: message }) };
     case "projectProblems":
@@ -269,4 +270,4 @@ function failedReplyBody(req: Exclude<CoreRequest, { type: "init" }>, message: s
  * @example
  * projectReadProblem("boom") // → { severity: "error", line: 1, column: 1, message: "設定ファイルを読み込めませんでした（boom）" }
  */
-export const projectReadProblem = (reason: string): ProjectProblem => ({ severity: "error", line: 1, column: 1, message: `設定ファイルを読み込めませんでした（${reason}）` });
+export const projectReadProblem = (reason: string): ProjectProblem => ({ severity: "error", line: 1, column: 1, message: t("core-project-read-failed", { reason }) });

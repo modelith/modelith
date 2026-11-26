@@ -2,6 +2,7 @@
 // 表示中の図をファイルとしてダウンロードさせるか、PNG 画像としてクリップボードに入れる。
 // 開け閉めは modal.ts に任せる（Q-8：背景を inert にし、Esc で閉じたら開いたメニューへ入力を戻す）。名前と倍率の決め方は export-file.ts に置く。
 
+import { t } from "../l10n";
 import { $, esc } from "./dom";
 import { copyFailureText, copyImage, drawioXml, download, rasterize, svgExport, type DiagramImage } from "./export";
 import { EXPORT_FORMATS, EXPORT_SCALES, exportFileName, exportFormat, rasterScale, type ExportFormat } from "./export-file";
@@ -78,7 +79,7 @@ function selectedScale(image: DiagramImage): { scale: number; reduced: boolean }
  * reducedNote({ scale: 1.18, reduced: true }) // → "（図が大きいため、倍率を 1.18 倍に下げました）"
  * reducedNote({ scale: 2, reduced: false })   // → ""
  */
-const reducedNote = (s: { scale: number; reduced: boolean }): string => (s.reduced ? `（図が大きいため、倍率を ${s.scale} 倍に下げました）` : "");
+const reducedNote = (s: { scale: number; reduced: boolean }): string => (s.reduced ? t("app-files-export-reduced-note", { scale: String(s.scale) }) : "");
 
 /**
  * 形式に合わせて、選べる項目（範囲・倍率・背景・画像のコピー）を出し入れする。範囲の「選んだ要素」は、要素を選んでいてシーケンス図でないときだけ選べる。
@@ -122,13 +123,13 @@ async function exportFile(): Promise<void> {
     try {
       download(name, await rasterize(image, scale.scale, format.mediaType, transparentBackground(format)), format.mediaType);
     } catch (e) {
-      toastFailure("画像を作れませんでした", e);
+      toastFailure(t("app-files-image-failed"), e);
       return;
     }
     note = reducedNote(scale);
   }
   hideExportDialog();
-  toast(`「${name}」をダウンロードしました${note}`);
+  toast(t("app-files-export-downloaded", { name }) + note);
 }
 
 /**
@@ -148,7 +149,7 @@ async function copyToClipboard(): Promise<void> {
     return;
   }
   hideExportDialog();
-  toast(`図を画像としてコピーしました。ほかのアプリに貼り付けられます${reducedNote(scale)}`);
+  toast(t("app-files-export-copied") + reducedNote(scale));
 }
 
 /**
@@ -156,7 +157,7 @@ async function copyToClipboard(): Promise<void> {
  */
 export function initExportDialog(): void {
   $("#exportFormat").innerHTML = EXPORT_FORMATS.map((f) => `<option value="${esc(f.id)}">${esc(f.label)}</option>`).join("");
-  $("#exportScale").innerHTML = EXPORT_SCALES.map((n) => `<option value="${n}">${n} 倍</option>`).join("");
+  $("#exportScale").innerHTML = EXPORT_SCALES.map((n) => `<option value="${n}">${esc(t("app-files-export-scale-option", { scale: String(n) }))}</option>`).join("");
   $<HTMLSelectElement>("#exportScale").value = "2";
   $("#exportFormat").addEventListener("change", syncNameToFormat);
   $<HTMLFormElement>("#exportForm").addEventListener("submit", (ev) => {

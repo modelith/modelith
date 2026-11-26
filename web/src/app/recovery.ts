@@ -1,11 +1,12 @@
 // 起動に失敗したときの案内（Q-5・Q-6）。白い画面のままにせず、画面の真ん中に理由と対処を出す。
 // 文は純粋な関数で作り（テストする）、画面に足すのは showStartupBox だけ。
 
+import { t } from "../l10n";
 import { failureReason } from "../workspace/autosave";
 import { esc } from "./dom";
 
 /** 起動の途中で失敗したときに示す操作の文言。 */
-export const RESET_LABEL = "保存した設定を初期化して読み直す";
+export const RESET_LABEL = t("app-files-startup-reset");
 
 /**
  * 起動に必要な部品（wasm）を読み込めなかったときの案内の HTML（通信の失敗や、WebAssembly を使えない古いブラウザ）。
@@ -17,9 +18,8 @@ export const RESET_LABEL = "保存した設定を初期化して読み直す";
  */
 export function startupErrorHtml(e: unknown): string {
   return (
-    "<b>Modelith を起動できませんでした</b>" +
-    "<p>テキストの解析に必要なモジュール（WebAssembly）を読み込めませんでした。ページを再読み込みしてください。" +
-    "解決しないときは、新しいブラウザ（Chrome・Edge・Firefox・Safari の最新版）で開いてください。</p>" +
+    `<b>${esc(t("app-files-startup-failed"))}</b>` +
+    `<p>${esc(t("app-files-startup-wasm-failed"))}</p>` +
     `<small>${esc(failureReason(e))}</small>`
   );
 }
@@ -36,10 +36,9 @@ export function startupErrorHtml(e: unknown): string {
  */
 export function recoveryHtml(e: unknown): string {
   return (
-    "<b>Modelith を起動できませんでした</b>" +
-    "<p>画面を組み立てる途中で問題が起きました。保存した設定（パネルの配置・図のタブ）が壊れている可能性があります。" +
-    "設定を初期化して読み直すと、直ることがあります。下書き・前回の続き・プラグインの許可は消えません。</p>" +
-    `<p><button id="btnResetSettings" type="button">${RESET_LABEL}</button></p>` +
+    `<b>${esc(t("app-files-startup-failed"))}</b>` +
+    `<p>${esc(t("app-files-startup-screen-failed"))}</p>` +
+    `<p><button id="btnResetSettings" type="button">${esc(RESET_LABEL)}</button></p>` +
     `<small>${esc(failureReason(e))}</small>`
   );
 }

@@ -1,11 +1,13 @@
 // 起動中の表示（Q-5）。コアの準備ができるまで「読み込み中…」を示し、時間がかかれば案内に切り替える。
 // 表示そのもの（#loading）は index.html にあり、スクリプトが動く前から見える。ここでは切り替えと消すことだけを行う。
 
+import { t } from "../l10n";
+
 /** 起動中の表示の文。index.html の #loading と同じ。 */
-export const LOADING_TEXT = "読み込み中…";
+export const LOADING_TEXT = t("app-files-loading");
 
 /** 読み込みに時間がかかっているときの案内。 */
-export const SLOW_LOADING_TEXT = "読み込みに時間がかかっています。通信が遅いか、ブラウザが古い可能性があります。ページを再読み込みしてください";
+export const SLOW_LOADING_TEXT = t("app-files-loading-slow");
 
 /** 起動中の表示を案内に切り替えるまでの時間（ミリ秒）。 */
 export const SLOW_LOADING_MS = 15_000;

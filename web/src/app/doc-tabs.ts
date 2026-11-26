@@ -2,6 +2,7 @@
 // localStorage への読み書きと、タブの切り替えは panels.ts が行う。
 
 import { movedPath } from "../files/entry-names";
+import { t } from "../l10n";
 import { parseSavedTabs, type SavedTabs } from "./saved-tabs";
 import type { ViewContent } from "./views";
 
@@ -9,7 +10,7 @@ import type { ViewContent } from "./views";
 export const MAX_DOC_TABS = 50;
 
 /** 表示中の図に、このファイルの要素が無いときの案内（F-VIEW-17）。 */
-export const NOTHING_IN_FILE = "この図には、このファイルの要素がありません。ほかの図は、タブの「＋」から開けます。";
+export const NOTHING_IN_FILE = t("app-files-nothing-in-file");
 
 /**
  * 文書の、タブを記憶するときの名前。保存先のあるファイルはプロバイダとフォルダからのパス（参照の id は開くたびに変わるので使わない）、無題の文書は文書のキー。

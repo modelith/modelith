@@ -12,6 +12,7 @@ import { kvDraftStore } from "../workspace/drafts";
 import { filesChange } from "../workspace/project-files";
 import { afterRestore, findFile, keptDraftsNotice, kvSessionStore, lostDraftsNotice, planStart, sampleDraft, type Session } from "../workspace/session";
 import { layoutNameFor, PROJECT_FILE, suggestName, Workspace, type Doc, type StartWith } from "../workspace/workspace";
+import { t } from "../l10n";
 import { fit } from "./canvas";
 import { ask } from "./dialog";
 import { $, closest, esc, isFormField, store } from "./dom";
@@ -44,7 +45,7 @@ const AUTOSAVE_KEY = "modelith-autosave";
 const SIDE_KEY = "modelith-side";
 
 /** 仮に開いたファイルの案内（F-FILE-17）。 */
-const PREVIEW_HINT = "仮に開いています。編集するか、ダブルクリックすると開いたままになります";
+const PREVIEW_HINT = t("app-files-preview-hint");
 /** 横のパネルの種類。 */
 type Side = "files" | "model" | "views";
 /** 設定「起動時にサンプルを開く」を有効にしたら "1" を置くキー（F-FILE-13）。 */
@@ -127,7 +128,7 @@ export const shownDocName = (): string => (shownKey ? ws.get(shownKey)?.name : u
 function layoutOf(doc: Doc): { layout: Layout; legacy: boolean } {
   if (doc.layout) {
     const lock = writeLock(doc.savedLayout);
-    if (lock) toast(`${doc.name}：${lock}`);
+    if (lock) toast(t("app-files-layout-locked", { name: doc.name, reason: lock }));
     return { layout: parseLayoutFile(doc.layout).layout, legacy: false };
   }
   const layout = layoutFromJson(readLayout(doc.text, []));
@@ -178,15 +179,15 @@ async function offerLegacyMove(key: string): Promise<void> {
   legacyAsked.add(key);
   const doc = ws.get(key);
   if (!doc) return;
-  const r = await ask("図の配置を整理します", `「${doc.name}」には、以前の Modelith がモデルのテキストの中に書き込んだ図の配置（要素の位置）があります。配置を別のファイル（${layoutNameFor(doc.name)}）に移して、モデルのテキストからは消しますか？ 図の見た目は変わりません。保存するまでファイルは変わりません。`, [
-    { id: "keep", label: "そのままにする" },
-    { id: "move", label: "移して整理する", kind: "primary" },
+  const r = await ask(t("app-files-legacy-layout-title"), t("app-files-legacy-layout-text", { name: doc.name, layout: layoutNameFor(doc.name) }), [
+    { id: "keep", label: t("app-files-legacy-layout-keep") },
+    { id: "move", label: t("app-files-legacy-layout-move"), kind: "primary" },
   ]);
   if (r?.id !== "move" || shownKey !== key) return;
   const text = removeLayoutComment(doc.text);
   ws.moveLegacyLayout(key, text);
   setText(text, { fromText: true });
-  toast("保存すると、図の配置が別のファイルに移ります");
+  toast(t("app-files-legacy-layout-moved"));
 }
 
 /**
@@ -222,7 +223,7 @@ async function openFile(): Promise<void> {
     const doc = await ws.openWith(picker);
     if (doc) showDoc(doc.key);
   } catch (e) {
-    toastFailure("開けませんでした", e);
+    toastFailure(t("app-files-open-failed"), e);
   }
 }
 
@@ -235,7 +236,7 @@ async function openFolder(): Promise<void> {
   try {
     if (await ws.openFolder(local)) folderChanged();
   } catch (e) {
-    toastFailure("フォルダを開けませんでした", e);
+    toastFailure(t("app-files-open-folder-failed"), e);
   }
   await refreshRecents();
 }
@@ -252,12 +253,12 @@ async function openRecent(id: string): Promise<void> {
   const name = recents.find((r) => r.id === id)?.name ?? "";
   try {
     if (await ws.openRecentFolder(local, id)) folderChanged();
-    else toast("フォルダを開く許可が得られませんでした");
+    else toast(t("app-files-folder-permission-denied"));
   } catch (e) {
     console.error(e);
-    const r = await ask("フォルダを開けません", `フォルダ「${name}」を開けませんでした。移動したか、削除された可能性があります。プロジェクトの一覧から外しますか？ フォルダの中身には触れません。`, [
-      { id: "keep", label: "そのままにする" },
-      { id: "forget", label: "一覧から外す", kind: "primary" },
+    const r = await ask(t("app-files-recent-missing-title"), t("app-files-recent-missing-text", { name }), [
+      { id: "keep", label: t("app-files-recent-missing-keep") },
+      { id: "forget", label: t("app-files-recent-missing-forget"), kind: "primary" },
     ]);
     if (r?.id === "forget") await local.forgetRecent(id);
   }
@@ -314,7 +315,7 @@ async function refreshRecents(): Promise<void> {
  * recentLabel({ id: "2", name: "water", project: null })    // → "water"
  * recentLabel({ id: "3", name: "water", project: "water" }) // → "water"
  */
-const recentLabel = (r: RecentFolder): string => (r.project && r.project !== r.name ? `${r.project}（フォルダ ${r.name}）` : r.name);
+const recentLabel = (r: RecentFolder): string => (r.project && r.project !== r.name ? t("app-files-recent-label", { project: r.project, folder: r.name }) : r.name);
 
 /**
  * 開いているフォルダの見出し（名前 ▾）を押したときの、プロジェクトの一覧のメニューを、見出しのすぐ下に出す（F-PROJ-3）。
@@ -328,12 +329,12 @@ async function openProjectMenu(anchor: Element): Promise<void> {
   recents = await local.recentFolders();
   const current = local.recentIdOf(f.ref);
   const others = recents.filter((r) => r.id !== current);
-  const items: CtxItem[] = [{ head: "プロジェクトの一覧" }];
+  const items: CtxItem[] = [{ head: t("app-files-project-list") }];
   for (const r of others) items.push({ label: recentLabel(r), act: () => void openRecent(r.id) });
   if (others.length) items.push({ sep: true });
-  items.push({ label: "ほかのフォルダを開く…", act: () => void openFolder() }, { label: "フォルダを閉じる", act: () => void closeFolder() });
+  items.push({ label: t("app-files-project-menu-open-other"), act: () => void openFolder() }, { label: t("app-files-project-menu-close"), act: () => void closeFolder() });
   // 取り返しがつかないので、ほかの項目から離して最後に置く（F-PROJ-4）
-  if (hasFolderEdits(f.source)) items.push({ sep: true }, { label: "このフォルダを削除…", act: () => void deleteOpenFolder() });
+  if (hasFolderEdits(f.source)) items.push({ sep: true }, { label: t("app-files-project-menu-delete"), act: () => void deleteOpenFolder() });
   closeCtx();
   const r = anchor.getBoundingClientRect();
   openCtx(r.left, r.bottom + 2, items);
@@ -351,28 +352,28 @@ async function deleteOpenFolder(): Promise<void> {
   const name = f.ref.name;
   const docs = ws.list().filter((d) => ws.folderPath(d.key) !== null);
   const unsaved = docs.filter((d) => ws.isDirty(d)).map((d) => d.name);
-  const first = await ask("フォルダを削除", deleteFolderText(name, unsaved), [
-    { id: "cancel", label: "やめる" },
-    { id: "next", label: "削除に進む", kind: "danger" },
+  const first = await ask(t("app-files-delete-folder-title"), deleteFolderText(name, unsaved), [
+    { id: "cancel", label: t("app-files-button-cancel") },
+    { id: "next", label: t("app-files-delete-folder-next"), kind: "danger" },
   ]);
   if (first?.id !== "next") return;
-  const second = await ask("本当に削除しますか", `確かめのため、削除するフォルダの名前「${name}」を入力してください。`, [
-    { id: "cancel", label: "やめる" },
-    { id: "delete", label: "削除する", kind: "danger" },
-  ], { value: "", label: "フォルダの名前" });
+  const second = await ask(t("app-files-delete-folder-confirm-title"), t("app-files-delete-folder-confirm-text", { name }), [
+    { id: "cancel", label: t("app-files-button-cancel") },
+    { id: "delete", label: t("app-files-delete-folder-confirm-button"), kind: "danger" },
+  ], { value: "", label: t("app-files-delete-folder-confirm-field") });
   if (second?.id !== "delete") return;
-  if (second.value.trim() !== name) return toast("フォルダの名前が合わないので、削除しませんでした");
+  if (second.value.trim() !== name) return toast(t("app-files-delete-folder-name-mismatch"));
   const wasShown = docs.some((d) => d.key === shownKey);
   try {
     await ws.deleteFolder();
   } catch (e) {
-    toastFailure("フォルダを削除できませんでした", e);
+    toastFailure(t("app-files-delete-folder-failed"), e);
     return;
   }
   for (const d of docs) dropHistory(d.key);
   folderChanged();
   if (wasShown) showCurrent();
-  toast(`フォルダ「${name}」を削除しました`);
+  toast(t("app-files-delete-folder-done", { name }));
   await refreshRecents();
 }
 
@@ -387,8 +388,8 @@ async function renderRecentMenu(): Promise<void> {
   const current = f && local ? local.recentIdOf(f.ref) : null;
   const items = recents.filter((r) => r.id !== current);
   $("#recentMenu").innerHTML = items.length
-    ? `<div class="phead">最近開いたフォルダ</div>` +
-      items.map((r) => `<button data-recent-menu="${esc(r.id)}" title="${esc(`フォルダ「${r.name}」を開きます`)}">${esc(recentLabel(r))}</button>`).join("")
+    ? `<div class="phead">${esc(t("app-files-recent-menu-heading"))}</div>` +
+      items.map((r) => `<button data-recent-menu="${esc(r.id)}" title="${esc(t("app-files-recent-open-hint", { name: r.name }))}">${esc(recentLabel(r))}</button>`).join("")
     : "";
 }
 
@@ -420,7 +421,7 @@ function openSample(sample: Sample): void {
  */
 function isModelPath(path: string): boolean {
   if (/\.(sysml|kerml)$/i.test(path)) return true;
-  toast("ファイル名の最後は .sysml にしてください（例：model.sysml）");
+  toast(t("app-files-model-extension-required"));
   return false;
 }
 
@@ -428,17 +429,17 @@ function isModelPath(path: string): boolean {
  * 開いているフォルダに新しいファイルを作る（F-FILE-3）。ファイル名を尋ね、作れたら表示する。作れなければ理由をトーストで知らせる。
  */
 async function newFileInFolder(): Promise<void> {
-  const r = await ask("新しいファイル", "ファイル名を入力してください。フォルダの中のフォルダに作るときは「models/a.sysml」のように書けます。", [
-    { id: "cancel", label: "やめる" },
-    { id: "ok", label: "作成", kind: "primary" },
-  ], { value: "untitled.sysml", label: "ファイル名" });
+  const r = await ask(t("app-files-new-file-title"), t("app-files-new-file-path-text"), [
+    { id: "cancel", label: t("app-files-button-cancel") },
+    { id: "ok", label: t("app-files-button-create"), kind: "primary" },
+  ], { value: "untitled.sysml", label: t("app-files-field-file-name") });
   if (r?.id !== "ok") return;
   const path = r.value.trim();
   if (!isModelPath(path)) return;
   try {
     showDoc((await ws.createFile(path, "")).key);
   } catch (e) {
-    toastFailure("作成できませんでした", e);
+    toastFailure(t("app-files-create-failed"), e);
   }
 }
 
@@ -462,12 +463,12 @@ async function save(key: string, as = false): Promise<void> {
     if (outcome === "conflict") return await resolveConflict(key);
     if (outcome !== "saved") return;
     const note = layoutNotSavedNote(doc.savedLayout);
-    toast(ws.canWriteInPlace(doc) ? `「${doc.name}」を保存しました${note}` : `「${doc.name}」をダウンロードしました${note}`);
+    toast((ws.canWriteInPlace(doc) ? t("app-files-saved", { name: doc.name }) : t("app-files-saved-by-download", { name: doc.name })) + note);
     if (ws.layoutUnsaved(doc)) await offerFolderForLayout(key);
   } catch (e) {
     // 他のアプリに消されたファイルは、「名前を付けて保存」で保存し直せることも伝える（F-FILE-2、#243）
-    console.warn("保存できませんでした:", e);
-    toast(`保存できませんでした：${saveErrorText(e)}`);
+    console.warn("save failed:", e);
+    toast(t("app-files-save-failed", { reason: saveErrorText(e) }));
   }
 }
 
@@ -485,15 +486,15 @@ async function saveIntoFolder(key: string): Promise<void> {
   const doc = ws.get(key);
   const f = ws.folder();
   if (!doc || !f) return;
-  const r = await ask("名前を付けて保存", `フォルダ「${f.ref.name}」に保存します。ファイル名を入力してください。図の配置（要素の位置）も、同じ名前のファイルに一緒に保存します。`, [
-    { id: "cancel", label: "やめる" },
-    { id: "ok", label: "保存", kind: "primary" },
-  ], { value: doc.ref?.path ?? suggestName(doc.name), label: "ファイル名" });
+  const r = await ask(t("app-files-save-as-title"), t("app-files-save-as-text", { folder: f.ref.name }), [
+    { id: "cancel", label: t("app-files-button-cancel") },
+    { id: "ok", label: t("app-files-save-as-button"), kind: "primary" },
+  ], { value: doc.ref?.path ?? suggestName(doc.name), label: t("app-files-field-file-name") });
   if (r?.id !== "ok") return;
   const path = r.value.trim();
   if (!isModelPath(path)) return;
   await ws.saveToFolder(key, path);
-  toast(`「${doc.name}」を保存しました`);
+  toast(t("app-files-saved", { name: doc.name }));
 }
 
 /**
@@ -505,16 +506,16 @@ async function saveIntoFolder(key: string): Promise<void> {
 async function offerFolderForLayout(key: string): Promise<void> {
   const doc = ws.get(key);
   if (!doc || !local) return;
-  const r = await ask("図の配置を保存する場所", `「${doc.name}」だけを開いているため、図の配置（要素の位置）を保存できません。このファイルが入っているフォルダを開くと、配置も一緒に保存できるようになります。`, [
-    { id: "later", label: "あとで" },
-    { id: "open", label: "フォルダを開く", kind: "primary" },
+  const r = await ask(t("app-files-layout-home-title"), t("app-files-layout-home-text", { name: doc.name }), [
+    { id: "later", label: t("app-files-layout-home-later") },
+    { id: "open", label: t("app-files-layout-home-open"), kind: "primary" },
   ]);
   if (r?.id !== "open") return;
   const outcome = await ws.attachToFolder(key, local);
-  if (outcome === "notInFolder") return toast(`選んだフォルダに「${doc.name}」がありません。図の配置はまだ保存されていません`);
+  if (outcome === "notInFolder") return toast(t("app-files-layout-home-not-in-folder", { name: doc.name }));
   if (outcome !== "attached") return;
   showSide("files");
-  if ((await ws.save(key, browser)) === "saved") toast("図の配置も保存しました");
+  if ((await ws.save(key, browser)) === "saved") toast(t("app-files-layout-saved-too"));
 }
 
 /**
@@ -525,16 +526,16 @@ async function offerFolderForLayout(key: string): Promise<void> {
 async function resolveConflict(key: string): Promise<void> {
   const doc = ws.get(key);
   if (!doc) return;
-  const what = doc.stale ? `「${doc.name}」` : `「${doc.name}」の図の配置（要素の位置）`;
-  const r = await ask("ファイルが他で変更されています", `${what}は開いた後に他のアプリで変更されました。どうしますか？`, [
-    { id: "cancel", label: "やめる" },
-    { id: "reload", label: "ファイルの内容を読み込む（自分の変更を捨てる）" },
-    { id: "overwrite", label: "自分の内容で上書きする", kind: "danger" },
+  const text = doc.stale ? t("app-files-conflict-file-text", { name: doc.name }) : t("app-files-conflict-layout-text", { name: doc.name });
+  const r = await ask(t("app-files-conflict-title"), text, [
+    { id: "cancel", label: t("app-files-button-cancel") },
+    { id: "reload", label: t("app-files-conflict-reload") },
+    { id: "overwrite", label: t("app-files-conflict-overwrite"), kind: "danger" },
   ]);
   if (r?.id === "overwrite") {
     if (doc.layoutStale && !(await keepNewerLayout(key))) return;
     await ws.save(key, browser, { force: true });
-    toast(`「${doc.name}」を上書きしました`);
+    toast(t("app-files-overwritten", { name: doc.name }));
   } else if (r?.id === "reload") {
     await ws.reload(key);
     if (shownKey === key) showDoc(key);
@@ -560,7 +561,7 @@ async function keepNewerLayout(key: string): Promise<boolean> {
   if (lock) {
     ws.setLayout(key, disk);
     if (shownKey === key) showDoc(key);
-    toast(`${lock}。「${doc.name}」の図の配置は上書きせず、ファイルの配置を表示しました`);
+    toast(t("app-files-layout-kept-newer", { reason: lock, name: doc.name }));
     if (doc.text !== doc.savedText) await ws.save(key, browser, { force: true });
     return false;
   }
@@ -579,10 +580,10 @@ async function closeDoc(key: string): Promise<void> {
   const doc = ws.get(key);
   if (!doc) return;
   if (ws.isDirty(doc) || (!doc.ref && doc.text.trim())) {
-    const r = await ask("閉じる前に", doc.ref ? `「${doc.name}」の変更を保存しますか？` : `「${doc.name}」は保存先がありません。保存しますか？`, [
-      { id: "cancel", label: "やめる" },
-      { id: "discard", label: "保存しない", kind: "danger" },
-      { id: "save", label: "保存する", kind: "primary" },
+    const r = await ask(t("app-files-close-title"), doc.ref ? t("app-files-close-save-changes", { name: doc.name }) : t("app-files-close-no-home", { name: doc.name }), [
+      { id: "cancel", label: t("app-files-button-cancel") },
+      { id: "discard", label: t("app-files-close-discard"), kind: "danger" },
+      { id: "save", label: t("app-files-close-save"), kind: "primary" },
     ]);
     if (!r || r.id === "cancel") return;
     if (r.id === "save") {
@@ -606,14 +607,14 @@ async function closeDoc(key: string): Promise<void> {
 function openInFolder(path: string, at?: number): void {
   const f = ws.folder();
   const ref = f ? findFile(f.entries, path) : null;
-  if (!ref) return toast(`「${path}」が見つかりません。フォルダの一覧を更新してください`);
+  if (!ref) return toast(t("app-files-not-in-folder", { path }));
   flushEdit();
   void ws.openRef(ref, { preview: true }).then(
     (d) => {
       showDoc(d.key);
       if (at !== undefined) moveCaret(at);
     },
-    (err: unknown) => toastFailure("開けませんでした", err),
+    (err: unknown) => toastFailure(t("app-files-open-failed"), err),
   );
 }
 
@@ -735,19 +736,19 @@ async function refreshFolder(): Promise<void> {
 async function makeProject(): Promise<void> {
   const f = ws.folder();
   if (!f) return;
-  const r = await ask("プロジェクトにする", `フォルダ「${f.ref.name}」をプロジェクトにします。プロジェクト名を入力してください。チームで共有する設定ファイル（${PROJECT_FILE}）を、フォルダの直下に作成します。`, [
-    { id: "cancel", label: "やめる" },
-    { id: "ok", label: "作成", kind: "primary" },
-  ], { value: f.ref.name, label: "プロジェクト名" });
+  const r = await ask(t("app-files-make-project-title"), t("app-files-make-project-text", { folder: f.ref.name, file: PROJECT_FILE }), [
+    { id: "cancel", label: t("app-files-button-cancel") },
+    { id: "ok", label: t("app-files-button-create"), kind: "primary" },
+  ], { value: f.ref.name, label: t("app-files-make-project-field") });
   if (r?.id !== "ok") return;
   const name = r.value.trim() || f.ref.name;
   const made = await coreClient().createProjectFile(name);
   if ("refused" in made) return toast(made.refused);
   try {
     await ws.makeProject(made.text);
-    toast(`フォルダ「${f.ref.name}」を、プロジェクト「${name}」にしました`);
+    toast(t("app-files-make-project-done", { folder: f.ref.name, name }));
   } catch (e) {
-    toastFailure("プロジェクトにできませんでした", e);
+    toastFailure(t("app-files-make-project-failed"), e);
   }
 }
 
@@ -777,7 +778,7 @@ function warnLostDrafts(): void {
  * // 保存済み
  * dirtyMark(d) // → ""
  */
-const dirtyMark = (d: Doc): string => (ws.isDirty(d) ? `<span class="dot" title="未保存の変更があります">●</span>` : "");
+const dirtyMark = (d: Doc): string => (ws.isDirty(d) ? `<span class="dot" title="${esc(t("app-files-dirty-hint"))}">●</span>` : "");
 /**
  * 配置を変えたが保存先が無い文書の印（「配置は未保存」）の HTML を作る（F-VIEW-6）。保存先の無い（無題の）文書には付けない。
  *
@@ -790,7 +791,7 @@ const dirtyMark = (d: Doc): string => (ws.isDirty(d) ? `<span class="dot" title=
  * layoutMark(d) // → ""
  */
 const layoutMark = (d: Doc): string =>
-  d.ref && ws.layoutUnsaved(d) ? `<span class="lu" title="図の配置（要素の位置）を保存する場所がありません。このファイルが入っているフォルダを開くと保存できます">配置は未保存</span>` : "";
+  d.ref && ws.layoutUnsaved(d) ? `<span class="lu" title="${esc(t("app-files-layout-unsaved-hint"))}">${esc(t("app-files-layout-unsaved-mark"))}</span>` : "";
 /**
  * 他のアプリで変更された文書の印（⚠）の HTML を作る（F-FILE-8）。
  *
@@ -802,7 +803,7 @@ const layoutMark = (d: Doc): string =>
  * // どちらも false
  * staleMark(d) // → ""
  */
-const staleMark = (d: Doc): string => (d.stale || d.layoutStale ? `<span class="st" title="他のアプリで変更されています">⚠</span>` : "");
+const staleMark = (d: Doc): string => (d.stale || d.layoutStale ? `<span class="st" title="${esc(t("app-files-stale-hint"))}">⚠</span>` : "");
 
 /**
  * エクスプローラー（開いているファイルと、開いているフォルダの中身）を描き直す（F-FILE-1・F-FILE-4）。
@@ -815,28 +816,28 @@ function renderFiles(): void {
   const active = ws.active();
   const docs = ws.list()
     .map((d) => {
-      const base = d.ref ? (ws.canWriteInPlace(d) ? d.ref.path : `${d.ref.name}（ダウンロードで保存）`) : "保存先なし（ブラウザに下書き保存）";
+      const base = d.ref ? (ws.canWriteInPlace(d) ? d.ref.path : t("app-files-doc-where-download", { name: d.ref.name })) : t("app-files-doc-where-draft");
       // 仮に開いたファイルは名前を斜体にし、開いたままにする方法を添える（F-FILE-17）
       const where = d.preview ? `${base}\n${PREVIEW_HINT}` : base;
-      return `<div class="fi${d.key === active?.key ? " sel" : ""}${d.preview ? " pv" : ""}" data-doc="${esc(d.key)}" title="${esc(where)}" style="--d:0" tabindex="0"${d.key === active?.key ? ' aria-current="true"' : ""}><span class="ic">${d.ref ? "▤" : "✎"}</span><span class="nm">${esc(d.name)}</span>${staleMark(d)}${dirtyMark(d)}${layoutMark(d)}<button class="x" data-close="${esc(d.key)}" aria-label="閉じる">×</button></div>`;
+      return `<div class="fi${d.key === active?.key ? " sel" : ""}${d.preview ? " pv" : ""}" data-doc="${esc(d.key)}" title="${esc(where)}" style="--d:0" tabindex="0"${d.key === active?.key ? ' aria-current="true"' : ""}><span class="ic">${d.ref ? "▤" : "✎"}</span><span class="nm">${esc(d.name)}</span>${staleMark(d)}${dirtyMark(d)}${layoutMark(d)}<button class="x" data-close="${esc(d.key)}" aria-label="${esc(t("app-files-doc-close-label"))}">×</button></div>`;
     })
     .join("");
-  let h = `<div class="sec"><span class="grow">開いているファイル</span><button data-cmd="new" title="新しいファイル">＋</button></div>${docs || `<div class="msg">開いているファイルはありません。</div>`}`;
+  let h = `<div class="sec"><span class="grow">${esc(t("app-files-open-docs-heading"))}</span><button data-cmd="new" title="${esc(t("app-files-new-file-hint"))}">${esc(t("app-files-add-mark"))}</button></div>${docs || `<div class="msg">${esc(t("app-files-open-docs-empty"))}</div>`}`;
   const f = ws.folder();
   if (f) {
     h += folderHeader();
-    h += f.entries.length ? folderRows(f.entries, 0, fileStatuses()) : `<div class="msg">モデルのファイル（.sysml）がありません。</div>`;
+    h += f.entries.length ? folderRows(f.entries, 0, fileStatuses()) : `<div class="msg">${esc(t("app-files-folder-empty"))}</div>`;
   } else if (local) {
-    h += `<div class="sec"><span class="grow">フォルダ</span></div><div class="msg">フォルダを開くと、中の .sysml ファイルを一覧して編集・上書き保存できます。<br><button data-cmd="openFolder" class="primary">フォルダを開く</button>`;
+    h += `<div class="sec"><span class="grow">${esc(t("app-files-folder-heading"))}</span></div><div class="msg">${esc(t("app-files-folder-intro"))}<br><button data-cmd="openFolder" class="primary">${esc(t("app-files-folder-open-button"))}</button>`;
     h += `</div>`;
     if (recents.length) {
-      h += `<div class="sec"><span class="grow">プロジェクトの一覧</span></div>`;
+      h += `<div class="sec"><span class="grow">${esc(t("app-files-project-list"))}</span></div>`;
       h += recents
-        .map((r) => `<div class="fi" data-recent="${esc(r.id)}" title="${esc(`フォルダ「${r.name}」を開きます`)}" style="--d:0"><span class="ic">▣</span><span class="nm">${esc(recentLabel(r))}</span><button class="x" data-forget="${esc(r.id)}" aria-label="一覧から外す" title="一覧から外す（フォルダの中身には触れません）">×</button></div>`)
+        .map((r) => `<div class="fi" data-recent="${esc(r.id)}" title="${esc(t("app-files-recent-open-hint", { name: r.name }))}" style="--d:0"><span class="ic">▣</span><span class="nm">${esc(recentLabel(r))}</span><button class="x" data-forget="${esc(r.id)}" aria-label="${esc(t("app-files-recent-forget-label"))}" title="${esc(t("app-files-recent-forget-hint"))}">×</button></div>`)
         .join("");
     }
   } else {
-    h += `<div class="sec"><span class="grow">フォルダ</span></div><div class="msg">このブラウザではフォルダを開けません（Chrome・Edge で使えます）。「ファイルを開く」で読み込み、保存はダウンロードになります。図の配置ファイル（.layout.json）は、モデルと一緒に選ぶと読み込みます。</div>`;
+    h += `<div class="sec"><span class="grow">${esc(t("app-files-folder-heading"))}</span></div><div class="msg">${esc(t("app-files-folder-unsupported"))}</div>`;
   }
   $("#explorer").innerHTML = h;
   if (focused !== null) listRow(focused)?.focus();
@@ -877,11 +878,11 @@ function renderNoDoc(): void {
  */
 function renderResumeAsk(): void {
   const ask = resumeAsk;
-  $("#noDocTitle").textContent = ask ? "前回の続きから始められます" : "開いているファイルはありません";
+  $("#noDocTitle").textContent = ask ? t("app-files-resume-title") : t("app-files-no-doc-title");
   $("#noDocText").hidden = !!ask;
   const text = $("#noDocResume");
   text.hidden = !ask;
-  text.textContent = ask ? `前回は、フォルダ「${ask.folder}」のファイルを開いていました。「前回の続きを開く」を押して、ブラウザの確認でフォルダの編集を許可すると、続きから始めます。` : "";
+  text.textContent = ask ? t("app-files-resume-text", { folder: ask.folder }) : "";
   $('#noDoc [data-nodoc="resume"]').hidden = !ask;
   $('#noDoc [data-nodoc="new"]').classList.toggle("primary", !ask);
 }
@@ -917,17 +918,17 @@ async function resumeFrom(session: Session, drafts: StartWith, folder: "no" | "q
       opened = await ws.reopenFolder(local, { ask: folder === "ask" });
     } catch {
       gone = true;
-      toast(`前回のフォルダ「${(await local.recentFolder()) ?? ""}」を開けませんでした。移動したか、削除された可能性があります`);
+      toast(t("app-files-resume-folder-missing", { name: (await local.recentFolder()) ?? "" }));
     }
   }
   // 許可が得られなければ、もう一度押せるように待ち続ける（フォルダが無くなっていたら、待たずに下書きだけを戻す）
   if (folder === "ask" && !opened && !gone) {
-    toast("フォルダを開く許可が得られませんでした");
+    toast(t("app-files-folder-permission-denied"));
     return false;
   }
   const missing = await ws.resumeSession(session);
-  if (missing.length === 1) toast(`前回開いていた「${missing[0] ?? ""}」が見つかりませんでした`);
-  else if (missing.length > 1) toast(`前回開いていたファイルのうち、${missing.length} 個が見つかりませんでした`);
+  if (missing.length === 1) toast(t("app-files-resume-file-missing", { name: missing[0] ?? "" }));
+  else if (missing.length > 1) toast(t("app-files-resume-files-missing", { count: String(missing.length) }));
   if (afterRestore(ws.list().length, opened, drafts) === "sample") ws.newUntitled(sampleDoc.name, sampleDoc.text, sampleDoc.layout);
   showCurrent();
   return true;
@@ -994,12 +995,12 @@ function folderHeader(): string {
   const f = ws.folder();
   if (!f) return "";
   const named = project?.project ? projectTitle(f.ref.name, project.project) : null;
-  const title = named ? `プロジェクト「${named}」（フォルダ「${f.ref.name}」）` : f.ref.name;
+  const title = named ? t("app-files-folder-title-project", { project: named, folder: f.ref.name }) : f.ref.name;
   // 見出しに並べるとフォルダ名が隠れるので、見出しのすぐ下の行に出す
   const make = f.projectText === null && hasFolderFiles(f.source)
-    ? `<div class="mkproj"><button data-cmd="makeProject" title="プロジェクト名やプラグインなどの設定を、チームで共有できるようにします（設定ファイル ${PROJECT_FILE} を作成します）">プロジェクトにする</button></div>`
+    ? `<div class="mkproj"><button data-cmd="makeProject" title="${esc(t("app-files-make-project-hint", { file: PROJECT_FILE }))}">${esc(t("app-files-make-project-button"))}</button></div>`
     : "";
-  return `<div class="sec"><span class="grow"><span class="fold" data-folder role="button" tabindex="0" aria-haspopup="menu" title="${esc(`${title}\nクリックすると、プロジェクトの一覧（切り替え・フォルダを閉じる）を出します`)}"><span class="fn">${esc((named ?? f.ref.name).toUpperCase())}</span></span></span><button data-cmd="newInFolder" title="このフォルダに新しいファイル">＋</button><button data-cmd="refresh" title="一覧を更新">↻</button></div>${make}${pluginExplorerHtml()}`;
+  return `<div class="sec"><span class="grow"><span class="fold" data-folder role="button" tabindex="0" aria-haspopup="menu" title="${esc(`${title}\n${t("app-files-folder-menu-hint")}`)}"><span class="fn">${esc((named ?? f.ref.name).toUpperCase())}</span></span></span><button data-cmd="newInFolder" title="${esc(t("app-files-new-in-folder-hint"))}">${esc(t("app-files-add-mark"))}</button><button data-cmd="refresh" title="${esc(t("app-files-refresh-hint"))}">↻</button></div>${make}${pluginExplorerHtml()}`;
 }
 
 /**
@@ -1129,7 +1130,7 @@ async function allNamesIn(dir: string): Promise<string[]> {
   try {
     return [...new Set([...listed, ...(await f.source.namesInFolder(f.ref, dir))])];
   } catch (e) {
-    console.warn("フォルダの中の名前を読めませんでした:", e);
+    console.warn("could not read the names in the folder:", e);
     return listed;
   }
 }
@@ -1205,7 +1206,7 @@ function openListFile(ref: FileRef, preview: boolean): void {
   flushEdit();
   void ws.openRef(ref, { preview }).then(
     (d) => showDoc(d.key),
-    (err: unknown) => toastFailure("開けませんでした", err),
+    (err: unknown) => toastFailure(t("app-files-open-failed"), err),
   );
 }
 
@@ -1216,12 +1217,12 @@ function openListFile(ref: FileRef, preview: boolean): void {
  */
 function openListMenu(ev: MouseEvent): void {
   const f = ws.folder();
-  const t = listTarget(ev.target);
-  if (!f || !t || !hasFolderEdits(f.source) || renaming !== null) return;
+  const target = listTarget(ev.target);
+  if (!f || !target || !hasFolderEdits(f.source) || renaming !== null) return;
   ev.preventDefault();
   closeCtx();
-  const items: CtxItem[] = [{ head: t.path ? baseName(t.path) : f.ref.name }];
-  for (const a of fileMenuItems(t.kind)) items.push(a === null ? { sep: true } : { label: FILE_MENU_LABEL[a], act: () => void runListAction(a, t) });
+  const items: CtxItem[] = [{ head: target.path ? baseName(target.path) : f.ref.name }];
+  for (const a of fileMenuItems(target.kind)) items.push(a === null ? { sep: true } : { label: FILE_MENU_LABEL[a], act: () => void runListAction(a, target) });
   openCtx(ev.clientX, ev.clientY, items);
 }
 
@@ -1229,19 +1230,19 @@ function openListMenu(ev: MouseEvent): void {
  * ファイルの一覧のメニューの項目を行う（F-FILE-19）。
  *
  * @param a 項目の操作
- * @param t 右クリックした行
+ * @param target 右クリックした行
  */
-async function runListAction(a: FileMenuAction, t: ListTarget): Promise<void> {
+async function runListAction(a: FileMenuAction, target: ListTarget): Promise<void> {
   const f = ws.folder();
   if (!f) return;
   if (a === "open") {
-    const ref = findFile(f.entries, t.path);
+    const ref = findFile(f.entries, target.path);
     if (ref) openListFile(ref, false);
-  } else if (a === "newFile") await newFileIn(t.path);
-  else if (a === "newFolder") await newFolderIn(t.path);
-  else if (a === "rename") startRename(t);
-  else if (a === "delete") await deleteListEntry(t);
-  else await copyPath(a === "copyPath" ? pathFromFolder(f.ref.name, t.path) : t.path);
+  } else if (a === "newFile") await newFileIn(target.path);
+  else if (a === "newFolder") await newFolderIn(target.path);
+  else if (a === "rename") startRename(target);
+  else if (a === "delete") await deleteListEntry(target);
+  else await copyPath(a === "copyPath" ? pathFromFolder(f.ref.name, target.path) : target.path);
 }
 
 /**
@@ -1250,10 +1251,10 @@ async function runListAction(a: FileMenuAction, t: ListTarget): Promise<void> {
  * @param dir 作る場所のフォルダのパス（一番上なら ""）
  */
 async function newFileIn(dir: string): Promise<void> {
-  const r = await ask("新しいファイル", dir ? `フォルダ「${dir}」に作るファイルの名前を入力してください。` : "ファイルの名前を入力してください。", [
-    { id: "cancel", label: "やめる" },
-    { id: "ok", label: "作成", kind: "primary" },
-  ], { value: "untitled.sysml", label: "ファイル名" });
+  const r = await ask(t("app-files-new-file-title"), dir ? t("app-files-new-file-in-text", { dir }) : t("app-files-new-file-top-text"), [
+    { id: "cancel", label: t("app-files-button-cancel") },
+    { id: "ok", label: t("app-files-button-create"), kind: "primary" },
+  ], { value: "untitled.sysml", label: t("app-files-field-file-name") });
   if (r?.id !== "ok") return;
   const problem = nameProblem(r.value, await allNamesIn(dir), { model: true });
   if (problem) return toast(problem);
@@ -1261,7 +1262,7 @@ async function newFileIn(dir: string): Promise<void> {
     collapsed.delete(dir);
     showDoc((await ws.createFile(childPath(dir, r.value.trim()), "")).key);
   } catch (e) {
-    toastFailure("作成できませんでした", e);
+    toastFailure(t("app-files-create-failed"), e);
   }
 }
 
@@ -1271,10 +1272,10 @@ async function newFileIn(dir: string): Promise<void> {
  * @param dir 作る場所のフォルダのパス（一番上なら ""）
  */
 async function newFolderIn(dir: string): Promise<void> {
-  const r = await ask("新しいフォルダ", dir ? `フォルダ「${dir}」に作るフォルダの名前を入力してください。` : "フォルダの名前を入力してください。", [
-    { id: "cancel", label: "やめる" },
-    { id: "ok", label: "作成", kind: "primary" },
-  ], { value: "", label: "フォルダ名" });
+  const r = await ask(t("app-files-new-folder-title"), dir ? t("app-files-new-folder-in-text", { dir }) : t("app-files-new-folder-top-text"), [
+    { id: "cancel", label: t("app-files-button-cancel") },
+    { id: "ok", label: t("app-files-button-create"), kind: "primary" },
+  ], { value: "", label: t("app-files-field-folder-name") });
   if (r?.id !== "ok") return;
   const problem = nameProblem(r.value, await allNamesIn(dir), { folder: true });
   if (problem) return toast(problem);
@@ -1282,7 +1283,7 @@ async function newFolderIn(dir: string): Promise<void> {
     collapsed.delete(dir);
     await ws.createFolder(childPath(dir, r.value.trim()));
   } catch (e) {
-    toastFailure("作成できませんでした", e);
+    toastFailure(t("app-files-create-failed"), e);
   }
 }
 
@@ -1290,27 +1291,27 @@ async function newFolderIn(dir: string): Promise<void> {
  * 一覧の行の名前を、その場で書き換え始める（F-FILE-19）。Enter で決め、Esc でやめる。ほかを押して離れたら、使える名前なら決める。
  * 使えない名前は、理由を行の下に示して決めさせない。
  *
- * @param t 名前を変える行（開いたフォルダそのものは変えない）
+ * @param target 名前を変える行（開いたフォルダそのものは変えない）
  */
-function startRename(t: ListTarget): void {
+function startRename(target: ListTarget): void {
   clearTimeout(renameTimer);
-  const row = t.kind === "root" ? null : listRow(t.path);
+  const row = target.kind === "root" ? null : listRow(target.path);
   const nm = row?.querySelector(".nm");
   if (!row || !nm || renaming !== null) return;
-  const old = baseName(t.path);
-  const siblings = namesIn(parentPath(t.path)).filter((n) => n !== old);
+  const old = baseName(target.path);
+  const siblings = namesIn(parentPath(target.path)).filter((n) => n !== old);
   const input = document.createElement("input");
   input.className = "rn";
   input.value = old;
   input.spellcheck = false;
-  input.setAttribute("aria-label", "新しい名前");
+  input.setAttribute("aria-label", t("app-files-rename-label"));
   const problem = (): string | null =>
-    input.value.trim() === old ? null : nameProblem(input.value, siblings, { model: t.kind === "file", folder: t.kind === "dir" });
+    input.value.trim() === old ? null : nameProblem(input.value, siblings, { model: target.kind === "file", folder: target.kind === "dir" });
   const msg = document.createElement("div");
   msg.className = "rnmsg";
   msg.setAttribute("role", "alert");
   msg.hidden = true;
-  renaming = t.path;
+  renaming = target.path;
   nm.replaceWith(input);
   row.after(msg);
   const show = (): string | null => {
@@ -1322,7 +1323,7 @@ function startRename(t: ListTarget): void {
   };
   let done = false;
   // 一覧に出ないファイル（readme.md・配置ファイル）の名前も、読めたら比べる（#243）
-  void allNamesIn(parentPath(t.path)).then((all) => {
+  void allNamesIn(parentPath(target.path)).then((all) => {
     siblings.splice(0, siblings.length, ...all.filter((n) => n !== old));
     if (!done && input.value.trim() !== old) show();
   });
@@ -1332,8 +1333,8 @@ function startRename(t: ListTarget): void {
     renaming = null;
     const name = input.value.trim();
     renderFiles();
-    if (commit && name !== old && !problem()) void renameListEntry(t.path, childPath(parentPath(t.path), name));
-    else listRow(t.path)?.focus();
+    if (commit && name !== old && !problem()) void renameListEntry(target.path, childPath(parentPath(target.path), name));
+    else listRow(target.path)?.focus();
   };
   input.oninput = show;
   input.onkeydown = (ev) => {
@@ -1349,7 +1350,7 @@ function startRename(t: ListTarget): void {
   input.onblur = () => finish(!problem());
   input.onclick = (ev) => ev.stopPropagation();
   input.focus();
-  input.setSelectionRange(0, renameSelectionEnd(old, t.kind === "file"));
+  input.setSelectionRange(0, renameSelectionEnd(old, target.kind === "file"));
 }
 
 /**
@@ -1366,7 +1367,7 @@ async function renameListEntry(from: string, to: string): Promise<void> {
   try {
     await ws.renameEntry(from, to);
   } catch (e) {
-    toastFailure("名前を変更できませんでした", e);
+    toastFailure(t("app-files-rename-failed"), e);
     return;
   }
   moveCollapsed(from, to);
@@ -1401,30 +1402,30 @@ async function layoutBeside(path: string): Promise<string | null> {
 /**
  * ファイルかフォルダを、確かめてから消す（F-FILE-19）。隣の配置ファイルも消し、開いていたファイルを閉じる。できなければ理由をトーストで知らせる。
  *
- * @param t 消す行（開いたフォルダそのものは消さない）
+ * @param target 消す行（開いたフォルダそのものは消さない）
  */
-async function deleteListEntry(t: ListTarget): Promise<void> {
+async function deleteListEntry(target: ListTarget): Promise<void> {
   const f = ws.folder();
-  if (!f || t.kind === "root") return;
+  if (!f || target.kind === "root") return;
   flushQuiet();
-  const docs = ws.docsIn(t.path);
+  const docs = ws.docsIn(target.path);
   const unsaved = docs.filter((d) => ws.isDirty(d)).map((d) => d.name);
-  const layout = t.kind === "file" ? await layoutBeside(t.path) : null;
-  const r = await ask("削除", deleteText(baseName(t.path), t.kind === "dir", unsaved, layout), [
-    { id: "cancel", label: "やめる" },
-    { id: "delete", label: "削除", kind: "danger" },
+  const layout = target.kind === "file" ? await layoutBeside(target.path) : null;
+  const r = await ask(t("app-files-delete-title"), deleteText(baseName(target.path), target.kind === "dir", unsaved, layout), [
+    { id: "cancel", label: t("app-files-button-cancel") },
+    { id: "delete", label: t("app-files-delete-button"), kind: "danger" },
   ]);
   if (r?.id !== "delete") return;
   const wasShown = docs.some((d) => d.key === shownKey);
   try {
-    await ws.removeEntry(t.path);
+    await ws.removeEntry(target.path);
   } catch (e) {
-    toastFailure("削除できませんでした", e);
+    toastFailure(t("app-files-delete-failed"), e);
     return;
   }
   for (const d of docs) dropHistory(d.key);
-  moveCollapsed(t.path, null);
-  moveDocTabsMemory(f.ref.provider, t.path, null);
+  moveCollapsed(target.path, null);
+  moveDocTabsMemory(f.ref.provider, target.path, null);
   if (wasShown) showCurrent();
 }
 
@@ -1438,10 +1439,10 @@ async function copyPath(text: string): Promise<void> {
     await navigator.clipboard.writeText(text);
   } catch (e) {
     console.error(e);
-    toast("コピーできませんでした。ブラウザがクリップボードへの書き込みを許していません");
+    toast(t("app-files-copy-path-failed"));
     return;
   }
-  toast(`「${text}」をコピーしました`);
+  toast(t("app-files-copy-path-done", { path: text }));
 }
 
 /**
@@ -1501,7 +1502,7 @@ async function pickPluginFolder(): Promise<PickedPluginFolder | null> {
   for (const file of chosen) {
     const path = pluginFolderPath(file.webkitRelativePath);
     if (path === null) continue;
-    if (Object.keys(files).length >= MAX_TREE_FILES) throw new Error(`ファイルが多すぎます（${MAX_TREE_FILES} 件まで）。プラグインのフォルダを選んでください`);
+    if (Object.keys(files).length >= MAX_TREE_FILES) throw new Error(t("files-too-many", { max: String(MAX_TREE_FILES) }));
     files[path] = await file.text();
   }
   const first = chosen[0]?.webkitRelativePath.split("/")[0];
@@ -1576,7 +1577,7 @@ function initMenu(): void {
   cmd("#btnSave", () => void save(shownKey ?? ""));
   cmd("#btnSaveAs", () => void save(shownKey ?? "", true));
   $<HTMLButtonElement>("#btnOpenFolder").disabled = !local;
-  $("#fileNote").textContent = local ? "保存先の無いファイルは、このブラウザに下書き保存されます" : "このブラウザでは、保存はダウンロードになります。図の配置は .layout.json として一緒にダウンロードされ、開くときに 2 つを一緒に選ぶと戻ります";
+  $("#fileNote").textContent = local ? t("app-files-note-drafts") : t("app-files-note-download");
   const startSample = $<HTMLInputElement>("#startSample");
   startSample.checked = store.get(START_SAMPLE_KEY) === "1";
   startSample.onchange = () => store.set(START_SAMPLE_KEY, startSample.checked ? "1" : "0");
@@ -1598,7 +1599,7 @@ function initMenu(): void {
     if (k === "s") {
       ev.preventDefault();
       if (shownKey) void save(shownKey, ev.shiftKey);
-      else toast("開いているファイルがありません");
+      else toast(t("app-files-save-no-doc"));
     } else if (k === "o") {
       ev.preventDefault();
       void openFile();
@@ -1682,11 +1683,11 @@ function initExplorer(): void {
       ev.preventDefault();
       return void openProjectMenu(ev.target);
     }
-    const t = listTarget(ev.target);
+    const target = listTarget(ev.target);
     const f = ws.folder();
-    if (!t || t.kind === "root" || !f || !hasFolderEdits(f.source) || renaming !== null || !(ev.target instanceof HTMLElement) || ev.target.dataset["path"] === undefined) return;
-    if (ev.key === "F2") startRename(t);
-    else if (ev.key === "Delete") void deleteListEntry(t);
+    if (!target || target.kind === "root" || !f || !hasFolderEdits(f.source) || renaming !== null || !(ev.target instanceof HTMLElement) || ev.target.dataset["path"] === undefined) return;
+    if (ev.key === "F2") startRename(target);
+    else if (ev.key === "Delete") void deleteListEntry(target);
     else return;
     ev.preventDefault();
     ev.stopPropagation();
@@ -1745,16 +1746,16 @@ async function checkOnEditStart(key: string): Promise<void> {
   if (!doc) return;
   askingFresh.add(key);
   try {
-    const r = await ask("ファイルが他で変更されています", editStartText(doc.name), [
-      { id: "keep", label: "このまま編集する" },
-      { id: "reload", label: "ファイルの内容を読み込む（いま入力した変更を捨てる）", kind: "primary" },
+    const r = await ask(t("app-files-edit-start-title"), editStartText(doc.name), [
+      { id: "keep", label: t("app-files-edit-start-keep") },
+      { id: "reload", label: t("app-files-edit-start-reload"), kind: "primary" },
     ]);
     if (r?.id !== "reload") return;
     flushEdit();
     await ws.reload(key);
     if (shownKey === key) showDoc(key);
   } catch (e) {
-    toastFailure("読み込めませんでした", e);
+    toastFailure(t("app-files-reload-failed"), e);
   } finally {
     askingFresh.delete(key);
   }
@@ -1825,12 +1826,12 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
   autoSave = store.get(AUTOSAVE_KEY) === "1";
   auto = new AutoSaver(ws, browserTimer, () => autoSave, (key, outcome) => {
     if (outcome === "conflict" && askingFresh.has(key)) return; // 編集し始めたときのダイアログで尋ねている（F-FILE-18）
-    if (outcome === "conflict") toast(`「${ws.get(key)?.name ?? ""}」は他のアプリで変更されたため、自動保存しませんでした。保存（Ctrl+S）で選べます`);
+    if (outcome === "conflict") toast(t("app-files-autosave-conflict", { name: ws.get(key)?.name ?? "" }));
     // 失敗しても文書は未保存のまま（●）なので、知らせるだけにして、保存（Ctrl+S）で試し直してもらう（F-FILE-6）
     else if (typeof outcome === "object") {
       // 手動の保存と同じく、他のアプリに消されたファイルは「名前を付けて保存」で保存し直せることも伝える（F-FILE-2・F-FILE-6。#266）
-      console.warn("自動保存できませんでした:", outcome.failed);
-      toast(`「${ws.get(key)?.name ?? ""}」を自動保存できませんでした：${saveErrorText(outcome.failed)}`);
+      console.warn("autosave failed:", outcome.failed);
+      toast(t("app-files-autosave-failed", { name: ws.get(key)?.name ?? "", reason: saveErrorText(outcome.failed) }));
     }
   });
   onTextChange((text) => editShown((key) => ws.setText(key, text)));
@@ -1887,5 +1888,4 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
 }
 
 /** 前回のフォルダの記録（IndexedDB）が新しい版の形で使えないときの知らせ（#241）。 */
-const TOO_NEW_HANDLES =
-  "前回開いたフォルダの記録は、新しい版の Modelith が書いた形のため、この版では使えません。記録は消さずに残します。フォルダは「フォルダを開く」から開いてください";
+const TOO_NEW_HANDLES = t("app-files-recent-record-too-new");

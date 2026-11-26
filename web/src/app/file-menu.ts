@@ -1,6 +1,8 @@
 // ファイルの一覧の右クリックのメニュー（F-FILE-19）。どの項目を並べるかと、削除を確かめる文を決めるだけの純粋関数。
 // メニューを開き、項目の操作を行うのは files.ts。
 
+import { t } from "../l10n";
+
 /** メニューの項目の操作。 */
 export type FileMenuAction = "open" | "newFile" | "newFolder" | "rename" | "delete" | "copyPath" | "copyRelative";
 
@@ -16,13 +18,13 @@ const ITEMS: Record<FileMenuTarget, readonly (FileMenuAction | null)[]> = {
 
 /** 項目の名前。 */
 export const FILE_MENU_LABEL: Record<FileMenuAction, string> = {
-  open: "開く",
-  newFile: "新しいファイル…",
-  newFolder: "新しいフォルダ…",
-  rename: "名前の変更",
-  delete: "削除…",
-  copyPath: "パスのコピー",
-  copyRelative: "相対パスのコピー",
+  open: t("app-files-menu-open"),
+  newFile: t("app-files-menu-new-file"),
+  newFolder: t("app-files-menu-new-folder"),
+  rename: t("app-files-menu-rename"),
+  delete: t("app-files-menu-delete"),
+  copyPath: t("app-files-menu-copy-path"),
+  copyRelative: t("app-files-menu-copy-relative"),
 };
 
 /**
@@ -36,6 +38,19 @@ export const FILE_MENU_LABEL: Record<FileMenuAction, string> = {
  */
 export function fileMenuItems(target: FileMenuTarget): readonly (FileMenuAction | null)[] {
   return ITEMS[target];
+}
+
+/**
+ * 未保存の変更のあるファイルも閉じ、その変更が失われることを伝える文。
+ *
+ * @param unsaved 未保存の変更のある、開いているファイルの名前（1 つ以上）
+ * @returns 削除を確かめる文に添える文
+ * @example
+ * unsavedLost(["b.sysml"])            // → "未保存の変更のある「b.sysml」も閉じ、変更は失われます。"
+ * unsavedLost(["a.sysml", "b.sysml"]) // → "未保存の変更のある「a.sysml」「b.sysml」も閉じ、変更は失われます。"
+ */
+function unsavedLost(unsaved: readonly string[]): string {
+  return t("app-files-delete-unsaved-lost", { names: unsaved.map((name) => t("app-files-quoted-name", { name })).join("") });
 }
 
 /**
@@ -53,11 +68,11 @@ export function fileMenuItems(target: FileMenuTarget): readonly (FileMenuAction 
  * // → "フォルダ「models」を中身ごと削除しますか？ 未保存の変更のある「b.sysml」も閉じ、変更は失われます。削除したものは元に戻せません。"
  */
 export function deleteText(name: string, isDir: boolean, unsaved: readonly string[], layoutName: string | null): string {
-  const ask = isDir ? `フォルダ「${name}」を中身ごと削除しますか？` : `「${name}」を削除しますか？`;
+  const ask = isDir ? t("app-files-delete-ask-folder", { name }) : t("app-files-delete-ask-file", { name });
   const notes: string[] = [];
-  if (layoutName) notes.push(`図の配置のファイル（${layoutName}）も削除します。`);
-  if (unsaved.length) notes.push(`未保存の変更のある${unsaved.map((n) => `「${n}」`).join("")}も閉じ、変更は失われます。`);
-  notes.push("削除したものは元に戻せません。");
+  if (layoutName) notes.push(t("app-files-delete-with-layout", { layout: layoutName }));
+  if (unsaved.length) notes.push(unsavedLost(unsaved));
+  notes.push(t("app-files-delete-irreversible"));
   return `${ask} ${notes.join("")}`;
 }
 
@@ -72,6 +87,6 @@ export function deleteText(name: string, isDir: boolean, unsaved: readonly strin
  * // → "フォルダ「project」を、中のすべてのファイルごとパソコンから削除しますか？ モデルのファイル以外（画像・文書など）も消えます。削除したものは元に戻せません。"
  */
 export function deleteFolderText(name: string, unsaved: readonly string[]): string {
-  const lost = unsaved.length ? `未保存の変更のある${unsaved.map((n) => `「${n}」`).join("")}も閉じ、変更は失われます。` : "";
-  return `フォルダ「${name}」を、中のすべてのファイルごとパソコンから削除しますか？ モデルのファイル以外（画像・文書など）も消えます。${lost}削除したものは元に戻せません。`;
+  const lost = unsaved.length ? unsavedLost(unsaved) : "";
+  return t("app-files-delete-folder-ask", { name }) + lost + t("app-files-delete-irreversible");
 }

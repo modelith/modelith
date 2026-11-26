@@ -2,6 +2,7 @@
 // 図の中身の作り方は diagram-export.ts にあり、ここは画面の状態（S）から図の内容・配置・描き方を集めて渡す。
 
 import type { DiagramImage } from "../render/diagram-export";
+import { t } from "../l10n";
 import { drawioDocument, svgDocument } from "../render/diagram-export";
 import { selectionContent } from "./export-range";
 import { S } from "./state";
@@ -68,7 +69,7 @@ export async function rasterize(image: DiagramImage, scale: number, type: string
   canvas.width = Math.max(1, Math.round(image.width * scale));
   canvas.height = Math.max(1, Math.round(image.height * scale));
   const g = canvas.getContext("2d");
-  if (!g) throw new Error("画像を作れませんでした");
+  if (!g) throw new Error(t("app-files-image-not-made"));
   if (!transparent || type === "image/jpeg") {
     g.fillStyle = "#FFFFFF";
     g.fillRect(0, 0, canvas.width, canvas.height);
@@ -77,7 +78,7 @@ export async function rasterize(image: DiagramImage, scale: number, type: string
   // `canvas.toBlob` は使わない。ブラウザの手が空いたときに変換を進める作りで、画面が動いていない間は終わらないことがある
   // （「画像をコピー」が、成功も失敗も知らせずに止まった。#310）。その場で変換する `toDataURL` から作る
   const blob = dataUrlBlob(canvas.toDataURL(type, 0.92));
-  if (!blob) throw new Error("画像を作れませんでした");
+  if (!blob) throw new Error(t("app-files-image-not-made"));
   return blob;
 }
 
@@ -113,14 +114,14 @@ export function dataUrlBlob(url: string): Blob | null {
  * @example
  * copyFailureText(new DOMException("denied", "NotAllowedError"))
  *   // → "画像をコピーできませんでした。ブラウザがクリップボードへの書き込みを許しませんでした。ブラウザの許可を確かめるか、PNG 画像としてエクスポートしてください"
- * copyFailureText(new Error("このブラウザは画像のコピーに対応していません"))
+ * copyFailureText(new Error("This browser cannot copy images"))
  *   // → "画像をコピーできませんでした。このブラウザでは、PNG 画像としてエクスポートしてください"
  */
 export function copyFailureText(e: unknown): string {
   if (e instanceof Error && e.name === "NotAllowedError") {
-    return "画像をコピーできませんでした。ブラウザがクリップボードへの書き込みを許しませんでした。ブラウザの許可を確かめるか、PNG 画像としてエクスポートしてください";
+    return t("app-files-copy-image-denied");
   }
-  return "画像をコピーできませんでした。このブラウザでは、PNG 画像としてエクスポートしてください";
+  return t("app-files-copy-image-unsupported");
 }
 
 /**
@@ -130,7 +131,7 @@ export function copyFailureText(e: unknown): string {
  * @returns 書き込めたら解決し、ブラウザが許さなければ失敗する Promise
  */
 export async function copyImage(png: Promise<Blob>): Promise<void> {
-  if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("このブラウザは画像のコピーに対応していません");
+  if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("This browser cannot copy images");
   await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
 }
 

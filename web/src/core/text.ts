@@ -3,6 +3,7 @@
 // 画面が使う行の位置・差分の範囲・古い形式の配置コメント（ADR-0005）の読み書きだけを扱う。
 // 位置はすべて UTF-16。
 
+import { t } from "../l10n/index.ts";
 import type { ParseError } from "./types.ts";
 
 /** 配置情報を埋め込むコメント（ADR-0005 の移行期の形式）。 */
@@ -134,7 +135,7 @@ export function readLayout(text: string, errors: ParseError[]): Record<string, u
   try {
     return JSON.parse(lm[1]!) as Record<string, unknown>;
   } catch {
-    errors.push({ pos: lm.index ?? 0, msg: "@layout コメントを読み込めません" });
+    errors.push({ pos: lm.index ?? 0, msg: t("core-layout-comment-unreadable") });
     return {};
   }
 }

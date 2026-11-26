@@ -2,6 +2,8 @@
 // アプリのコードに触れるのはこのファイルだけ。画面（web/src/app）には頼らない。
 // コアの解析は wasm の「表示中のファイルと、ほかのファイル」の口を使うので、書き出すたびにプロジェクトのファイルを渡し直す。
 
+// 辞書は、描画のモジュールより先に入れる（ADR-0027）
+import "./l10n.ts";
 import { clearProjectFiles, setFocusFile, setProjectFile } from "../../web/src/core/wasm/modelith_core.js";
 import { build, parse } from "../../web/src/core/rust.ts";
 import { diagramDrawio, diagramSvg, type ViewTarget } from "../../web/src/render/index.ts";

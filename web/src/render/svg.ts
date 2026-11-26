@@ -1,5 +1,6 @@
 // 図の SVG マークアップを作る。画面表示と SVG 書き出しで共用し、色は関数 C で差し替える。
 
+import { t } from "../l10n/index.ts";
 import type { Family } from "../core/types.ts";
 import { flowDetail, flowShape } from "./action-flow.ts";
 import { esc } from "./escape.ts";
@@ -255,13 +256,13 @@ export function edgeHandles(C: ColorFn, id: string, rt: Route): string {
   const fill = `fill="${C("paper")}" stroke="${C("sel")}" stroke-width="1.5"`;
   const ends = (["f", "t"] as const).map((which, i) => {
     const p = (i === 0 ? rt.via[0] : rt.via[rt.via.length - 1]) ?? [0, 0];
-    return `<rect class="eh end" data-edge="${e}" data-end="${which}" x="${p[0] - 5}" y="${p[1] - 5}" width="10" height="10" ${fill}><title>端を別の縁へ付け替える</title></rect>`;
+    return `<rect class="eh end" data-edge="${e}" data-end="${which}" x="${p[0] - 5}" y="${p[1] - 5}" width="10" height="10" ${fill}><title>${esc(t("render-edge-end-hint"))}</title></rect>`;
   });
   const bends = rt.via
     .slice(1, -1)
-    .map((p, i) => `<circle class="eh bend" data-edge="${e}" data-bend="${i}" cx="${p[0]}" cy="${p[1]}" r="5.5" ${fill}><title>動かす・ダブルクリックで消す</title></circle>`);
+    .map((p, i) => `<circle class="eh bend" data-edge="${e}" data-bend="${i}" cx="${p[0]}" cy="${p[1]}" r="5.5" ${fill}><title>${esc(t("render-edge-bend-hint"))}</title></circle>`);
   const mids = segmentMids(rt.via, rt.pts).map(
-    (p, k) => `<circle class="eh mid" data-edge="${e}" data-mid="${k}" cx="${p[0]}" cy="${p[1]}" r="4" fill="${C("sel")}" fill-opacity=".55"><title>動かして曲がり角を足す</title></circle>`,
+    (p, k) => `<circle class="eh mid" data-edge="${e}" data-mid="${k}" cx="${p[0]}" cy="${p[1]}" r="4" fill="${C("sel")}" fill-opacity=".55"><title>${esc(t("render-edge-mid-hint"))}</title></circle>`,
   );
   return `<g class="ehandles">${[...ends, ...mids, ...bends].join("")}</g>`;
 }
@@ -318,7 +319,7 @@ function nodeMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string, MONO: s
   s += `<rect width="4" height="${b.h}" fill="${C("k-" + fam)}" rx="${rx ? 2 : 0}"/>`;
   s += `<text x="${b.w / 2}" y="17" text-anchor="middle" font-size="10" fill="${C("ink2")}" font-family="${F}">${esc(`«${keywordOf(n)}»`)}</text>`;
   if (opts.phases && n.phase)
-    s += `<text x="${b.w}" y="-5" text-anchor="end" font-size="9" fill="${C("k-" + fam)}" font-family="${F}">${esc(phaseLabel(n.phase))}${n.phaseOwn ? "" : "（継承）"}</text>`;
+    s += `<text x="${b.w}" y="-5" text-anchor="end" font-size="9" fill="${C("k-" + fam)}" font-family="${F}">${esc(n.phaseOwn ? phaseLabel(n.phase) : t("render-phase-inherited", { phase: phaseLabel(n.phase) }))}</text>`;
   const title = (n.short ? `<'${n.short}'> ` : "") + shownName(n.name) + (!n.isDef && n.entry.type ? ` : ${typeText(n.entry)}` : "");
   const tfs = title.length > 26 ? 11 : title.length > 21 ? 12 : 13;
   s += `<text x="${b.w / 2}" y="34" text-anchor="middle" font-size="${tfs}" font-weight="700" fill="${C("ink")}" font-family="${F}">${esc(title.length > 34 ? title.slice(0, 33) + "…" : title)}</text>`;
@@ -721,7 +722,7 @@ export function seqMarkup(C: ColorFn, c: ViewContent, opts: Omit<MarkupOpts, "vi
     const y = seqRowY(row);
     const sel = opts.selEdge === e.id;
     const col = sel ? C("sel") : C("ink");
-    const lab = `${(e.idx ?? k) + 1}. ${e.label || "（名前なし）"}${e.type ? " : " + e.type : ""}`;
+    const lab = `${(e.idx ?? k) + 1}. ${e.label || t("render-unnamed")}${e.type ? " : " + e.type : ""}`;
     let d: string, lx: number;
     if (a === b) {
       d = `M${X(a)},${y} h46 v20 h-44`;

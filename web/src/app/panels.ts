@@ -220,9 +220,9 @@ export function activeTabLabel(): string {
  * tabHint({ id: 3, view: "all", ctx: null, phase: "", mv: "Overview" })  // → "作成した図「Overview」\n一般ビュー（SysML v2 では GeneralView）"（view Overview : GeneralView のとき）
  */
 function tabHint(t: Tab): string {
-  if (t.mv) return tabTitle(`作成した図「${t.mv}」`, savedViewHint(S.M.views.find((v) => v.name === t.mv)?.std ?? null));
+  if (t.mv) return tabTitle(`作成した図「${t.mv}」`, "", savedViewHint(S.M.views.find((v) => v.name === t.mv)?.std ?? null));
   const v = VIEWS.find((x) => x.id === t.view);
-  return v ? tabTitle(tabLabel(t), viewHint(v.label, v.std)) : tabLabel(t);
+  return v ? tabTitle(tabLabel(t), v.label, viewHint(v.label, v.std)) : tabLabel(t);
 }
 
 /**

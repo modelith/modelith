@@ -1,6 +1,6 @@
 // 文言の辞書の検査（ADR-0027 の 6）。
 import { describe, expect, it } from "vitest";
-import { checkDictionary, hardcodedText, keyUsage, stripTsComments } from "./l10n";
+import { checkDictionaries, checkDictionary, hardcodedText, keyUsage, stripTsComments } from "./l10n";
 
 describe("stripTsComments", () => {
   it("行のコメントとブロックのコメントを、同じ長さの空白にする", () => {
@@ -117,6 +117,37 @@ describe("checkDictionary", () => {
 
   it("空の辞書は、キーも誤りも無い", () => {
     expect(checkDictionary("")).toEqual({ keys: [], problems: [] });
+  });
+});
+
+describe("checkDictionaries", () => {
+  it("ファイルの名前で始まるキーを、すべて返す", () => {
+    const checked = checkDictionaries([
+      { name: "files", source: "files-a = 1\nfiles-b = 2\n" },
+      { name: "core", source: "core-a = 3\n" },
+    ]);
+
+    expect(checked).toEqual({ keys: ["files-a", "files-b", "core-a"], problems: [] });
+  });
+
+  it("ファイルの名前で始まらないキーを知らせる（名前の一部が同じだけのものも）", () => {
+    const { problems } = checkDictionaries([{ name: "files", source: "# 説明\ncore-a = 1\nfilesystem-b = 2\n" }]);
+
+    expect(problems).toEqual([
+      { file: "files", line: 2, message: "キー「core-a」は、ファイルの名前に合わせて「files-」で始めてください" },
+      { file: "files", line: 3, message: "キー「filesystem-b」は、ファイルの名前に合わせて「files-」で始めてください" },
+    ]);
+  });
+
+  it("ファイルごとの誤り（キーの形）を、ファイルの名前を付けて返す", () => {
+    const { problems } = checkDictionaries([{ name: "files", source: "Files-A = 1\n" }]);
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({ file: "files", line: 1 });
+  });
+
+  it("辞書が無ければ、キーも誤りも無い", () => {
+    expect(checkDictionaries([])).toEqual({ keys: [], problems: [] });
   });
 });
 

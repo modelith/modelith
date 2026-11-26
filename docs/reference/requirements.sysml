@@ -799,7 +799,7 @@ package ModelithRequirements {
             doc /* 利用状況とエラーの送信（予定：0.3.0。ADR-0026） */
         }
         part def Messages {
-            doc /* 文言を言語ごとの辞書で作る層。画面の文言は web/src/l10n（辞書は web/src/locales）。問題の文は crates/modelith-messages（予定：0.3.0。コアは言語を知らない）。ADR-0027 */
+            doc /* 文言を言語ごとの辞書で作る層。画面の文言は web/src/l10n（辞書は web/src/locales/<言語>/<場所>.ftl。図を書き出す cli は、図に描く文の辞書だけを cli/src/l10n.ts で読む）。問題の文は crates/modelith-messages（予定：0.3.0。コアは言語を知らない）。ADR-0027 */
         }
 
         part def Modelith {
@@ -1631,7 +1631,8 @@ package ModelithRequirements {
         }
         verification def DictionaryTest {
             doc /* web/src/l10n/translator.test.ts：辞書から文を作る（値の差し込み・見えない記号を入れない・値のタグと波かっこを文字として入れる・先の辞書に無いキーは次の辞書・数での複数形の選び分け・無いキーと足りない値の知らせ）。
-                   web/tools/l10n.test.ts と scripts/check.sh の静的検査（web/tools/l10n-cli.ts）：辞書のキーと値の名前の形、コードが使うキーが辞書にあること、使われていないキーが無いこと、移し終えたフォルダに文が直接書かれていないこと（コメントは見ない） */
+                   web/tools/l10n.test.ts と scripts/check.sh の静的検査（web/tools/l10n-cli.ts）：辞書のキーと値の名前の形、キーが辞書のファイルの名前で始まること、コードが使うキーが辞書にあること、使われていないキーが無いこと、移し終えたフォルダに文が直接書かれていないこと（コメントは見ない）。
+                   cli/src/mcp-server.test.ts：書き出した図の中の文が、辞書の文であること。web/src/render/boundary.test.ts：描画が、文言の口（辞書は呼ぶ側が入れる）のほかに頼らないこと。scripts/build-cli.sh --smoke：配る cli に、図に描く文の辞書が入っていること */
             objective {
                 verify DictionaryReq;
             }

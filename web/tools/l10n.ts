@@ -169,6 +169,35 @@ export function checkDictionary(ftl: string): { keys: string[]; problems: Findin
 }
 
 /**
+ * 1 つの言語の辞書（場所ごとのファイル）をまとめて確かめる。ファイルごとの決まり（checkDictionary）に加えて、
+ * キーがファイルの名前で始まること（`render.ftl` のキーは `render-…`）と、同じキーがほかのファイルに無いことを確かめる。
+ *
+ * @param files 辞書のファイル（拡張子を除いた名前と中身）
+ * @returns keys はすべてのキー。problems は誤り（どのファイルの何行目か）
+ * @example
+ * checkDictionaries([{ name: "files", source: "files-a = 1\n" }])  // → { keys: ["files-a"], problems: [] }
+ * checkDictionaries([{ name: "files", source: "core-a = 1\n" }])
+ * // → { keys: ["core-a"], problems: [{ file: "files", line: 1, message: "キー「core-a」は、ファイルの名前に合わせて「files-」で始めてください" }] }
+ */
+export function checkDictionaries(files: readonly { name: string; source: string }[]): { keys: string[]; problems: (Finding & { file: string })[] } {
+  const owner = new Map<string, string>();
+  const problems: (Finding & { file: string })[] = [];
+  for (const { name, source } of files) {
+    const checked = checkDictionary(source);
+    for (const p of checked.problems) problems.push({ file: name, ...p });
+    const lines = source.split("\n");
+    for (const key of checked.keys) {
+      const line = lines.findIndex((l) => l.startsWith(`${key} `) || l.startsWith(`${key}=`)) + 1;
+      if (!key.startsWith(`${name}-`)) problems.push({ file: name, line, message: `キー「${key}」は、ファイルの名前に合わせて「${name}-」で始めてください` });
+      const other = owner.get(key);
+      if (other !== undefined) problems.push({ file: name, line, message: `キー「${key}」は、${other}.ftl にもあります` });
+      else owner.set(key, name);
+    }
+  }
+  return { keys: [...owner.keys()], problems };
+}
+
+/**
  * コードが使うキーと、辞書のキーを突き合わせる。
  *
  * @param keys 辞書のキー

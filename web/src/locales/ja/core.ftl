@@ -1,0 +1,32 @@
+# コア（Rust の wasm）とのやり取り（日本語）。書き方は docs/development/l10n.md、言葉づかいは docs/development/ui-writing.md。
+
+core-std-view-general = 一般ビュー
+core-std-view-interconnection = 内部ブロック図
+core-std-view-action-flow = アクティビティ図
+core-std-view-state-transition = 状態遷移図
+core-std-view-sequence = シーケンス図
+core-std-view-geometry = ジオメトリビュー
+core-std-view-grid = グリッドビュー
+core-std-view-browser = ブラウザビュー
+core-stale-edit = テキストが変わったため、この操作はやめました。もう一度操作してください
+core-stopped = 図の操作をやめました。テキストはそのまま残っています
+core-reloading = 図を読み込み直しています
+core-no-reply = { $seconds } 秒たっても返事がありません
+core-restart-timed-out = 作り直したコアが期限までに起動しませんでした
+core-bad-reply = コアの返事の形が違います
+core-failure-with-reason = { $failure }（{ $reason }）
+core-edit-failed = 操作できませんでした
+core-edit-failed-kept = 操作できませんでした。テキストはそのまま残っています（{ $reason }）
+core-analyze-failed = テキストを解析できませんでした。テキストはそのまま残っています（{ $reason }）
+core-project-create-failed = プロジェクトの設定ファイルを作成できませんでした
+core-project-update-failed = プロジェクトの設定を変更できませんでした
+core-project-read-failed = 設定ファイルを読み込めませんでした（{ $reason }）
+core-plugins-load-failed = プラグインを読み込めませんでした
+core-message-check-failed = メッセージを確かめられませんでした
+core-worker-error = コアの Worker でエラーが起きました
+core-worker-unreadable = コアの Worker からの返事を読めませんでした
+core-worker-start-failed = コアの Worker を起動できませんでした
+core-build-needs-parse = build には、parse（Rust）が返した解析結果を渡してください
+core-missing-entry = モデルが指す宣言（{ $index }）がありません
+core-missing-relation = モデルが指す関係（{ $index }）がありません
+core-layout-comment-unreadable = @layout コメントを読み込めません

@@ -1,11 +1,12 @@
 // 文言の辞書を検査する（ADR-0027 の 6）。判断は l10n.ts。
-//   node web/tools/l10n-cli.ts <辞書の .ftl> <コードのフォルダ> [<移し終えたフォルダ>…]
-// - 辞書のキーと値の名前が決まりどおりか
+//   node web/tools/l10n-cli.ts <辞書のフォルダ> <コードのフォルダ> [<移し終えたフォルダ>…]
+// 辞書のフォルダは、1 つの言語の .ftl（場所ごとのファイル）を置いたフォルダ（web/src/locales/ja）。
+// - 辞書のキーと値の名前が決まりどおりか。キーがファイルの名前で始まるか
 // - コードのフォルダ（テストと生成物を除く .ts）が使うキーが辞書にあり、辞書のキーがどれも使われているか
 // - 移し終えたフォルダのコードに、文が直接書かれていないか（移し終えたフォルダから順に足す）
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
-import { checkDictionary, hardcodedText, keyUsage } from "./l10n.ts";
+import { basename, join } from "node:path";
+import { checkDictionaries, hardcodedText, keyUsage } from "./l10n.ts";
 
 /**
  * 検査するファイルか（テスト・生成物・型定義・辞書を入れる層そのものを除く）。
@@ -40,12 +41,17 @@ function collect(path: string): string[] {
 
 const [dictionary, codeRoot, ...migrated] = process.argv.slice(2);
 if (dictionary === undefined || codeRoot === undefined) {
-  console.error("usage: node web/tools/l10n-cli.ts <辞書の .ftl> <コードのフォルダ> [<移し終えたフォルダ>…]");
+  console.error("usage: node web/tools/l10n-cli.ts <辞書のフォルダ> <コードのフォルダ> [<移し終えたフォルダ>…]");
   process.exit(2);
 }
 const errors: string[] = [];
-const { keys, problems } = checkDictionary(readFileSync(dictionary, "utf8"));
-for (const p of problems) errors.push(`${dictionary}:${p.line}: ${p.message}`);
+const { keys, problems } = checkDictionaries(
+  readdirSync(dictionary)
+    .filter((name) => name.endsWith(".ftl"))
+    .sort()
+    .map((name) => ({ name: basename(name, ".ftl"), source: readFileSync(join(dictionary, name), "utf8") })),
+);
+for (const p of problems) errors.push(`${join(dictionary, `${p.file}.ftl`)}:${p.line}: ${p.message}`);
 const usage = keyUsage(
   keys,
   collect(codeRoot).map((file) => ({ file, source: readFileSync(file, "utf8") })),

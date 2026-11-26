@@ -60,17 +60,19 @@ README・CONTRIBUTING・SECURITY は、2026-11-13 に英語を主にし、日本
 - 形は **Fluent**（`.ftl`。Firefox と同じ）にする。読むのは、同じプロジェクトの公式の実装（Rust は `fluent-bundle`、TypeScript は `@fluent/bundle`）にし、文にする処理を自分たちで書かない（メンテナの判断、2026-11-14。経緯は下の「改訂」）。
 
   ```
-  # web/src/locales/en.ftl
+  # web/src/locales/en/app.ftl
   export-done = Exported "{ $name }"
   files-opened = { $count ->
       [one] Opened { $count } file
      *[other] Opened { $count } files
   }
-  # web/src/locales/ja.ftl
+  # web/src/locales/ja/app.ftl
   export-done = 「{ $name }」をエクスポートしました
   files-opened = { $count } 個のファイルを開きました
   ```
 
+- 辞書は、言語ごとのフォルダに、文を使う場所（`web/src` の下のフォルダ）ごとのファイルで置く（`web/src/locales/<言語>/<場所>.ftl`）。キーは、ファイルの名前で始める。
+  図を書き出す `cli` が、図に描く文の辞書だけを読めるようにするため（2026-11-26）。
 - 使い方の決まり（辞書の形を替えることになっても、影響を辞書と文にする層の中に閉じるため）：
   - 文言は `t(キー, 値)` の口だけを通して使う。コードは Fluent の型や辞書の形を直接知らない。
   - キーは小文字の英字・数字・`-` だけ、値の名前は英字と数字だけにする。

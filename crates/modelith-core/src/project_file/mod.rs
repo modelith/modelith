@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::{LineIndex, Message};
+use crate::{LineIndex, Message, read_error};
 
 #[cfg(test)]
 mod tests;
@@ -162,10 +162,7 @@ pub fn parse(text: &str) -> Parsed {
         Err(e) => {
             return failed(error(
                 locator.of_offset(0),
-                Message::verbatim(format!(
-                    "設定を読み込めませんでした（{}）",
-                    crate::read_error::read_reason(&e.to_string())
-                )),
+                read_error::bad_settings(read_error::read_reason(&e.to_string())),
             ));
         }
     };
@@ -528,16 +525,11 @@ fn syntax_problem(locator: &Locator, text: &str, e: &serde_json::Error) -> Probl
     // JSON にはコメントを書けない。コメントの位置で止まったら、そう伝える（#266）
     let rest = text.get(offset..).unwrap_or("").trim_start();
     let reason = if rest.starts_with("//") || rest.starts_with("/*") {
-        "コメント（// や /* */）は書けません"
+        read_error::comment_reason()
     } else {
-        crate::read_error::read_reason(&e.to_string())
+        read_error::read_reason(&e.to_string())
     };
-    error(
-        at,
-        Message::verbatim(format!(
-            "書式にエラーがあるため読み込めません（JSON：{reason}）"
-        )),
-    )
+    error(at, read_error::bad_format("JSON", reason, None))
 }
 
 /// 決まった項目の型を確かめ、違うものを誤りにする（`name` は文字、`plugins` は `{ }` など）。

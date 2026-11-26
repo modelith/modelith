@@ -1,0 +1,19 @@
+[package]
+name = "modelith-messages"
+description = "Modelith message layer: turns the message codes and values of modelith-core into text (Fluent dictionaries)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+modelith-core.workspace = true
+# 辞書（Fluent）を読む公式の実装（ADR-0027 §2）
+fluent-bundle = "0.16"
+# 言語の名前。非推奨の crate を引き込む `macros` の機能は使わない（ADR-0027 の改訂）
+unic-langid = "0.9"
+
+[lints]
+workspace = true

@@ -12,7 +12,7 @@ use super::{
     CheckRule, Condition, LoadProblem, LoadedPlugin, MANIFEST_FILE, ManifestInfo, PLUGINS_DIR,
     Place, RELATIONS, ReadError, Target, element_kinds,
 };
-use crate::{LineIndex, Message};
+use crate::{LineIndex, Message, read_error};
 
 /// プロジェクトに入れたプラグイン 1 つを読み込む。マニフェストを読み、`contributes.rules` のファイルを順に読む。
 ///
@@ -736,7 +736,7 @@ fn compile_regex(pattern: &str, at: &str, errors: &mut Vec<Message>) -> Option<R
 /// describe_serde_error("missing field `severity`", "YAML") → "必要な項目「severity」がありません"
 /// describe_serde_error("unknown variant `fatal`, …", "YAML") → "指定できない値「fatal」です"
 /// describe_serde_error("EOF while parsing an object at line 1 column 1", "JSON")
-///   → "書式にエラーがあるため読み込めません（JSON：途中で終わっています。閉じる括弧や「"」が足りません）"
+///   → read-error.format{format=JSON, reason=read-error.eof{}}   // 書式にエラーがあるため読み込めません（JSON：途中で終わっています。…）
 /// ```
 pub(super) fn describe_serde_error(raw: &str, format: &str) -> Message {
     let raw = raw.rfind(" at line ").map_or(raw, |i| &raw[..i]);
@@ -748,14 +748,14 @@ pub(super) fn describe_serde_error(raw: &str, format: &str) -> Message {
     let place = raw
         .split_once(": ")
         .map(|(p, _)| p)
-        .filter(|p| !p.is_empty() && !p.contains([' ', '`']))
-        .map_or(String::new(), |p| format!("（場所：{p}）"));
+        .filter(|p| !p.is_empty() && !p.contains([' ', '`']));
+    let at = place.map_or(String::new(), |p| format!("（場所：{p}）"));
     if let Some(key) = quoted("unknown field `") {
-        Message::verbatim(format!("不明な項目「{key}」があります{place}"))
+        Message::verbatim(format!("不明な項目「{key}」があります{at}"))
     } else if let Some(key) = quoted("missing field `") {
-        Message::verbatim(format!("必要な項目「{key}」がありません{place}"))
+        Message::verbatim(format!("必要な項目「{key}」がありません{at}"))
     } else if let Some(value) = quoted("unknown variant `") {
-        Message::verbatim(format!("指定できない値「{value}」です{place}"))
+        Message::verbatim(format!("指定できない値「{value}」です{at}"))
     } else if raw.contains("invalid rule id") {
         Message::verbatim(
             "ルールの ID は、英小文字・数字・「-」で書いてください（例：req-has-satisfier）",
@@ -765,10 +765,7 @@ pub(super) fn describe_serde_error(raw: &str, format: &str) -> Message {
             "プラグインの ID は、英小文字・数字・「-」を「.」で区切って書いてください（例：jp.example.rules）",
         )
     } else {
-        Message::verbatim(format!(
-            "書式にエラーがあるため読み込めません（{format}：{}）{place}",
-            crate::read_error::read_reason(raw)
-        ))
+        read_error::bad_format(format, read_error::read_reason(raw), place)
     }
 }
 

@@ -10,6 +10,8 @@ use modelith_core::read::{self, Project, SourceFile};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
+use crate::messages::install_renderer;
+
 /// 受け取るファイル 1 つ。
 #[derive(Deserialize)]
 struct FileInput {
@@ -109,6 +111,7 @@ pub fn read_problems(files: &str, project_file: Option<String>, plugin_files: &s
 /// read_problems_json("[]", None, "x")  → r#"{"error":"プラグインのファイルを読み込めませんでした（…）"}"#
 /// ```
 fn read_problems_json(files: &str, project_file: Option<&str>, plugin_files: &str) -> String {
+    install_renderer();
     let plugin_files: BTreeMap<String, BTreeMap<String, String>> = match serde_json::from_str(
         plugin_files,
     ) {
@@ -188,6 +191,7 @@ fn read_element_json(files: &str, qualified_name: &str) -> String {
 /// with_files("{}", |_| String::new()) → r#"{"error":"ファイルの一覧を読み込めませんでした（…）"}"#
 /// ```
 fn with_files(files: &str, f: impl FnOnce(&[SourceFile<'_>]) -> String) -> String {
+    install_renderer();
     match serde_json::from_str::<Vec<FileInput>>(files) {
         Ok(inputs) => {
             let sources: Vec<SourceFile<'_>> = inputs

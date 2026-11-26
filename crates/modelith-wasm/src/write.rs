@@ -10,6 +10,7 @@ use modelith_core::write::{self, EditRequest, VersionedFile, Workspace};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
+use crate::messages::install_renderer;
 use crate::read::to_json;
 
 /// 受け取るファイル 1 つ。
@@ -78,6 +79,7 @@ fn propose_edit_json(
     plugin_files: &str,
     request: &str,
 ) -> String {
+    install_renderer();
     let inputs = match serde_json::from_str::<Vec<FileInput>>(files) {
         Ok(i) => i,
         Err(e) => return error_json("ファイルの一覧", &e),

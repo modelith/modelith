@@ -1,4 +1,6 @@
 // Modelith の起動。各モジュールのイベントを登録し、前回の続き（無ければ公開サンプル）を読み込む。
+// 辞書は、文言を使うほかのモジュールより先に入れる（ADR-0027）
+import "./l10n/setup";
 import "@fontsource/ibm-plex-sans-jp/400.css";
 import "@fontsource/ibm-plex-sans-jp/500.css";
 import "@fontsource/ibm-plex-sans-jp/700.css";

@@ -32,6 +32,13 @@ function bundledLicenses(): Plugin {
       const parts: BundledPart[] = [
         { name: "@fontsource/ibm-plex-sans-jp", license: "OFL-1.1", usage: "画面の文字（IBM Plex Sans JP）", text: read("./node_modules/@fontsource/ibm-plex-sans-jp/LICENSE") },
         { name: "@fontsource/ibm-plex-mono", license: "OFL-1.1", usage: "テキスト欄の文字（IBM Plex Mono）", text: read("./node_modules/@fontsource/ibm-plex-mono/LICENSE") },
+        // npm の配布物にライセンス文が無いので、リポジトリ（projectfluent/fluent.js）の LICENSE と NOTICE を写したものを使う
+        {
+          name: "@fluent/bundle",
+          license: "Apache-2.0",
+          usage: "画面の文言を辞書から作る部品",
+          text: `${read("./tools/third-party-licenses/@fluent/bundle/NOTICE").trim()}\n\n${read("./tools/third-party-licenses/@fluent/bundle/LICENSE")}`,
+        },
         { name: "vite", license: "MIT", usage: "スクリプトを読み込む小さな実行時コード", text: viteCoreLicense(read("./node_modules/vite/LICENSE.md")) },
         ...rustCrateParts(),
       ];
@@ -53,5 +60,5 @@ export default defineConfig({
   plugins: [bundledLicenses(), cspPlugin()],
   server: { fs: { allow: [".."] } },
   // e2e（e2e/*.spec.ts）は Playwright で動かすので、Vitest は src と tools の単体・結合テストだけを拾う
-  test: { include: ["src/**/*.test.ts", "tools/**/*.test.ts"], setupFiles: ["src/core/testing/setup.ts"] },
+  test: { include: ["src/**/*.test.ts", "tools/**/*.test.ts"], setupFiles: ["src/l10n/setup.ts", "src/core/testing/setup.ts"] },
 });

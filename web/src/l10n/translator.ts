@@ -12,7 +12,7 @@ export type Translate = (key: string, values?: Values) => string;
 export interface Dictionary {
   /** 言語のタグ（`ja`・`en` など）。複数形の選び分けに使う。 */
   locale: string;
-  /** .ftl の中身。 */
+  /** .ftl の中身（1 つのファイル）。同じ言語の辞書を、ファイルごとに分けて渡してよい。 */
   source: string;
 }
 

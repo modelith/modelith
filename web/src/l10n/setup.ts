@@ -1,6 +1,5 @@
 // アプリとテストの起動時に、辞書を入れる（ADR-0027）。ほかのモジュールより先に読み込む（モジュールの先頭で t を呼ぶものがあるため）。
 // 0.3.0 の間は日本語の辞書だけ。0.4.0 で英語の辞書と、言語の選び方（F-L10N-1）を足す。
-import JA from "../locales/ja.ftl?raw";
 import { installTranslator } from "./index";
 import { createTranslator } from "./translator";
 
@@ -17,4 +16,12 @@ function reportProblem(problem: string): void {
   console.error(`l10n: ${problem}`);
 }
 
-installTranslator(createTranslator([{ locale: "ja", source: JA }], reportProblem));
+/** 日本語の辞書（場所ごとのファイル）。 */
+const JA = import.meta.glob<string>("../locales/ja/*.ftl", { query: "?raw", import: "default", eager: true });
+
+installTranslator(
+  createTranslator(
+    Object.values(JA).map((source) => ({ locale: "ja", source })),
+    reportProblem,
+  ),
+);

@@ -1,8 +1,10 @@
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { defineConfig } from "vitest/config";
 import type { Plugin } from "vite";
+import { createTranslator } from "./src/l10n/translator";
 import { cspPlugin } from "./tools/csp";
+import { fillHtml } from "./tools/l10n-html";
 import { appLicense, thirdPartyNotices, viteCoreLicense, type BundledPart } from "./tools/licenses";
 import { COPYRIGHT, rustCrateParts } from "./tools/licenses-io";
 
@@ -47,6 +49,33 @@ function bundledLicenses(): Plugin {
   };
 }
 
+/**
+ * 画面の骨組み（index.html）の文言を、元の言語（0.3.0 の間は日本語）の辞書で埋める（ADR-0027）。
+ * スクリプトを読み込む前から文が見えるように、ビルドのとき（開発サーバでは配るとき）に埋める。辞書に無いキーがあれば止める。
+ *
+ * @returns Vite のプラグイン
+ * @example
+ * l10nHtml() // index.html の <button data-l10n="shell-save"></button> → <button data-l10n="shell-save">保存</button>
+ */
+function l10nHtml(): Plugin {
+  const dir = new URL("./src/locales/ja/", import.meta.url);
+  return {
+    name: "modelith-l10n-html",
+    transformIndexHtml: {
+      order: "pre",
+      handler(html) {
+        const dictionaries = readdirSync(dir)
+          .filter((name) => name.endsWith(".ftl"))
+          .map((name) => ({ locale: "ja", source: readFileSync(new URL(name, dir), "utf8") }));
+        const translate = createTranslator(dictionaries, (problem) => {
+          throw new Error(`l10n: ${problem}`);
+        });
+        return fillHtml(html, translate);
+      },
+    },
+  };
+}
+
 export default defineConfig({
   // GitHub Pages ではリポジトリ名のパス（/modelith/）の下に置く。CI が MODELITH_BASE で渡す
   base: process.env.MODELITH_BASE ?? "/",
@@ -57,7 +86,7 @@ export default defineConfig({
     // 公開の系列（stable・rc・preview）。保存領域の名前を系列ごとに分ける（ADR-0020・ADR-0022）。CI が MODELITH_CHANNEL で渡す
     __APP_CHANNEL__: JSON.stringify(process.env.MODELITH_CHANNEL ?? "stable"),
   },
-  plugins: [bundledLicenses(), cspPlugin()],
+  plugins: [bundledLicenses(), l10nHtml(), cspPlugin()],
   server: { fs: { allow: [".."] } },
   // e2e（e2e/*.spec.ts）は Playwright で動かすので、Vitest は src と tools の単体・結合テストだけを拾う
   test: { include: ["src/**/*.test.ts", "tools/**/*.test.ts"], setupFiles: ["src/l10n/setup.ts", "src/core/testing/setup.ts"] },

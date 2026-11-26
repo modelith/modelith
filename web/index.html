@@ -3,135 +3,135 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<title>Modelith — SysML v2 双方向エディタ</title>
+<title data-l10n="shell-title"></title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='30' fill='%2316293F'/%3E%3Cpath d='M34 92 L34 42 L64 72' fill='none' stroke='%23FFFFFF' stroke-width='13' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M64 72 L94 42 L94 92' fill='none' stroke='%232ED3B7' stroke-width='13' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 </head>
 <body>
-<div id="loading" role="status" aria-live="polite">読み込み中…</div>
+<div id="loading" role="status" aria-live="polite" data-l10n="shell-loading"></div>
 <div class="app">
   <header>
     <h1><svg class="logo" viewBox="0 0 128 128" width="26" height="26" aria-hidden="true"><rect width="128" height="128" rx="30" fill="#16293F"></rect><path d="M34 92 L34 42 L64 72" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"></path><path d="M64 72 L94 42 L94 92" fill="none" stroke="#2ED3B7" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="name">Modelith</span></h1>
-    <button class="menutoggle" id="menuToggle" aria-label="メニュー" aria-expanded="false" aria-controls="menubar" title="メニュー">☰</button>
-    <nav class="menubar" id="menubar" aria-label="メニュー">
+    <button class="menutoggle" id="menuToggle" data-l10n-aria-label="shell-menu" aria-expanded="false" aria-controls="menubar" data-l10n-title="shell-menu">☰</button>
+    <nav class="menubar" id="menubar" data-l10n-aria-label="shell-menu">
       <details class="menu" id="fileMenu">
-        <summary>ファイル</summary>
+        <summary data-l10n="shell-menu-file"></summary>
         <div class="pop">
-          <button id="btnNew">新しいファイル</button>
-          <button id="btnOpen">ファイルを開く…<span class="kbd">Ctrl+O</span></button>
-          <button id="btnOpenFolder">フォルダを開く…</button>
+          <button id="btnNew" data-l10n="shell-new-file"></button>
+          <button id="btnOpen"><span data-l10n="shell-open-file-dots"></span><span class="kbd">Ctrl+O</span></button>
+          <button id="btnOpenFolder" data-l10n="shell-open-folder-dots"></button>
           <div id="recentMenu" class="recent"></div>
-          <button id="btnCloseFolder" hidden>フォルダを閉じる</button>
+          <button id="btnCloseFolder" hidden data-l10n="shell-close-folder"></button>
           <div class="sep"></div>
-          <button id="btnSave">保存<span class="kbd">Ctrl+S</span></button>
-          <button id="btnSaveAs">名前を付けて保存…<span class="kbd">Ctrl+Shift+S</span></button>
-          <label class="check"><input type="checkbox" id="autoSave"> 自動保存</label>
+          <button id="btnSave"><span data-l10n="shell-save"></span><span class="kbd">Ctrl+S</span></button>
+          <button id="btnSaveAs"><span data-l10n="shell-save-as"></span><span class="kbd">Ctrl+Shift+S</span></button>
+          <label class="check"><input type="checkbox" id="autoSave"> <span data-l10n="shell-auto-save"></span></label>
           <div class="sep"></div>
-          <button id="btnExport" title="表示中の図を、画像（SVG・PNG・JPEG）や draw.io のファイルとしてダウンロードする">エクスポート…</button>
+          <button id="btnExport" data-l10n-title="shell-export-hint" data-l10n="shell-export-dots"></button>
           <div class="sep"></div>
-          <button id="btnSample">サンプルを開く</button>
-          <label class="check" title="オフにすると、前回の続き（開いていたフォルダとファイル）から始めます"><input type="checkbox" id="startSample"> 起動時にサンプルを開く</label>
+          <button id="btnSample" data-l10n="shell-open-sample"></button>
+          <label class="check" data-l10n-title="shell-start-sample-hint"><input type="checkbox" id="startSample"> <span data-l10n="shell-start-sample"></span></label>
           <div class="note" id="fileNote"></div>
         </div>
       </details>
       <details class="menu" id="editMenu">
-        <summary>編集</summary>
+        <summary data-l10n="shell-menu-edit"></summary>
         <div class="pop">
-          <button id="menuUndo" disabled>元に戻す<span class="kbd">Ctrl+Z</span></button>
-          <button id="menuRedo" disabled>やり直す<span class="kbd">Ctrl+Shift+Z</span></button>
+          <button id="menuUndo" disabled><span data-l10n="shell-undo"></span><span class="kbd">Ctrl+Z</span></button>
+          <button id="menuRedo" disabled><span data-l10n="shell-redo"></span><span class="kbd">Ctrl+Shift+Z</span></button>
           <div class="sep"></div>
-          <button id="menuSelectAll" title="図の要素をすべて選択する">すべて選択<span class="kbd">Ctrl+A</span></button>
+          <button id="menuSelectAll" data-l10n-title="shell-select-all-hint"><span data-l10n="shell-select-all"></span><span class="kbd">Ctrl+A</span></button>
         </div>
       </details>
       <details class="menu" id="viewMenu">
-        <summary>表示</summary>
+        <summary data-l10n="shell-menu-view"></summary>
         <div class="pop">
-          <button id="togTree" class="hide-narrow" aria-pressed="true" title="モデルツリーの表示を切り替える">ツリー</button>
-          <button id="togText" class="hide-narrow" aria-pressed="true" title="テキストの表示を切り替える">テキスト</button>
+          <button id="togTree" class="hide-narrow" aria-pressed="true" data-l10n-title="shell-toggle-tree-hint" data-l10n="shell-tree"></button>
+          <button id="togText" class="hide-narrow" aria-pressed="true" data-l10n-title="shell-toggle-text-hint" data-l10n="shell-text"></button>
           <div class="sep hide-narrow"></div>
-          <button id="menuZoomIn">拡大</button>
-          <button id="menuZoomOut">縮小</button>
-          <button id="menuFit">全体を表示</button>
-          <button id="menuMini" aria-pressed="true" title="全体図（アウトライン）の表示を切り替える">全体図</button>
-          <div class="phead">線の形</div>
-          <button id="menuEdgeOrtho" aria-pressed="true" title="図の線を、直角に折れる線で描く">直角</button>
-          <button id="menuEdgeCurve" aria-pressed="false" title="図の線を、曲線で描く">曲線</button>
+          <button id="menuZoomIn" data-l10n="shell-zoom-in"></button>
+          <button id="menuZoomOut" data-l10n="shell-zoom-out"></button>
+          <button id="menuFit" data-l10n="shell-fit"></button>
+          <button id="menuMini" aria-pressed="true" data-l10n-title="shell-toggle-minimap-hint" data-l10n="shell-minimap"></button>
+          <div class="phead" data-l10n="shell-edge-shape"></div>
+          <button id="menuEdgeOrtho" aria-pressed="true" data-l10n-title="shell-edge-ortho-hint" data-l10n="shell-edge-ortho"></button>
+          <button id="menuEdgeCurve" aria-pressed="false" data-l10n-title="shell-edge-curve-hint" data-l10n="shell-edge-curve"></button>
           <div class="sep"></div>
-          <button id="menuLevels" title="トレースの抜け・まだ扱えない書き方・チェックルールの結果を、エラー・警告・情報・出さないのどれで知らせるかを選ぶ">知らせの重さ…</button>
+          <button id="menuLevels" data-l10n-title="shell-levels-hint" data-l10n="shell-levels-dots"></button>
         </div>
       </details>
       <details class="menu" id="diagramMenu">
-        <summary>図</summary>
+        <summary data-l10n="shell-menu-diagram"></summary>
         <div class="pop">
-          <button id="menuSaveView" title="名前と図の種類を選んで、新しい図を作成する。今の図の要素と配置のまま作ることも、空の図から始めることもできる">新しい図を作成…</button>
-          <button id="menuLayout" title="この図を自動で並べ直す">整列</button>
+          <button id="menuSaveView" data-l10n-title="shell-new-diagram-hint" data-l10n="shell-new-diagram-dots"></button>
+          <button id="menuLayout" data-l10n-title="shell-layout-hint" data-l10n="shell-layout"></button>
         </div>
       </details>
       <details class="menu" id="pluginMenu">
-        <summary>プラグイン</summary>
+        <summary data-l10n="shell-menu-plugins"></summary>
         <div class="pop">
-          <button id="btnPlugins">プラグインの一覧…</button>
+          <button id="btnPlugins" data-l10n="shell-plugin-list-dots"></button>
           <div id="pluginCommands" hidden></div>
         </div>
       </details>
       <details class="menu" id="helpMenu">
-        <summary>ヘルプ</summary>
+        <summary data-l10n="shell-menu-help"></summary>
         <div class="pop">
-          <a href="https://github.com/modelith/modelith/issues/new/choose" target="_blank" rel="noopener">不具合・要望を送る（GitHub）</a>
-          <a href="reports/requirements.html" target="_blank" rel="noopener">このバージョンのテスト結果</a>
-          <a id="sourceLink" href="https://github.com/modelith/modelith" target="_blank" rel="noopener">ソースコード</a>
-          <a id="licenseLink" href="https://github.com/modelith/modelith#license" target="_blank" rel="noopener">ライセンス（AGPL-3.0＋プラグイン例外）</a>
-          <a id="noticesLink" href="licenses.txt" target="_blank" rel="noopener">同梱ソフトウェアのライセンス</a>
-          <div class="about" id="legal"><span id="appCopyright"></span><br><b>無保証</b>です。上のライセンスの条件で再配布・改変できます。</div>
-          <div class="about" id="trademarks">SysML®・OMG® は Object Management Group, Inc. の登録商標、KerML™ は同社の商標です。Modelith は OMG と関係がなく、その認定・推奨も受けていません。</div>
-          <div class="about">Modelith <span id="appVersion"></span><span id="stageNote">（開発中の alpha 版）</span><br>保存形式や操作は予告なく変わります。保存先の無い文書は、このブラウザの下書きにだけ残ります。手元に残すには「ファイル → 名前を付けて保存」。</div>
+          <a href="https://github.com/modelith/modelith/issues/new/choose" target="_blank" rel="noopener" data-l10n="shell-help-feedback"></a>
+          <a href="reports/requirements.html" target="_blank" rel="noopener" data-l10n="shell-help-test-results"></a>
+          <a id="sourceLink" href="https://github.com/modelith/modelith" target="_blank" rel="noopener" data-l10n="shell-help-source"></a>
+          <a id="licenseLink" href="https://github.com/modelith/modelith#license" target="_blank" rel="noopener" data-l10n="shell-help-license"></a>
+          <a id="noticesLink" href="licenses.txt" target="_blank" rel="noopener" data-l10n="shell-help-notices"></a>
+          <div class="about" id="legal"><span id="appCopyright"></span><br><b data-l10n="shell-no-warranty"></b><span data-l10n="shell-redistribute"></span></div>
+          <div class="about" id="trademarks" data-l10n="shell-trademarks"></div>
+          <div class="about">Modelith <span id="appVersion"></span><span id="stageNote"></span><br><span data-l10n="shell-about-drafts"></span></div>
         </div>
       </details>
     </nav>
-    <div class="undo" role="group" aria-label="履歴">
-      <button id="btnUndo" title="元に戻す（Ctrl+Z）" aria-label="元に戻す" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
-      <button id="btnRedo" title="やり直す（Ctrl+Shift+Z）" aria-label="やり直す" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+    <div class="undo" role="group" data-l10n-aria-label="shell-history">
+      <button id="btnUndo" data-l10n-title="shell-undo-hint" data-l10n-aria-label="shell-undo" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+      <button id="btnRedo" data-l10n-title="shell-redo-hint" data-l10n-aria-label="shell-redo" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
     </div>
     <div class="spacer"></div>
-    <div class="sync" id="sync" title="テキストと図の同期状態"><i></i><span id="syncText">同期済み</span></div>
-    <span class="badge" id="stageBadge" title="開発中の alpha 版です。保存形式や操作は予告なく変わります">alpha</span>
-    <div class="tabs" role="group" aria-label="表示の切り替え">
-      <button id="tabTree" aria-pressed="false">ツリー</button>
-      <button id="tabDiagram" aria-pressed="true">図</button>
-      <button id="tabText" aria-pressed="false">テキスト</button>
+    <div class="sync" id="sync" data-l10n-title="shell-sync-hint"><i></i><span id="syncText" data-l10n="shell-sync-done"></span></div>
+    <span class="badge" id="stageBadge" hidden></span>
+    <div class="tabs" role="group" data-l10n-aria-label="shell-pane-switch">
+      <button id="tabTree" aria-pressed="false" data-l10n="shell-tree"></button>
+      <button id="tabDiagram" aria-pressed="true" data-l10n="shell-diagram"></button>
+      <button id="tabText" aria-pressed="false" data-l10n="shell-text"></button>
     </div>
     <input type="file" id="fileInput" accept=".sysml,.kerml,.txt,.json,text/plain,application/json" multiple hidden>
     <input type="file" id="pluginFileInput" hidden>
     <input type="file" id="pluginDirInput" webkitdirectory hidden>
   </header>
   <main id="main" data-tab="diagram">
-    <aside class="pane treepane" aria-label="サイドバー">
-      <div class="sidetabs" role="tablist" aria-label="サイドバーの切り替え">
-        <button id="sideFiles" role="tab" aria-selected="true">エクスプローラー</button>
-        <button id="sideModel" role="tab" aria-selected="false">モデル</button>
-        <button id="sideViews" role="tab" aria-selected="false">図</button>
+    <aside class="pane treepane" data-l10n-aria-label="shell-sidebar">
+      <div class="sidetabs" role="tablist" data-l10n-aria-label="shell-sidebar-switch">
+        <button id="sideFiles" role="tab" aria-selected="true" data-l10n="shell-explorer"></button>
+        <button id="sideModel" role="tab" aria-selected="false" data-l10n="shell-model"></button>
+        <button id="sideViews" role="tab" aria-selected="false" data-l10n="shell-side-diagrams"></button>
       </div>
       <div class="side" id="filesSide">
-        <div class="explorer" id="explorer" role="tree" aria-label="ファイル"></div>
+        <div class="explorer" id="explorer" role="tree" data-l10n-aria-label="shell-files"></div>
       </div>
       <div class="side" id="modelSide" hidden>
-        <div class="panehead"><input id="treeSearch" type="search" placeholder="要素を名前で絞り込み" aria-label="モデル要素を名前で絞り込む"></div>
-        <div class="tree" id="tree" role="tree" aria-label="モデルツリー"></div>
+        <div class="panehead"><input id="treeSearch" type="search" data-l10n-placeholder="shell-tree-search" data-l10n-aria-label="shell-tree-search-label"></div>
+        <div class="tree" id="tree" role="tree" data-l10n-aria-label="shell-model-tree"></div>
       </div>
       <div class="side" id="viewsSide" hidden>
-        <div class="panehead"><button id="btnNewDiagram" title="名前と図の種類を選んで、新しい図を作成する">＋ 新しい図を作成…</button></div>
-        <div class="tree" id="diagramList" role="tree" aria-label="作成した図"></div>
+        <div class="panehead"><button id="btnNewDiagram" data-l10n-title="shell-new-diagram-short-hint" data-l10n="shell-new-diagram-plus"></button></div>
+        <div class="tree" id="diagramList" role="tree" data-l10n-aria-label="shell-saved-diagrams"></div>
       </div>
     </aside>
-    <div class="split" id="splitTree" role="separator" aria-orientation="vertical" aria-label="ツリーの幅を変更"></div>
-    <section class="pane diagrampane" aria-label="図">
-      <div class="tabbar" id="tabbar" role="tablist" aria-label="図のタブ"></div>
+    <div class="split" id="splitTree" role="separator" aria-orientation="vertical" data-l10n-aria-label="shell-resize-tree"></div>
+    <section class="pane diagrampane" data-l10n-aria-label="shell-diagram">
+      <div class="tabbar" id="tabbar" role="tablist" data-l10n-aria-label="shell-diagram-tabs"></div>
       <div class="toolbar">
-        <div class="palette" id="palette" role="toolbar" aria-label="要素パレット"></div>
+        <div class="palette" id="palette" role="toolbar" data-l10n-aria-label="shell-palette"></div>
         <div class="spacer"></div>
         <div class="subbar" id="subbar"></div>
-        <button id="btnSaveView" title="名前と図の種類を選んで、新しい図を作成する。今の図の要素と配置のまま作ることも、空の図から始めることもできる">新しい図を作成</button>
-        <button id="btnEdge" title="線の描き方を切り替える">線：直角</button>
-        <button id="btnLayout" title="この図を自動で並べ直す">整列</button>
+        <button id="btnSaveView" data-l10n-title="shell-new-diagram-hint" data-l10n="shell-new-diagram"></button>
+        <button id="btnEdge" data-l10n-title="shell-edge-toggle-hint" data-l10n="shell-edge-toggle-ortho"></button>
+        <button id="btnLayout" data-l10n-title="shell-layout-hint" data-l10n="shell-layout"></button>
       </div>
       <div class="canvaswrap" id="wrap">
         <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
@@ -139,38 +139,38 @@
           <g id="vp"><g id="gEdges"></g><g id="gNodes"></g><g id="gOver"></g></g>
         </svg>
         <div class="zoom">
-          <button id="zIn" aria-label="拡大">+</button>
-          <button id="zOut" aria-label="縮小">−</button>
-          <button id="zFit" aria-label="全体を表示" style="font-size:12px">全体</button>
-          <button id="zMini" aria-label="全体図の表示" title="全体図（アウトライン）の表示" aria-pressed="true" style="font-size:11px">全体図</button>
+          <button id="zIn" data-l10n-aria-label="shell-zoom-in">+</button>
+          <button id="zOut" data-l10n-aria-label="shell-zoom-out">−</button>
+          <button id="zFit" data-l10n-aria-label="shell-fit" style="font-size:12px" data-l10n="shell-fit-short"></button>
+          <button id="zMini" data-l10n-aria-label="shell-minimap-show" data-l10n-title="shell-minimap-show-hint" aria-pressed="true" style="font-size:11px" data-l10n="shell-minimap"></button>
         </div>
         <div class="toast" id="toast"></div>
         <div class="band" id="band" hidden></div>
         <div class="empty" id="empty" hidden></div>
-        <div class="minimap" id="mini" hidden><div class="mhead"><span>全体図</span><button id="miniHide" aria-label="全体図を閉じる" title="閉じる">×</button></div><div class="mbody"><svg id="miniSvg" xmlns="http://www.w3.org/2000/svg"></svg><div class="mvp" id="miniVp" hidden></div></div></div>
+        <div class="minimap" id="mini" hidden><div class="mhead"><span data-l10n="shell-minimap"></span><button id="miniHide" data-l10n-aria-label="shell-minimap-close" data-l10n-title="shell-close">×</button></div><div class="mbody"><svg id="miniSvg" xmlns="http://www.w3.org/2000/svg"></svg><div class="mvp" id="miniVp" hidden></div></div></div>
         <div class="inspector" id="insp" hidden></div>
       </div>
     </section>
-    <div class="split" id="splitText" role="separator" aria-orientation="vertical" aria-label="テキストの幅を変更"></div>
-    <section class="pane textpane" aria-label="SysML v2 テキスト">
-      <div class="panehead"><span id="docName" class="docname"></span><span id="textInfo">SysML v2 テキスト</span><button id="btnEditText" class="editbtn" aria-pressed="false" title="テキストを編集できるようにする。もう一度押すと読み取り専用に戻す">編集</button></div>
+    <div class="split" id="splitText" role="separator" aria-orientation="vertical" data-l10n-aria-label="shell-resize-text"></div>
+    <section class="pane textpane" data-l10n-aria-label="shell-text-pane">
+      <div class="panehead"><span id="docName" class="docname"></span><span id="textInfo" data-l10n="shell-text-pane"></span><button id="btnEditText" class="editbtn" aria-pressed="false" data-l10n-title="shell-edit-text-hint" data-l10n="shell-edit-text"></button></div>
       <div class="editor">
         <pre id="hl" aria-hidden="true" tabindex="-1"></pre>
-        <textarea id="ed" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="SysML v2 テキスト"></textarea>
+        <textarea id="ed" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" data-l10n-aria-label="shell-text-pane"></textarea>
       </div>
       <div class="wordline" id="wordLine" aria-live="polite"></div>
       <div class="problems" id="problems"></div>
     </section>
     <section class="nodoc" id="noDoc" hidden aria-labelledby="noDocTitle">
-      <b id="noDocTitle">開いているファイルはありません</b>
-      <p id="noDocText">新しいファイルを作成するか、ファイルを開いてください。<br>サンプルで操作を試すこともできます。</p>
+      <b id="noDocTitle" data-l10n="shell-nodoc-title"></b>
+      <p id="noDocText"><span data-l10n="shell-nodoc-create"></span><br><span data-l10n="shell-nodoc-sample"></span></p>
       <p id="noDocResume" hidden></p>
       <div class="acts">
-        <button data-nodoc="resume" class="primary" hidden>前回の続きを開く</button>
-        <button data-nodoc="new" class="primary">新しいファイル</button>
-        <button data-nodoc="open">ファイルを開く</button>
-        <button data-nodoc="openFolder" hidden>フォルダを開く</button>
-        <button data-nodoc="sample">サンプルを開く</button>
+        <button data-nodoc="resume" class="primary" hidden data-l10n="shell-nodoc-resume"></button>
+        <button data-nodoc="new" class="primary" data-l10n="shell-new-file"></button>
+        <button data-nodoc="open" data-l10n="shell-open-file"></button>
+        <button data-nodoc="openFolder" hidden data-l10n="shell-open-folder"></button>
+        <button data-nodoc="sample" data-l10n="shell-open-sample"></button>
       </div>
     </section>
   </main>
@@ -179,9 +179,9 @@
 <div class="wordtip" id="wordTip" role="tooltip" hidden></div>
 <div class="modal" id="plugins" hidden role="dialog" aria-modal="true" aria-labelledby="pluginsTitle">
   <div class="box">
-    <b id="pluginsTitle">プラグイン</b>
+    <b id="pluginsTitle" data-l10n="shell-plugins-title"></b>
     <div class="plugins" id="pluginsBody"></div>
-    <div class="row"><button id="pluginsAdd" class="primary">追加…</button><button id="pluginsClose">閉じる</button></div>
+    <div class="row"><button id="pluginsAdd" class="primary" data-l10n="shell-plugins-add"></button><button id="pluginsClose" data-l10n="shell-close"></button></div>
   </div>
 </div>
 <div class="modal" id="dialog" hidden role="alertdialog" aria-modal="true" aria-labelledby="dialogTitle">
@@ -195,22 +195,22 @@
 </div>
 <div class="modal" id="levelsDialog" hidden role="dialog" aria-modal="true" aria-labelledby="levelsTitle" aria-describedby="levelsText">
   <div class="box">
-    <b id="levelsTitle">知らせの重さ</b>
+    <b id="levelsTitle" data-l10n="shell-levels-title"></b>
     <p id="levelsText"></p>
     <div class="lvlist" id="levelsList"></div>
-    <div class="row"><button type="button" id="levelsClose" class="primary">閉じる</button></div>
+    <div class="row"><button type="button" id="levelsClose" class="primary" data-l10n="shell-close"></button></div>
   </div>
 </div>
 <div class="modal" id="exportDialog" hidden role="dialog" aria-modal="true" aria-labelledby="exportTitle" aria-describedby="exportText">
   <form class="box" id="exportForm">
-    <b id="exportTitle">エクスポート</b>
-    <p id="exportText">表示中の図を、ファイルとしてダウンロードします。draw.io のファイルは、draw.io でそのまま開けます。「画像をコピー」を押すと、ほかのアプリに貼り付けられます。</p>
-    <label class="field"><span>ファイル名</span><input id="exportName" type="text" autocomplete="off" spellcheck="false"></label>
-    <label class="field"><span>形式</span><select id="exportFormat"></select></label>
-    <label class="field" id="exportRangeField"><span>範囲</span><select id="exportRange"><option value="all">図の全体</option><option value="selection">選んだ要素</option></select></label>
-    <label class="field" id="exportScaleField"><span>倍率</span><select id="exportScale"></select></label>
-    <label class="field" id="exportBgField"><span>背景</span><select id="exportBg"><option value="white">白</option><option value="transparent">透明</option></select></label>
-    <div class="row"><button type="submit" id="exportOk" class="primary">エクスポート</button><button type="button" id="exportCopy">画像をコピー</button><button type="button" id="exportCancel">やめる</button></div>
+    <b id="exportTitle" data-l10n="shell-export-title"></b>
+    <p id="exportText" data-l10n="shell-export-text"></p>
+    <label class="field"><span data-l10n="shell-export-name"></span><input id="exportName" type="text" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span data-l10n="shell-export-format"></span><select id="exportFormat"></select></label>
+    <label class="field" id="exportRangeField"><span data-l10n="shell-export-range"></span><select id="exportRange"><option value="all" data-l10n="shell-export-range-all"></option><option value="selection" data-l10n="shell-export-range-selection"></option></select></label>
+    <label class="field" id="exportScaleField"><span data-l10n="shell-export-scale"></span><select id="exportScale"></select></label>
+    <label class="field" id="exportBgField"><span data-l10n="shell-export-bg"></span><select id="exportBg"><option value="white" data-l10n="shell-export-bg-white"></option><option value="transparent" data-l10n="shell-export-bg-transparent"></option></select></label>
+    <div class="row"><button type="submit" id="exportOk" class="primary" data-l10n="shell-export-ok"></button><button type="button" id="exportCopy" data-l10n="shell-export-copy"></button><button type="button" id="exportCancel" data-l10n="shell-cancel"></button></div>
   </form>
 </div>
 <script type="module" src="/src/main.ts"></script>

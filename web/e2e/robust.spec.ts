@@ -158,7 +158,7 @@ raw("Q-6: 結果を待たない処理が失敗しても黙って止まらず、�
   // Assert
   await expect(page.locator("#toast")).toHaveText(UNEXPECTED);
   expect(await editorText(page)).toBe(before);
-  await expect.poll(() => logs.some((l) => l.includes("予期しない問題") && l.includes("待たない処理の失敗"))).toBe(true);
+  await expect.poll(() => logs.some((l) => l.includes("unexpected problem") && l.includes("待たない処理の失敗"))).toBe(true);
 });
 
 raw("Q-6: 捕まえていない例外が起きても黙って止まらず、知らせる", async ({ page }) => {

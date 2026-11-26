@@ -57,7 +57,8 @@ test("C-3: ヘルプのソースへのリンクは、動いている版のコミ
 });
 
 test("C-8: 見出しと「ヘルプ」に、版の名前から決めた開発段階を示す", async ({ page }) => {
-  // Arrange
+  // Arrange（テストは辞書を入れずに動くので、説明の文はここに書く。stageLabel からは、どの段階かだけを使う）
+  const NOTES: Record<string, string> = { alpha: "開発中の alpha 版", beta: "機能を固定した beta 版", rc: "正式版の候補（rc）" };
   const stage = stageLabel(pkg.version);
   await openApp(page);
   // Act
@@ -65,7 +66,8 @@ test("C-8: 見出しと「ヘルプ」に、版の名前から決めた開発段
   // Assert
   if (stage) {
     await expect(page.locator("#stageBadge")).toHaveText(stage.badge);
-    await expect(page.locator("#stageNote")).toHaveText(`（${stage.note}）`);
+    await expect(page.locator("#stageNote")).toHaveText(`（${NOTES[stage.badge] ?? ""}）`);
+    await expect(page.locator("#stageBadge")).toHaveAttribute("title", `${NOTES[stage.badge] ?? ""}です。保存形式や操作は予告なく変わります`);
   } else {
     await expect(page.locator("#stageBadge")).toBeHidden();
     await expect(page.locator("#stageNote")).toHaveText("");

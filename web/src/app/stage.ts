@@ -1,4 +1,5 @@
 // 版の名前（0.1.0-beta.1 など）から、見出しの札と「ヘルプ」に出す開発段階を決める。
+import { t } from "../l10n";
 
 /** 開発段階の表示。札の文字と、札のツールチップ・「ヘルプ」に添える説明。 */
 export interface StageLabel {
@@ -19,8 +20,8 @@ export interface StageLabel {
  */
 export function stageLabel(version: string): StageLabel | null {
   const pre = /^\d+\.\d+\.\d+-([a-z]+)/.exec(version)?.[1];
-  if (pre === "alpha") return { badge: "alpha", note: "開発中の alpha 版" };
-  if (pre === "beta") return { badge: "beta", note: "機能を固定した beta 版" };
-  if (pre === "rc") return { badge: "rc", note: "正式版の候補（rc）" };
+  if (pre === "alpha") return { badge: "alpha", note: t("shell-stage-alpha") };
+  if (pre === "beta") return { badge: "beta", note: t("shell-stage-beta") };
+  if (pre === "rc") return { badge: "rc", note: t("shell-stage-rc") };
   return null;
 }

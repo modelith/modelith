@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { build, parse } from "../core/rust";
 import { emptyView } from "./layout";
 import { withNotes } from "./notes";
-import { CV, edgeStroke, fileBadge, kindIcon, svgMarkup } from "./svg";
+import { CV, DEFS, edgeStroke, fileBadge, kindIcon, svgMarkup } from "./svg";
 
 describe("edgeStroke（8.2.3 の線の記法）", () => {
   it.each([
@@ -44,6 +44,14 @@ describe("edgeStroke（8.2.3 の線の記法）", () => {
     const attrs = edgeStroke("comp");
     // Assert
     expect(attrs).toBe(' marker-start="url(#mDiamond)"');
+  });
+
+  it("部品として持つ線のひし形は、線の始まりから線の向きに描く（持ち主の箱の外に出る）", () => {
+    // Act
+    const marker = /<marker id="mDiamond"[^>]*>/.exec(DEFS)?.[0];
+    // Assert（始まりの点にひし形の端を合わせ、線の向きのまま描く。auto-start-reverse にすると箱の中に入って隠れる）
+    expect(marker).toContain('refX="1"');
+    expect(marker).toContain('orient="auto"');
   });
 
   it.each([["bind"], ["connect"]])("結び付けと n 項の接続の線（%s）は、矢印の無い実線にする（8.2.3.13 の binding-connection・n-ary-segment）", (kind) => {

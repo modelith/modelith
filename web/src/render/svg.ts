@@ -772,9 +772,13 @@ export function seqMarkup(C: ColorFn, c: ViewContent, opts: Omit<MarkupOpts, "vi
   return { s, g };
 }
 
-/** 矢印などのマーカー定義。 */
+/**
+ * 矢印などのマーカー定義。
+ * ひし形（mDiamond）は線の始まりの端に付け、線の向きに描く。線は持ち主の箱の縁から出るので、ひし形は箱の外に出る
+ * （向きを逆にすると箱の中に入り、箱の下に隠れる）。
+ */
 export const DEFS =
-  `<marker id="mDiamond" viewBox="0 0 20 10" refX="1" refY="5" markerWidth="18" markerHeight="9" orient="auto-start-reverse"><path d="M1,5 L10,1 L19,5 L10,9 Z" style="fill:var(--ink2)"/></marker>` +
+  `<marker id="mDiamond" viewBox="0 0 20 10" refX="1" refY="5" markerWidth="18" markerHeight="9" orient="auto"><path d="M1,5 L10,1 L19,5 L10,9 Z" style="fill:var(--ink2)"/></marker>` +
   `<marker id="mOpen" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto"><path d="M1,1 L11,6 L1,11" fill="none" style="stroke:var(--ink2)" stroke-width="1.4"/></marker>` +
   `<marker id="mMsg" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="10" markerHeight="10" orient="auto"><path d="M1,1 L11,6 L1,11 Z" style="fill:var(--ink)"/></marker>` +
   `<marker id="mBlock" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="10" markerHeight="10" orient="auto"><path d="M1,1 L11,6 L1,11 Z" style="fill:var(--k-con)"/></marker>` +

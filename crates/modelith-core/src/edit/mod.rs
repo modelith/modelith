@@ -229,15 +229,6 @@ pub fn edit(text: &str, intent: &Intent) -> Result<Outcome, Refusal> {
     edit_in(text, Vec::new(), intent).map_err(|r| r.reason)
 }
 
-/// ほかのファイルの要素を書き換えようとしたときの断りの文（`edit.in-other-file` を文にしたもの）。
-/// コアは使わない。wasm のテストが文を比べるために残している（wasm の側を辞書に移すときに消す。ADR-0027 §3）。
-pub const IN_OTHER_FILE: &str =
-    "この要素はほかのファイルにあります。そのファイルを開いて編集してください";
-
-/// 表示中のファイルの要素を、ほかのファイルの作成した図が出しているので削除できないときの断りの文（`edit.shown-in-other-file` を文にしたもの。#297）。
-/// コアは使わない。wasm のテストが文を比べるために残している（wasm の側を辞書に移すときに消す。ADR-0027 §3）。
-pub const SHOWN_IN_OTHER_FILE: &str = "この要素は、ほかのファイルの図に出しているので削除できません。先にそのファイルを開いて、図から外してください";
-
 /// 操作できなかった理由と、書き換えようとした要素のあるファイル。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Refused {

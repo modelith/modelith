@@ -213,6 +213,7 @@ pub fn set_problem_levels(json: &str) {
 /// ```
 #[wasm_bindgen(js_name = problemKinds)]
 pub fn problem_kinds() -> String {
+    messages::install_renderer();
     serde_json::to_string(levels::KINDS).unwrap_or_else(|_| "[]".to_owned())
 }
 
@@ -1317,7 +1318,10 @@ mod tests {
         // Assert
         let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(v["file"], "parts.sysml");
-        assert_eq!(v["refused"], modelith_core::edit::IN_OTHER_FILE);
+        assert_eq!(
+            v["refused"],
+            "この要素はほかのファイルにあります。そのファイルを開いて編集してください"
+        );
     }
 
     #[test]
@@ -1337,7 +1341,10 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(v["shownIn"], "views.sysml");
         assert_eq!(v["file"], serde_json::Value::Null);
-        assert_eq!(v["refused"], modelith_core::edit::SHOWN_IN_OTHER_FILE);
+        assert_eq!(
+            v["refused"],
+            "この要素は、ほかのファイルの図に出しているので削除できません。先にそのファイルを開いて、図から外してください"
+        );
     }
 
     #[test]
@@ -1443,6 +1450,11 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(v[0]["code"], "trace.derive");
         assert_eq!(v[0]["default"], "warning");
+        assert_eq!(
+            v[0]["label"],
+            "トレースの抜け：上位・下位の要求とのつながり（derivation）"
+        );
+        assert_eq!(v[3]["label"], "まだ扱えない書き方");
         assert_eq!(v[3]["code"], "unsupported");
         assert_eq!(v[3]["default"], "info");
     }

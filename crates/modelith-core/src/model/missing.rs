@@ -37,11 +37,9 @@ impl Builder<'_> {
                 }
                 self.problem(
                     e.start,
-                    Message::verbatim(format!(
-                        "引き継ぐ定義「{}」が見つかりません（{}）",
-                        shown_path(&s.path),
-                        e.name
-                    )),
+                    Message::new("model.general-missing")
+                        .arg("name", shown_path(&s.path))
+                        .arg("who", e.name.as_str()),
                     None,
                 );
             }
@@ -57,11 +55,9 @@ impl Builder<'_> {
             }
             self.problem(
                 a.start,
-                Message::verbatim(format!(
-                    "別名「{}」の指す先「{}」が見つかりません（alias）",
-                    a.name,
-                    shown_path(&a.target)
-                )),
+                Message::new("model.alias-target-missing")
+                    .arg("alias", a.name.as_str())
+                    .arg("name", shown_path(&a.target)),
                 None,
             );
         }
@@ -83,10 +79,7 @@ impl Builder<'_> {
             }
             self.problem(
                 i.start,
-                Message::verbatim(format!(
-                    "インポートする相手「{}」が見つかりません（import）",
-                    shown_path(&i.path)
-                )),
+                Message::new("model.import-missing").arg("name", shown_path(&i.path)),
                 None,
             );
         }
@@ -101,10 +94,9 @@ impl Builder<'_> {
                 if filter_of(f, |n| self.is_metadata_def(n)).is_none() {
                     self.problem(
                         i.start,
-                        Message::verbatim(format!(
-                            "インポート「{}」の絞り込み「{f}」はまだ扱えないため、絞り込まずに取り込みます（import の [ ]・filter）",
-                            i.path
-                        )),
+                        Message::new("model.import-filter-unsupported")
+                            .arg("path", i.path.as_str())
+                            .arg("filter", f),
                         Some("unsupported"),
                     );
                 }

@@ -370,8 +370,8 @@ mod tests {
         assert_eq!(
             got,
             [
-                "a.sysml 7:4 Error 型「Nope」が見つかりません（x） [-] [modelith]",
-                "a.sysml 4:4 Warning R：この要求を確かめる検証がありません（verify） [trace.verify] [modelith]",
+                "a.sysml 7:4 Error model.type-missing{name=Nope, who=x} [-] [modelith]",
+                "a.sysml 4:4 Warning model.trace-not-verified{requirement=R} [trace.verify] [modelith]",
             ]
         );
     }
@@ -389,7 +389,7 @@ mod tests {
         assert_eq!(
             got,
             [
-                "a.sysml 2:4 Error 型「Nope」が見つかりません（x） [-] [modelith]",
+                "a.sysml 2:4 Error model.type-missing{name=Nope, who=x} [-] [modelith]",
                 "a.sysml 1:4 Warning part def「A」は要求を満たしていません [r1] [jp.example.rules]",
             ]
         );
@@ -438,15 +438,13 @@ mod tests {
         assert_eq!(
             default,
             [
-                "a.sysml 4:4 Warning R：この要求を確かめる検証がありません（verify） [trace.verify] [modelith]",
+                "a.sysml 4:4 Warning model.trace-not-verified{requirement=R} [trace.verify] [modelith]",
                 "a.sysml 7:4 Warning part def「B」は要求を満たしていません [r1] [jp.example.rules]",
             ]
         );
         assert_eq!(
             chosen,
-            [
-                "a.sysml 4:4 Error R：この要求を確かめる検証がありません（verify） [trace.verify] [modelith]"
-            ]
+            ["a.sysml 4:4 Error model.trace-not-verified{requirement=R} [trace.verify] [modelith]"]
         );
     }
 
@@ -554,7 +552,7 @@ mod tests {
         // Assert
         assert_eq!(
             got,
-            ["a.sysml 0:12 Error 型「Nope」が見つかりません（x） [-] [modelith]"]
+            ["a.sysml 0:12 Error model.type-missing{name=Nope, who=x} [-] [modelith]"]
         );
     }
 

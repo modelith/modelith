@@ -32,19 +32,15 @@ impl Builder<'_> {
         for i in found {
             let e = &entries[i];
             let place = e.pe.map(|p| entries[p].name.as_str()).unwrap_or("");
-            let at = if place.is_empty() {
-                "同じ場所".to_owned()
+            // 持ち主に名前が無い（いちばん外・名前の無い要素の中）ときは、場所の名前を出さない文にする
+            let msg = if place.is_empty() {
+                Message::new("model.name-duplicate").arg("name", e.name.as_str())
             } else {
-                format!("「{place}」の中")
+                Message::new("model.name-duplicate-in")
+                    .arg("name", e.name.as_str())
+                    .arg("place", place)
             };
-            self.problem(
-                e.start,
-                Message::verbatim(format!(
-                    "「{}」という名前は、{at}で既に使われています。どちらかの名前を変えてください",
-                    e.name
-                )),
-                None,
-            );
+            self.problem(e.start, msg, None);
         }
     }
 }

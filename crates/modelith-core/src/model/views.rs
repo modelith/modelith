@@ -22,16 +22,19 @@ const STANDARD_VIEWS: &[(&str, &str, Option<&str>)] = &[
     ("BrowserView", "bv", None),
 ];
 
-/// 標準ビュー定義の、画面での名前（ADR-0014）。
+/// 型の無い図と GeneralView の、画面での名前のコード（辞書では「一般ビュー」）。
+const GENERAL_LABEL: &str = "model.view-label-general";
+
+/// 標準ビュー定義の、画面での名前のコード（ADR-0014。名前そのものは辞書の `model-view-label-…`）。
 const STD_LABEL: &[(&str, &str)] = &[
-    ("GeneralView", "一般ビュー"),
-    ("InterconnectionView", "内部ブロック図"),
-    ("ActionFlowView", "アクティビティ図"),
-    ("StateTransitionView", "状態遷移図"),
-    ("SequenceView", "シーケンス図"),
-    ("GeometryView", "ジオメトリビュー"),
-    ("GridView", "グリッドビュー"),
-    ("BrowserView", "ブラウザビュー"),
+    ("GeneralView", GENERAL_LABEL),
+    ("InterconnectionView", "model.view-label-interconnection"),
+    ("ActionFlowView", "model.view-label-action-flow"),
+    ("StateTransitionView", "model.view-label-state-transition"),
+    ("SequenceView", "model.view-label-sequence"),
+    ("GeometryView", "model.view-label-geometry"),
+    ("GridView", "model.view-label-grid"),
+    ("BrowserView", "model.view-label-browser"),
 ];
 
 /// 標準のレンダリング（Views）と描き方。None は図にできない。
@@ -118,23 +121,23 @@ pub fn is_standard_view(t: &str) -> bool {
 ///
 /// # 戻り値
 ///
-/// 画面での名前（ADR-0014）。表に無い名前なら、その名前をそのまま返す。
+/// 画面での名前の文（ADR-0014。値の無い `model.view-label-…`）。表に無い名前なら、その名前をそのまま出す文
+/// （`model.view-label-other`）。
 ///
 /// # 例
 ///
 /// ```text
-/// std_view_label(Some("SequenceView")) → "シーケンス図"
-/// std_view_label(None)                 → "一般ビュー"
-/// std_view_label(Some("Other"))        → "Other"   // 表に無い
+/// std_view_label(Some("SequenceView")) → model.view-label-sequence          // シーケンス図
+/// std_view_label(None)                 → model.view-label-general           // 一般ビュー
+/// std_view_label(Some("Other"))        → model.view-label-other{name=Other} // Other（表に無い）
 /// ```
-pub fn std_view_label(std: Option<&str>) -> String {
-    match std {
-        None => "一般ビュー".to_owned(),
-        Some(s) => STD_LABEL
-            .iter()
-            .find(|(n, _)| *n == s)
-            .map_or(s, |(_, l)| l)
-            .to_owned(),
+pub fn std_view_label(std: Option<&str>) -> Message {
+    let Some(s) = std else {
+        return Message::new(GENERAL_LABEL);
+    };
+    match STD_LABEL.iter().find(|(n, _)| *n == s) {
+        Some((_, code)) => Message::new(code),
+        None => Message::new("model.view-label-other").arg("name", s),
     }
 }
 
@@ -372,23 +375,20 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
         }
         let (std, mut kind, filters, render) = b.view_type(v);
         if kind.is_none() {
-            let label = std_view_label(std);
-            let msg = format!(
-                "図「{}」の種類（{label}）の描き方はまだ無いため、一般ビューとして描きます（{}）",
-                v.name,
-                std.unwrap_or("")
-            );
-            b.problem(v.start, Message::verbatim(msg), Some("unsupported"));
+            let msg = Message::new("model.view-kind-undrawable")
+                .arg("view", v.name.as_str())
+                .arg_message("label", std_view_label(std))
+                .arg("std", std.unwrap_or(""));
+            b.problem(v.start, msg, Some("unsupported"));
         }
         if let Some(r) = &render {
             match b.standard_rendering(r).flatten() {
                 Some(k) => kind = Some(k),
                 None => {
-                    let msg = format!(
-                        "図「{}」の表し方（{r}）はまだ扱えないため、図として描きます（render）",
-                        v.name
-                    );
-                    b.problem(v.start, Message::verbatim(msg), Some("unsupported"));
+                    let msg = Message::new("model.view-render-unsupported")
+                        .arg("view", v.name.as_str())
+                        .arg("render", r.as_str());
+                    b.problem(v.start, msg, Some("unsupported"));
                 }
             }
         }
@@ -397,11 +397,10 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
             match filter_of(f, |n| is_metadata(b, n)) {
                 Some(t) => tests.push(t),
                 None => {
-                    let msg = format!(
-                        "図「{}」の絞り込み「{f}」はまだ扱えないため、絞り込まずに描きます（filter）",
-                        v.name
-                    );
-                    b.problem(v.start, Message::verbatim(msg), Some("unsupported"));
+                    let msg = Message::new("model.view-filter-unsupported")
+                        .arg("view", v.name.as_str())
+                        .arg("filter", f.as_str());
+                    b.problem(v.start, msg, Some("unsupported"));
                 }
             }
         }
@@ -410,12 +409,10 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
         let mut shown_set = HashSet::new();
         for x in v.exposes.iter().flatten() {
             let Some(target) = b.resolve_qualified(&x.target, Some(vi)) else {
-                let msg = format!(
-                    "図「{}」に出す要素「{}」が見つかりません（expose）",
-                    v.name,
-                    shown_path(&x.target)
-                );
-                b.problem(x.start, Message::verbatim(msg), None);
+                let msg = Message::new("model.view-expose-missing")
+                    .arg("view", v.name.as_str())
+                    .arg("name", shown_path(&x.target));
+                b.problem(x.start, msg, None);
                 continue;
             };
             targets.push(target);
@@ -423,11 +420,10 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
                 Some(f) => {
                     let t = filter_of(f, |n| is_metadata(b, n));
                     if t.is_none() {
-                        let msg = format!(
-                            "図「{}」の絞り込み「{f}」はまだ扱えないため、絞り込まずに描きます（expose の [ ]）",
-                            v.name
-                        );
-                        b.problem(x.start, Message::verbatim(msg), Some("unsupported"));
+                        let msg = Message::new("model.view-expose-filter-unsupported")
+                            .arg("view", v.name.as_str())
+                            .arg("filter", f.as_str());
+                        b.problem(x.start, msg, Some("unsupported"));
                     }
                     t
                 }

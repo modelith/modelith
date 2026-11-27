@@ -210,8 +210,8 @@ impl Builder<'_> {
         let (rows, cyclic) = order_rows(&items, &before);
         if cyclic {
             let name = &self.e(def).name;
-            let msg = format!("シナリオ「{name}」の順序が循環しています（succession）");
-            self.problem(self.e(def).start, Message::verbatim(msg), None);
+            let msg = Message::new("model.scenario-order-cyclic").arg("name", name.as_str());
+            self.problem(self.e(def).start, msg, None);
         }
         let row = |it: Item| rows.get(&it).copied().unwrap_or(0);
         let mut seq_events: Vec<SequenceEvent> = events
@@ -452,9 +452,9 @@ impl Builder<'_> {
                     EndAt::Found(pt) => found.push(pt),
                     EndAt::Skip => {}
                     EndAt::Missing => {
-                        let msg =
-                            format!("「順序」の相手「{reference}」が見つかりません（succession）");
-                        self.problem(r.start, Message::verbatim(msg), None);
+                        let msg = Message::new("model.succession-end-missing")
+                            .arg("name", reference.as_str());
+                        self.problem(r.start, msg, None);
                     }
                 }
             }

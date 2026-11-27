@@ -493,7 +493,7 @@ fn every_other_file_is_checked_as_the_center() {
             .iter()
             .map(|p| p.msg.render())
             .collect::<Vec<_>>(),
-        ["型「Wheel」が見つかりません（w）"]
+        ["model.type-missing{name=Wheel, who=w}"]
     );
     assert_eq!(parts.problems[0].pos, 33); // そのファイルの中の位置（part w の始まり）
     assert_eq!(

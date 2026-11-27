@@ -661,7 +661,10 @@ mod tests {
             applied(&got, SHOP),
             "package Shop {\n    requirement def Quick;\n    part def Cart;\n}\n"
         );
-        assert_eq!(messages(&got), ["型「Shop::Nope」が見つかりません（x）"]);
+        assert_eq!(
+            messages(&got),
+            ["model.type-missing{name=Shop::Nope, who=x}"]
+        );
     }
 
     #[test]
@@ -756,7 +759,7 @@ mod tests {
         let b = run(same_text).unwrap();
         // Assert
         assert!(a.changes.is_empty() && b.changes.is_empty());
-        assert_eq!(messages(&a), ["型「Shop::Nope」が見つかりません（x）"]);
+        assert_eq!(messages(&a), ["model.type-missing{name=Shop::Nope, who=x}"]);
     }
 
     #[test]

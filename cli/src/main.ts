@@ -12,6 +12,7 @@ import { fsProjectReader, fsProjectWriter } from "./fs-project.ts";
 import { callTool, createServer } from "./mcp-server.ts";
 import { memoryProposals } from "./proposals.ts";
 import { TOOLS, toolsFor } from "./tools.ts";
+import { loadRasterizer } from "./raster.ts";
 import { loadWasmCore } from "./wasm-core.ts";
 import { loadWebRenderer } from "./web-render.ts";
 
@@ -37,6 +38,7 @@ const deps = {
   writer: fsProjectWriter(folder),
   proposals: memoryProposals(),
   renderer: loadWebRenderer(),
+  rasterizer: loadRasterizer(),
 };
 
 if (command.kind === "export") {
@@ -44,20 +46,24 @@ if (command.kind === "export") {
   const tool = TOOLS.find((t) => t.name === "export_diagram");
   if (!tool) throw new Error("export_diagram is missing");
   const result = await callTool(tool, deps, command.args);
-  const text = result.content[0]?.text ?? "";
+  const [first, image] = result.content;
+  const text = first?.type === "text" ? first.text : "";
   if (result.isError) {
     console.error(text);
     process.exit(1);
   }
-  const { content, layoutProblem } = JSON.parse(text) as { content: string; layoutProblem?: string };
+  const { content, layoutProblem, missingCharacters } = JSON.parse(text) as { content?: string; layoutProblem?: string; missingCharacters?: string };
   if (layoutProblem) console.error(`The saved layout could not be read, so the diagram is laid out automatically (${layoutProblem}).`);
+  if (missingCharacters) console.error(`These characters are not in the fonts that come with Modelith, so they are missing from the image: ${missingCharacters}`);
+  // 画像（PNG）は、道具が base64 で返したものを、もとのバイト列に戻して書く
+  const output = image?.type === "image" ? Buffer.from(image.data, "base64") : (content ?? "");
   // 受け手が途中で読むのをやめたとき（`| head` など）は、例外にせずに終わる
   process.stdout.on("error", (e: NodeJS.ErrnoException) => {
     if (e.code === "EPIPE") process.exit(0);
     throw e;
   });
-  if (command.out === undefined) process.stdout.write(content);
-  else await writeFile(command.out, content, "utf8");
+  if (command.out === undefined) process.stdout.write(output);
+  else await writeFile(command.out, output);
 } else {
   const server = createServer(toolsFor(command.direct), { ...deps, version });
   await server.connect(new StdioServerTransport());

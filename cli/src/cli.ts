@@ -16,12 +16,14 @@ export const USAGE = [
   "Only files inside the project folder are read, and only its model files are written.",
   "With --write-directly, the server also offers edit, which makes a change and writes it in one step.",
   "",
-  "Usage: modelith export <project folder> --format <svg|drawio> (--diagram <qualified name> | --subject <qualified name> | --file <model file> [--view <view>]) [--out <file>]",
+  "Usage: modelith export <project folder> --format <svg|drawio|png> (--diagram <qualified name> | --subject <qualified name> | --file <model file> [--view <view>]) [--scale <1|2|3>] [--out <file>]",
   "",
   "Draws a diagram the same way as the Modelith app and prints it, or writes it to the file given with --out.",
   "--diagram names a diagram written in the model (for example Shop::overview). --subject names a part def, state def, action def or",
   "occurrence def, and draws its internal block, state machine, activity or sequence diagram. --file gives an automatic diagram of a model file",
   "(--view all, structure, trace, control or behavior; default all).",
+  "A PNG is drawn with the fonts that come with Modelith (Japanese and Latin), so it looks the same on every computer.",
+  "--scale makes a PNG 1, 2 or 3 times the size of the diagram (default 1).",
 ].join("\n");
 
 /**
@@ -50,7 +52,7 @@ export function parseArgs(args: string[]): Command {
 }
 
 /** export のオプションの名前。 */
-const EXPORT_OPTIONS = ["format", "diagram", "subject", "file", "view", "out"];
+const EXPORT_OPTIONS = ["format", "diagram", "subject", "file", "view", "scale", "out"];
 
 /**
  * export のオプション（`--名前 値` の並び）を読む。

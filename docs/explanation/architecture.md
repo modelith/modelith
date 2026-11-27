@@ -19,6 +19,7 @@
 | --- | --- | --- |
 | `crates/modelith-core` | コア | P1 |
 | `crates/modelith-wasm` | ブラウザ向け wasm バインディング | P2 |
+| `crates/modelith-raster` | 図の SVG を、ブラウザ無しで PNG にする（`cli/` が使う別の wasm。コアにもブラウザにも入れない。ADR-0029） | P3 |
 | `crates/modelith-cli` | `modelith` コマンド（check） | P3 |
 | `cli/` | AI のクライアント向けの MCP のサーバ（`modelith mcp`。Node で動き、コアは wasm を使う。ADR-0024。使い方は [MCP のサーバ](../reference/mcp.md)） | P3 |
 | `crates/modelith-lsp` | LSP サーバ（未作成） | P5 |

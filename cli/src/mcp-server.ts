@@ -3,8 +3,8 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { Core, ProjectReader, ProjectWriter, ProposalStore, Renderer } from "./core.ts";
-import { ToolError, type Tool, type ToolParam } from "./tools.ts";
+import type { Core, ProjectReader, ProjectWriter, ProposalStore, Rasterizer, Renderer } from "./core.ts";
+import { ImageResult, ToolError, type Tool, type ToolParam } from "./tools.ts";
 
 /** サーバが使うもの（外から渡す）。 */
 export interface ServerDeps {
@@ -18,13 +18,15 @@ export interface ServerDeps {
   proposals: ProposalStore;
   /** 図を書き出す口。 */
   renderer: Renderer;
+  /** 図を PNG にする口。 */
+  rasterizer: Rasterizer;
   /** AI のクライアントに名乗る版。 */
   version: string;
 }
 
 /** 道具の結果（MCP の tools/call の結果のうち、使うものだけ）。 */
 export type ToolResult = {
-  content: { type: "text"; text: string }[];
+  content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[];
   isError?: boolean;
 };
 
@@ -46,22 +48,30 @@ function inputShape(params: Record<string, ToolParam>): Record<string, z.ZodType
 }
 
 /**
- * 道具を 1 回動かす。呼ぶたびにプロジェクトを読み直し、結果を JSON の文にする。失敗は例外にせず、AI のクライアントに文で返す。
+ * 道具を 1 回動かす。呼ぶたびにプロジェクトを読み直し、結果を JSON の文にする（画像を伴う結果は、説明の JSON と画像にする）。
+ * 失敗は例外にせず、AI のクライアントに文で返す。
  *
  * @param tool 道具
- * @param deps コア・プロジェクトを読む口・書く口・提案を覚えておく口・図を書き出す口
+ * @param deps コア・プロジェクトを読む口・書く口・提案を覚えておく口・図を書き出す口・図を PNG にする口
  * @param args 道具の引数
  * @returns 結果（JSON の文）。失敗なら isError を立て、理由の文を入れる
  * @example
  * await callTool(listFiles, deps, {})                    // → { content: [{ type: "text", text: "[{\"path\":\"a.sysml\"}]" }] }
+ * await callTool(exportDiagram, deps, { format: "png", file: "a.sysml" })
+ * // → { content: [{ type: "text", text: "{\"format\":\"png\",…}" }, { type: "image", data: "iVBOR…", mimeType: "image/png" }] }
  * await callTool(getElement, deps, { qualifiedName: "X" }) // → { isError: true, content: [{ type: "text", text: "No element named \"X\" was found. …" }] }
  */
 export async function callTool(
   tool: Tool, deps: Omit<ServerDeps, "version">, args: Record<string, string | undefined>,
 ): Promise<ToolResult> {
   try {
-    const { core, writer, proposals, renderer } = deps;
-    const result = await tool.run({ core, project: await deps.reader.read(), writer, proposals, renderer }, args);
+    const { core, writer, proposals, renderer, rasterizer } = deps;
+    const result = await tool.run({ core, project: await deps.reader.read(), writer, proposals, renderer, rasterizer }, args);
+    if (result instanceof ImageResult) {
+      // 画像は、説明の JSON と、画像そのもの（base64）の 2 つにして返す
+      const image = { type: "image" as const, data: Buffer.from(result.data).toString("base64"), mimeType: result.mimeType };
+      return { content: [{ type: "text", text: JSON.stringify(result.info) }, image] };
+    }
     return { content: [{ type: "text", text: JSON.stringify(result) }] };
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);

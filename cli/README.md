@@ -5,7 +5,7 @@ with synchronized text and diagram editing.
 
 - `modelith mcp <project folder>` starts an [MCP](https://modelcontextprotocol.io/) server, so that AI clients such as
   Claude Code or Codex can read, check and change the SysML v2 model in a folder on your computer.
-- `modelith export <project folder> …` draws a diagram as SVG or draw.io, laid out the same way as in the Modelith app.
+- `modelith export <project folder> …` draws a diagram as SVG, draw.io or PNG, laid out the same way as in the Modelith app.
 
 This package is part of the Modelith project. Its source is in the
 [`cli/` folder of modelith/modelith](https://github.com/modelith/modelith/tree/dev/cli).
@@ -32,7 +32,7 @@ The server offers these tools.
 | `get_element` | Gets one element: documentation, type, members, ports and relations |
 | `list_diagrams` | Lists the diagrams written in the model as views |
 | `list_problems` | Checks the project: syntax errors, missing references, traceability gaps, check rule findings |
-| `export_diagram` | Returns a diagram as SVG or draw.io |
+| `export_diagram` | Returns a diagram as SVG, draw.io or a PNG image |
 | `propose_edit` | Proposes one change **without writing anything**, and returns the changes and the problems afterwards |
 | `apply_edit` | Writes a proposal to the model files |
 
@@ -56,7 +56,12 @@ folder under version control, so that you can undo what was written.
 npx modelith-cli@next export /path/to/project --format svg --diagram Shop::overview > overview.svg
 npx modelith-cli@next export /path/to/project --format svg --subject Shop::Cart > cart.svg
 npx modelith-cli@next export /path/to/project --format drawio --file shop.sysml --view structure --out shop.drawio
+npx modelith-cli@next export /path/to/project --format png --diagram Shop::overview --scale 2 --out overview.png
 ```
+
+A PNG is drawn without a browser, with the fonts that come with this package (Noto Sans JP and IBM Plex Mono), so it looks
+the same on every computer. Shapes, positions and colours are the same as in the Modelith app. Characters that these fonts
+do not have (other than Japanese and Latin) are left out of the image, and the command tells you which ones.
 
 ## Requirements
 

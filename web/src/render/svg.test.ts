@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { build, parse } from "../core/rust";
 import { emptyView } from "./layout";
 import { withNotes } from "./notes";
-import { CV, DEFS, edgeStroke, fileBadge, kindIcon, svgMarkup } from "./svg";
+import type { Box } from "./geometry";
+import { CV, DEFS, edgeStroke, fileBadge, kindIcon, portLabelY, svgMarkup } from "./svg";
 
 describe("edgeStroke（8.2.3 の線の記法）", () => {
   it.each([
@@ -130,5 +131,54 @@ describe("fileBadge（ほかのファイルの要素の札、ADR-0021 §4）", (
     const svg = fileBadge(CV, "a<b>&c.sysml", "inherit");
     // Assert
     expect(svg).toContain(">a&lt;b&gt;&amp;c.sysml</text>");
+  });
+});
+
+describe("ポートの名前の重なり（F-VIEW-3）", () => {
+  const placed = (): Box[] => [{ x: 30, y: 89, w: 40, h: 11 }];
+
+  it.each([
+    ["重ならなければ、いつもの高さ", { x: 100, w: 40 }, 127, 100],
+    ["重なるなら、代わりの高さ", { x: 0, w: 40 }, 127, 127],
+    ["縁が接するだけなら、いつもの高さ（境界）", { x: 70, w: 40 }, 127, 100],
+    ["1 だけ重なるなら、代わりの高さ（境界）", { x: 69, w: 40 }, 127, 127],
+    ["代わりが無ければ、いつもの高さのまま", { x: 0, w: 40 }, null, 100],
+  ])("portLabelY：%s", (_title, span, other, expected) => {
+    // Act
+    const y = portLabelY(placed(), span, 100, other);
+    // Assert
+    expect(y).toBe(expected);
+  });
+
+  it("portLabelY：代わりの高さも重なるなら、いつもの高さのまま（異常系）", () => {
+    // Arrange
+    const taken = [...placed(), { x: 0, y: 116, w: 40, h: 11 }];
+    // Act
+    const y = portLabelY(taken, { x: 0, w: 40 }, 100, 127);
+    // Assert
+    expect(y).toBe(100);
+  });
+
+  it("portLabelY：決めた場所を覚え、次の名前はそこを避ける", () => {
+    // Arrange
+    const taken: Box[] = [];
+    // Act
+    const first = portLabelY(taken, { x: 0, w: 40 }, 100, 127);
+    const second = portLabelY(taken, { x: 20, w: 40 }, 100, 127);
+    // Assert
+    expect([first, second]).toEqual([100, 127]);
+  });
+
+  it("隣り合う要素の向かい合うポートの名前は、違う高さに書く", () => {
+    // Arrange（A の右の辺の出力のポートと、すぐ右の B の左の辺の入力のポートが、同じ高さで向かい合う）
+    const M = build(parse("package P { port def Pt; part def A { out port longOutput : Pt; } part def B { in port longInput : ~Pt; } }"));
+    const view = { ...emptyView(), pos: { A: [0, 0], B: [300, 0] } as Record<string, [number, number]> };
+    // Act
+    const { ns } = svgMarkup(CV, { nodes: M.nodes.filter((n) => n.key === "A" || n.key === "B"), edges: [] }, view, { view: "structure" });
+    // Assert
+    const y = (name: string): string | undefined => new RegExp(`<text x="[^"]*" y="([^"]*)"[^>]*>${name}</text>`).exec(ns)?.[1];
+    expect(y("longOutput")).toBeDefined();
+    expect(y("longInput")).toBeDefined();
+    expect(y("longOutput")).not.toBe(y("longInput"));
   });
 });

@@ -233,7 +233,9 @@ export function svgMarkup(C: ColorFn, content: ViewContent, L: ViewLayout, opts:
   }
   let ns = "", ps = "";
   for (const [, b] of box) if (!b.holds) ns += nodeMarkup(C, b, opts, F, MONO);
-  for (const [, b] of box) ps += pinsMarkup(C, b, opts, MONO);
+  // ポートの名前は、先に置いた名前と重なるなら記号の下へずらす（向かい合うポートの名前が重ならないように）
+  const labels: Box[] = [];
+  for (const [, b] of box) ps += pinsMarkup(C, b, opts, MONO, labels);
   // 選んだ線には、形を調整するつまみを要素の上に描く（F-VIEW-16）
   const selRoute = opts.interactive && opts.selEdge ? routes.get(opts.selEdge) : undefined;
   const hs = selRoute && opts.selEdge ? edgeHandles(C, opts.selEdge, selRoute) : "";
@@ -602,6 +604,42 @@ function junctionMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string): st
   );
 }
 
+/** ポートの名前の文字の高さ（重なりを見るための見積もり）。 */
+const PORT_LABEL_H = 11;
+
+/**
+ * ポートの名前の幅の見積もり（等幅の 9.5px の文字）。
+ *
+ * @param name 画面に出す名前
+ * @returns 幅
+ * @example
+ * portLabelWidth("ab") // → 11.4
+ * portLabelWidth("")   // → 0（境界）
+ */
+export const portLabelWidth = (name: string): number => Math.max(textWidth(name) * (9.5 / 11), [...name].length * 5.7);
+
+/**
+ * ポートの名前を書く高さを決め、置いた場所を覚える。いつもの高さが、先に置いた名前と重なるなら、代わりの高さにする。
+ * 代わりの高さも重なるとき、代わりが無いときは、いつもの高さのままにする。
+ *
+ * @param placed 先に置いた名前の矩形。決めた場所を、ここに足す
+ * @param span 名前の左端と幅
+ * @param y いつもの高さ（文字の基線）
+ * @param other 代わりの高さ（文字の基線）。無ければ null
+ * @returns 決めた高さ（文字の基線）
+ * @example
+ * portLabelY([], { x: 0, w: 40 }, 100, 127)                              // → 100（重ならない）
+ * portLabelY([{ x: 30, y: 89, w: 40, h: 11 }], { x: 0, w: 40 }, 100, 127) // → 127（重なるので、代わりの高さ）
+ * portLabelY([{ x: 30, y: 89, w: 40, h: 11 }], { x: 0, w: 40 }, 100, null) // → 100（代わりが無い）
+ */
+export function portLabelY(placed: Box[], span: { x: number; w: number }, y: number, other: number | null): number {
+  const rect = (base: number): Box => ({ x: span.x, y: base - PORT_LABEL_H, w: span.w, h: PORT_LABEL_H });
+  const hits = (r: Box): boolean => placed.some((o) => r.x < o.x + o.w && o.x < r.x + r.w && r.y < o.y + o.h && o.y < r.y + r.h);
+  const chosen = hits(rect(y)) && other !== null && !hits(rect(other)) ? other : y;
+  placed.push(rect(chosen));
+  return chosen;
+}
+
 /**
  * 要素の接続点を SVG の文字列にする。ポート由来の接続点は記号と名前、自由な接続点は小さな丸で描く。
  * 操作できる図では、つかみやすいよう透明な当たり判定を重ねる。
@@ -610,14 +648,15 @@ function junctionMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, F: string): st
  * @param b 要素の矩形と、その接続点
  * @param opts 描き方（選択中の接続点・操作できるか）
  * @param MONO ポートの名前のフォント
+ * @param labels 先に置いたポートの名前の矩形。置いた名前を、ここに足す（重なる名前を、記号の下へずらすため）
  * @returns `<g class="pin" data-node="キー" data-pin="ID">…</g>` を接続点の数だけつないだ文字列。接続点が無ければ空文字列
  * @example
  * // A の上の縁の中央に自由な接続点 a1 があるとき（操作できない図）
- * pinsMarkup(CV, b, { view: "trace" }, "var(--mono)") // → '<g class="pin" data-node="A" data-pin="a1"><circle … r="3.6" …/></g>'
+ * pinsMarkup(CV, b, { view: "trace" }, "var(--mono)", []) // → '<g class="pin" data-node="A" data-pin="a1"><circle … r="3.6" …/></g>'
  * // 接続点が無いとき
- * pinsMarkup(CV, b, { view: "trace" }, "var(--mono)") // → ""
+ * pinsMarkup(CV, b, { view: "trace" }, "var(--mono)", []) // → ""
  */
-function pinsMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, MONO: string): string {
+function pinsMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, MONO: string, labels: Box[]): string {
   const n = b.n;
   let ps = "";
   for (const p of b.pins) {
@@ -627,9 +666,11 @@ function pinsMarkup(C: ColorFn, b: NodeBox, opts: MarkupOpts, MONO: string): str
     ps += `<g class="pin" data-node="${esc(n.key)}" data-pin="${esc(p.id)}">`;
     if (p.port) {
       ps += portGlyph(q.x, q.y, q.nx, q.ny, p.port.dir, col, C("panel"), psel ? C("sel") : col, psel ? 2.4 : 1.3);
-      const lxp = q.nx ? q.x + q.nx * 9 : q.x + 9, lyp = q.nx ? q.y - 9 : q.ny > 0 ? q.y + 17 : q.y - 10;
       const anc = q.nx < 0 ? "end" : "start";
-      ps += `<text x="${lxp}" y="${lyp}" text-anchor="${anc}" font-size="9.5" fill="${C("ink2")}" stroke="${C("paper")}" stroke-width="3" paint-order="stroke" font-family="${MONO}">${esc(shownName(p.port.name))}</text>`;
+      const shown = shownName(p.port.name);
+      const lxp = q.nx ? q.x + q.nx * 9 : q.x + 9;
+      const lyp = portLabelY(labels, { x: anc === "end" ? lxp - portLabelWidth(shown) : lxp, w: portLabelWidth(shown) }, q.nx ? q.y - 9 : q.ny > 0 ? q.y + 17 : q.y - 10, q.nx ? q.y + 18 : null);
+      ps += `<text x="${lxp}" y="${lyp}" text-anchor="${anc}" font-size="9.5" fill="${C("ink2")}" stroke="${C("paper")}" stroke-width="3" paint-order="stroke" font-family="${MONO}">${esc(shown)}</text>`;
       if (opts.interactive) ps += `<rect x="${q.x - 11}" y="${q.y - 11}" width="22" height="22" fill="transparent"/>`;
     } else {
       ps += `<circle cx="${q.x}" cy="${q.y}" r="${psel ? 5 : 3.6}" fill="${psel ? C("sel") : col}" stroke="${C("panel")}" stroke-width="1"/>`;

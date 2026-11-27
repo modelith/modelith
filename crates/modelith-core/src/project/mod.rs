@@ -56,7 +56,7 @@ pub fn project(source: &str, parse: &Parse) -> ParseResult {
     if let Some(at) = broken_layout_comment(source) {
         c.out.errors.push(ParseError {
             pos: c.utf16(at),
-            msg: Message::verbatim("@layout コメントを読み込めません"),
+            msg: Message::new("syntax.layout-comment-unreadable"),
         });
     }
     c.out

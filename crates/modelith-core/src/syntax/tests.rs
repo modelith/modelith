@@ -35,11 +35,11 @@ fn node_kinds(text: &str) -> Vec<SyntaxKind> {
         .collect()
 }
 
-fn errors(text: &str) -> Vec<(usize, String)> {
+fn errors(text: &str) -> Vec<(usize, Message)> {
     parse(text)
         .errors()
         .iter()
-        .map(|e| (e.offset, e.message.render()))
+        .map(|e| (e.offset, e.message.clone()))
         .collect()
 }
 
@@ -421,8 +421,14 @@ fn textual_representation_without_body_or_language_is_an_error() {
     let a = errors(no_body);
     let b = errors(no_language);
     // Assert
-    assert_eq!(a, vec![(18, "本文（/* … */）がありません".to_owned())]);
-    assert_eq!(b, vec![(5, "「language」がありません".to_owned())]);
+    assert_eq!(a, vec![(18, Message::new("syntax.body-text-missing"))]);
+    assert_eq!(
+        b,
+        vec![(
+            5,
+            Message::new("syntax.token-missing").arg("token", "language")
+        )]
+    );
 }
 
 #[test]
@@ -483,7 +489,10 @@ fn keyword_led_expression_without_its_semicolon_is_an_error() {
     // Act
     let actual = errors(text);
     // Assert
-    assert_eq!(actual, vec![(23, "「;」がありません".to_owned())]);
+    assert_eq!(
+        actual,
+        vec![(23, Message::new("syntax.token-missing").arg("token", ";"))]
+    );
     assert!(node_kinds(text).contains(&PART_USAGE));
 }
 
@@ -525,8 +534,11 @@ fn unclosed_body_expression_is_an_error() {
     assert_eq!(
         actual,
         vec![
-            (text.len(), "「{」に対応する「}」がありません".to_owned()),
-            (text.len(), "「;」がありません".to_owned())
+            (text.len(), Message::new("syntax.block-unclosed")),
+            (
+                text.len(),
+                Message::new("syntax.token-missing").arg("token", ";")
+            )
         ]
     );
 }
@@ -579,7 +591,7 @@ fn crosses_without_its_target_is_an_error() {
     // Assert
     assert_eq!(
         actual,
-        vec![(18, "関係の相手の名前がありません".to_owned())]
+        vec![(18, Message::new("syntax.relationship-target-missing"))]
     );
 }
 
@@ -613,7 +625,10 @@ fn flow_payload_without_anything_is_an_error() {
     // Act
     let actual = errors(text);
     // Assert
-    assert_eq!(actual, vec![(8, "流れるものがありません".to_owned())]);
+    assert_eq!(
+        actual,
+        vec![(8, Message::new("syntax.flow-payload-missing"))]
+    );
 }
 
 #[test]
@@ -656,7 +671,7 @@ fn interface_without_connect_and_its_second_end_is_an_error() {
     // Assert
     assert_eq!(
         actual,
-        vec![(17, "関係の相手の名前がありません".to_owned())]
+        vec![(17, Message::new("syntax.relationship-target-missing"))]
     );
 }
 
@@ -685,10 +700,13 @@ fn golden_syntax_error_case_reports_missing_semicolon_and_stray_brace() {
     assert_eq!(
         actual,
         vec![
-            (after_b.unwrap_or_default(), "「;」がありません".to_owned()),
+            (
+                after_b.unwrap_or_default(),
+                Message::new("syntax.token-missing").arg("token", ";")
+            ),
             (
                 stray.unwrap_or_default(),
-                "対応する「{」がない「}」があります".to_owned()
+                Message::new("syntax.stray-closing-brace")
             ),
         ]
     );
@@ -720,8 +738,14 @@ fn unclosed_block_reports_at_the_owner_declaration() {
     assert_eq!(
         actual,
         vec![
-            (0, "「P」のブロックが閉じていません".to_owned()),
-            (14, "「A」のブロックが閉じていません".to_owned()),
+            (
+                0,
+                Message::new("syntax.named-block-unclosed").arg("name", "P")
+            ),
+            (
+                14,
+                Message::new("syntax.named-block-unclosed").arg("name", "A")
+            ),
         ]
     );
 }
@@ -744,7 +768,7 @@ fn doc_without_body_is_an_error() {
     // Act
     let actual = errors(text);
     // Assert
-    assert_eq!(actual, vec![(17, "本文（/* … */）がありません".to_owned())]);
+    assert_eq!(actual, vec![(17, Message::new("syntax.body-text-missing"))]);
 }
 
 // ---- ロスレスとエラーへの強さ（ADR-0015） ----
@@ -765,7 +789,7 @@ fn deep_nesting_stops_at_the_limit_without_overflowing_the_stack() {
         let too_deep = p
             .errors()
             .iter()
-            .any(|e| e.message.render().starts_with("入れ子が深すぎる"));
+            .any(|e| e.message == Message::new("syntax.too-deep").arg("max", "256"));
         assert_eq!(too_deep, expect_error, "{n}");
     }
 }
@@ -914,7 +938,10 @@ fn metadata_about_without_target_is_an_error() {
     // Act
     let es = errors(text);
     // Assert
-    assert_eq!(es, [(22, "関係の相手の名前がありません".to_owned())]);
+    assert_eq!(
+        es,
+        [(22, Message::new("syntax.relationship-target-missing"))]
+    );
 }
 
 #[test]
@@ -1020,8 +1047,14 @@ fn dependency_without_to_or_ends_is_an_error() {
     let no_to = errors("dependency from A;");
     let no_client = errors("dependency to B;");
     // Act / Assert
-    assert_eq!(no_to, [(17, "「to」がありません".to_owned())]);
-    assert_eq!(no_client, [(11, "関係の相手の名前がありません".to_owned())]);
+    assert_eq!(
+        no_to,
+        [(17, Message::new("syntax.token-missing").arg("token", "to"))]
+    );
+    assert_eq!(
+        no_client,
+        [(11, Message::new("syntax.relationship-target-missing"))]
+    );
 }
 
 #[test]
@@ -1159,10 +1192,22 @@ fn connector_without_its_separator_or_end_is_an_error() {
     let unclosed = errors("connect (a, b;");
     let no_end = errors("connect a to ;");
     // Act / Assert
-    assert_eq!(no_to, [(9, "「to」がありません".to_owned())]);
-    assert_eq!(no_eq, [(6, "「=」がありません".to_owned())]);
-    assert_eq!(unclosed, [(13, "「)」がありません".to_owned())]);
-    assert_eq!(no_end, [(13, "関係の相手の名前がありません".to_owned())]);
+    assert_eq!(
+        no_to,
+        [(9, Message::new("syntax.token-missing").arg("token", "to"))]
+    );
+    assert_eq!(
+        no_eq,
+        [(6, Message::new("syntax.token-missing").arg("token", "="))]
+    );
+    assert_eq!(
+        unclosed,
+        [(13, Message::new("syntax.token-missing").arg("token", ")"))]
+    );
+    assert_eq!(
+        no_end,
+        [(13, Message::new("syntax.relationship-target-missing"))]
+    );
 }
 
 #[test]
@@ -1329,9 +1374,15 @@ fn succession_without_first_or_guard_is_an_error() {
     let no_guard = errors("first a if then b;");
     let bare_if = errors("if then b;");
     // Act / Assert
-    assert_eq!(no_first, [(16, "「first」がありません".to_owned())]);
-    assert_eq!(no_guard, [(11, "条件の式がありません".to_owned())]);
-    assert_eq!(bare_if, [(3, "条件の式がありません".to_owned())]);
+    assert_eq!(
+        no_first,
+        [(
+            16,
+            Message::new("syntax.token-missing").arg("token", "first")
+        )]
+    );
+    assert_eq!(no_guard, [(11, Message::new("syntax.condition-missing"))]);
+    assert_eq!(bare_if, [(3, Message::new("syntax.condition-missing"))]);
 }
 
 #[test]
@@ -1564,7 +1615,13 @@ fn transition_without_then_is_an_error() {
     // Act
     let errs = errors(text);
     // Assert
-    assert_eq!(errs, [(20, "「then」がありません".to_owned())]);
+    assert_eq!(
+        errs,
+        [(
+            20,
+            Message::new("syntax.token-missing").arg("token", "then")
+        )]
+    );
 }
 
 #[test]
@@ -1599,9 +1656,18 @@ fn action_node_without_its_parameter_is_an_error() {
     let no_target = errors("send x to;");
     let no_assign = errors("assign a 1;");
     // Act / Assert
-    assert_eq!(no_payload, [(6, "受けるものがありません".to_owned())]);
-    assert_eq!(no_target, [(9, "値の式がありません".to_owned())]);
-    assert_eq!(no_assign, [(8, "「:=」がありません".to_owned())]);
+    assert_eq!(
+        no_payload,
+        [(6, Message::new("syntax.accept-payload-missing"))]
+    );
+    assert_eq!(
+        no_target,
+        [(9, Message::new("syntax.value-expression-missing"))]
+    );
+    assert_eq!(
+        no_assign,
+        [(8, Message::new("syntax.token-missing").arg("token", ":="))]
+    );
 }
 
 #[test]
@@ -1612,7 +1678,10 @@ fn action_node_keyword_after_a_line_break_starts_a_new_statement() {
     let kinds = node_kinds(text);
     // Assert
     assert_eq!(kinds, [SOURCE_FILE, ACTION_USAGE, NAME, FORK_NODE, NAME]);
-    assert_eq!(errors(text), [(8, "「;」がありません".to_owned())]);
+    assert_eq!(
+        errors(text),
+        [(8, Message::new("syntax.token-missing").arg("token", ";"))]
+    );
 }
 
 #[test]
@@ -1675,8 +1744,14 @@ fn loop_without_its_body_or_in_is_an_error() {
     let no_body = errors("while x; part p;");
     let no_in = errors("for x xs { }");
     // Act / Assert
-    assert_eq!(no_body, [(7, "「{」がありません".to_owned())]);
-    assert_eq!(no_in, [(6, "「in」がありません".to_owned())]);
+    assert_eq!(
+        no_body,
+        [(7, Message::new("syntax.token-missing").arg("token", "{"))]
+    );
+    assert_eq!(
+        no_in,
+        [(6, Message::new("syntax.token-missing").arg("token", "in"))]
+    );
     assert_eq!(
         node_kinds("while x; part p;"),
         [SOURCE_FILE, WHILE_LOOP_NODE, EXPRESSION, PART_USAGE, NAME]
@@ -1687,19 +1762,18 @@ fn loop_without_its_body_or_in_is_an_error() {
 fn reserved_word_used_as_a_declaration_name_is_an_error() {
     // Arrange（同値分割：名前の場所の予約語（`;`・`{`・`:` が続く）、引用名、予約語でない名前。#266）
     let bad = [
-        ("part def def;", 9),
-        ("package P { part def end; part def A; }", 21),
-        ("view flow : ActionFlowView { }", 5),
-        ("part def import { }", 9),
+        ("part def def;", 9, "def"),
+        ("package P { part def end; part def A; }", 21, "end"),
+        ("view flow : ActionFlowView { }", 5, "flow"),
+        ("part def import { }", 9, "import"),
     ];
     let good = ["part def 'def';", "part def stage;", "part a : A;"];
-    for (text, at) in bad {
+    for (text, at, word) in bad {
         // Act
         let errs = errors(text);
-        // Assert
-        assert_eq!(errs.len(), 1, "{text}: {errs:?}");
-        assert_eq!(errs[0].0, at, "{text}");
-        assert!(errs[0].1.contains("名前に使えません"), "{text}: {errs:?}");
+        // Assert（その語を値に持つ「名前に使えません」の文）
+        let want = Message::new("syntax.keyword-as-name").arg("word", word);
+        assert_eq!(errs, [(at, want)], "{text}");
     }
     for text in good {
         assert_eq!(errors(text), [], "{text}");
@@ -1730,29 +1804,31 @@ fn broken_result_and_filter_expressions_are_reported_where_they_break() {
         (
             "constraint def C { v > 10 + }",
             27,
-            "「+」の後に値がありません",
+            Message::new("syntax.value-missing-after").arg("text", "+"),
         ),
         (
             "calc def K { x 2 }",
             15,
-            "「x」と「2」の間に演算子がありません",
+            Message::new("syntax.operator-missing-between")
+                .arg("before", "x")
+                .arg("after", "2"),
         ),
         (
             "requirement r { require constraint { m <= } }",
             41,
-            "「<=」の後に値がありません",
+            Message::new("syntax.value-missing-after").arg("text", "<="),
         ),
         (
             "package P { filter @A and @; }",
             27,
-            "「@」の後に型の名前がありません",
+            Message::new("syntax.type-name-missing-after").arg("text", "@"),
         ),
     ];
     for (text, at, message) in bad {
         // Act
         let errs = errors(text);
         // Assert
-        assert_eq!(errs, [(at, message.to_owned())], "{text}");
+        assert_eq!(errs, [(at, message)], "{text}");
     }
 }
 
@@ -1765,13 +1841,15 @@ fn a_member_that_starts_with_two_names_is_reported_as_an_unknown_kind() {
     // Act / Assert
     assert_eq!(
         typo,
-        [(13, "「prt」という種類の要素はありません".to_owned())]
+        [(13, Message::new("syntax.unknown-kind").arg("word", "prt"))]
     );
     assert_eq!(
         quoted,
         [(
             23,
-            "「'my part'」と「engine」の間に演算子がありません".to_owned()
+            Message::new("syntax.operator-missing-between")
+                .arg("before", "'my part'")
+                .arg("after", "engine")
         )]
     );
     assert_eq!(declared, []);
@@ -1804,7 +1882,13 @@ fn broken_result_expression_that_starts_with_if_is_reported() {
     // Act
     let errs = errors(text);
     // Assert
-    assert_eq!(errs, [(31, "「if」の式に「else」がありません".to_owned())]);
+    assert_eq!(
+        errs,
+        [(
+            31,
+            Message::new("syntax.if-part-missing").arg("part", "else")
+        )]
+    );
 }
 
 #[test]
@@ -1829,48 +1913,55 @@ fn conditions_and_action_arguments_that_follow_the_grammar_have_no_error() {
 fn broken_conditions_and_action_arguments_are_reported_where_they_break() {
     // Arrange（異常系：それぞれの場所で、演算子の後に値が無い・値の間に演算子が無い・カンマの後に値が無い）
     let bad = [
-        ("action def A { if x > { } }", "「>」の後に値がありません"),
+        (
+            "action def A { if x > { } }",
+            Message::new("syntax.value-missing-after").arg("text", ">"),
+        ),
         (
             "action def A { if a b { } }",
-            "「a」と「b」の間に演算子がありません",
+            Message::new("syntax.operator-missing-between")
+                .arg("before", "a")
+                .arg("after", "b"),
         ),
         (
             "action def A { if x { } else if y < { } }",
-            "「<」の後に値がありません",
+            Message::new("syntax.value-missing-after").arg("text", "<"),
         ),
         (
             "action def A { while i < { } }",
-            "「<」の後に値がありません",
+            Message::new("syntax.value-missing-after").arg("text", "<"),
         ),
         (
             "action def A { loop { } until i >= ; }",
-            "「>=」の後に値がありません",
+            Message::new("syntax.value-missing-after").arg("text", ">="),
         ),
         (
             "action def A { for k in 1 2 { } }",
-            "「1」と「2」の間に演算子がありません",
+            Message::new("syntax.operator-missing-between")
+                .arg("before", "1")
+                .arg("after", "2"),
         ),
         (
             "action def A { send S(1,) to q; }",
-            "「,」の後に値がありません",
+            Message::new("syntax.value-missing-after").arg("text", ","),
         ),
         (
             "action def A { assign a := 1 + ; }",
-            "「+」の後に値がありません",
+            Message::new("syntax.value-missing-after").arg("text", "+"),
         ),
         (
             "action def A { first start; if x > then b; action b; }",
-            "「>」の後に値がありません",
+            Message::new("syntax.value-missing-after").arg("text", ">"),
         ),
         (
             "state def S { state a; state b; transition first a if x == then b; }",
-            "「==」の後に値がありません",
+            Message::new("syntax.value-missing-after").arg("text", "=="),
         ),
     ];
     for (text, message) in bad {
         // Act
-        let messages: Vec<String> = errors(text).into_iter().map(|(_, m)| m).collect();
+        let messages: Vec<Message> = errors(text).into_iter().map(|(_, m)| m).collect();
         // Assert
-        assert_eq!(messages, [message.to_owned()], "{text}");
+        assert_eq!(messages, [message], "{text}");
     }
 }

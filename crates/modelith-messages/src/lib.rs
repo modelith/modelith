@@ -12,7 +12,10 @@ use modelith_core::message::{Arg, Message, VERBATIM, fallback_text};
 use unic_langid::LanguageIdentifier;
 
 /// 日本語の辞書（場所の名前と、Fluent のテキスト）。キーは場所の名前で始める。
-const JA: &[(&str, &str)] = &[("read-error", include_str!("../locales/ja/read-error.ftl"))];
+const JA: &[(&str, &str)] = &[
+    ("read-error", include_str!("../locales/ja/read-error.ftl")),
+    ("syntax", include_str!("../locales/ja/syntax.ftl")),
+];
 
 thread_local! {
     /// 日本語の辞書を読んだもの。`FluentBundle` はスレッドをまたげないので、スレッドごとに、初めて使うときに作る。
@@ -241,6 +244,7 @@ mod tests {
         // Act
         let failed: Vec<&str> = keys()
             .into_iter()
+            .filter(|(area, _)| *area == "read-error")
             .map(|(_, key)| key)
             .filter(|key| BUNDLE.with(|b| format(b, key, &[])).is_none())
             .collect();

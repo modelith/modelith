@@ -28,6 +28,20 @@ export function modelFiles(entries: readonly DirEntry[]): FileRef[] {
 }
 
 /**
+ * フォルダの中身を、比べられる形（パスの一覧）にする。他のアプリで足された・消されたものがあるかを確かめるのに使う（F-FILE-8）。
+ *
+ * @param entries フォルダの中身
+ * @returns ファイルとフォルダのパス（フォルダの中身の順。フォルダは後ろに "/" を付け、中身を続ける）
+ * @example
+ * entryPaths([{ kind: "file", ref: a }, { kind: "dir", path: "lib", …, children: [{ kind: "file", ref: b }] }])
+ * // → ["a.sysml", "lib/", "lib/b.sysml"]
+ * entryPaths([]) // → []
+ */
+export function entryPaths(entries: readonly DirEntry[]): string[] {
+  return entries.flatMap((e) => (e.kind === "dir" ? [`${e.path}/`, ...entryPaths(e.children)] : [e.ref.path]));
+}
+
+/**
  * コアに渡すプロジェクトのファイルのテキストを決める。開いている文書は、保存していない変更も含めた今のテキストを使う。
  *
  * @param files フォルダの中のモデルのファイル

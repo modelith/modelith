@@ -6,6 +6,8 @@ let clock = 1000;
 export class FakeFile implements FileHandleLike {
   readonly kind = "file";
   lastModified = ++clock;
+  /** 他のアプリで消されたことにする（true なら中身を読むと NotFoundError）。フォルダの removeEntry で消したときも true になる。 */
+  removed = false;
 
   /**
    * メモリ上のファイルを作る（更新時刻は作るたびに進む）。
@@ -35,8 +37,10 @@ export class FakeFile implements FileHandleLike {
    * @example
    * await new FakeFile("a.sysml", "あ").getFile() // → { text: …, lastModified: 1001 など, size: 3 }
    * await new FakeFile("a.sysml").getFile()       // → { …, size: 0 }（空のファイル）
+   * // 消されたファイル（removed）なら NotFoundError を投げる
    */
   async getFile(): Promise<FileLike> {
+    if (this.removed) throw new DOMException(`${this.name} is gone`, "NotFoundError");
     const { content, lastModified } = this;
     const bytes = new TextEncoder().encode(content);
     return { text: async () => content, arrayBuffer: async () => bytes.slice().buffer, lastModified, size: bytes.length };
@@ -185,6 +189,8 @@ export class FakeDir implements DirHandleLike {
     if (!e) throw new DOMException("not found", "NotFoundError");
     if (e instanceof FakeDir && e.entries.size && !opts?.recursive) throw new DOMException("not empty", "InvalidModificationError");
     this.entries.delete(name);
+    // 消したファイルは、前に取ったハンドルからも読めなくなる（本物と同じ）
+    if (e instanceof FakeFile) e.removed = true;
   }
 
   /**

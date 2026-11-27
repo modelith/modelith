@@ -21,7 +21,7 @@ import {
   type SaveAsTarget,
 } from "../files/types";
 import { childPath, movedPath, parentPath } from "../files/entry-names";
-import { modelFiles, projectTexts } from "./project-files";
+import { entryPaths, modelFiles, projectTexts } from "./project-files";
 import { findFile, hasContent, restoreOrder, sessionFrom, type Session, type SessionStore } from "./session";
 
 /** 開いている文書。ref が null なら保存先の無い「無題」の文書。 */
@@ -108,6 +108,28 @@ export const PROJECT_FILE = "modelith.json";
 async function readProjectText(source: FolderSource, ref: FolderRef): Promise<string | null> {
   return hasFolderFiles(source) ? source.readInFolder(ref, PROJECT_FILE) : null;
 }
+
+/** 画面に戻ったときに見つけた、他のアプリでの変更（文書の key の一覧。F-FILE-8）。 */
+export interface ExternalChanges {
+  /** 読み直した文書（未保存の変更が無かった）。 */
+  reloaded: string[];
+  /** 今回初めて stale にした文書（未保存の変更があり、読み直していない）。 */
+  stale: string[];
+  /** ファイルが消されていて、保存先の無い文書にした文書。 */
+  removed: string[];
+}
+
+/**
+ * ファイルが無い（消された・動かされた）ことによる失敗か。
+ *
+ * @param e 読もうとして受け取った例外
+ * @returns ブラウザの NotFoundError なら true（許可が無い・読めないなどのほかの失敗は false）
+ * @example
+ * isNotFound(new DOMException("gone", "NotFoundError"))       // → true
+ * isNotFound(new DOMException("denied", "NotAllowedError"))   // → false
+ * isNotFound("x")                                             // → false
+ */
+const isNotFound = (e: unknown): boolean => e instanceof Error && e.name === "NotFoundError";
 
 /**
  * 2 つのファイルの参照が同じファイルを指すか（プロバイダと id で比べる）。
@@ -722,16 +744,20 @@ export class Workspace {
 
   /**
    * 他のアプリでの変更を確かめる（画面に戻ったときに呼ぶ。F-FILE-8）。未保存の変更が無ければ読み直し、
-   * あれば読み直さずに stale にする。上書きできない保存先と、読めないファイルは確かめない。
+   * あれば読み直さずに stale にする。消されたファイルの文書は、内容を残したまま保存先の無い文書にする。
+   * フォルダを開いていれば、一覧も読み直す。上書きできない保存先と、読めないだけのファイルは確かめない。
    *
-   * @returns 読み直した文書の key の一覧（reloaded）と、今回初めて stale にした文書の key の一覧（stale。前から stale のものは入れない）
+   * @returns 読み直した文書の key の一覧（reloaded）、今回初めて stale にした文書の key の一覧（stale。前から stale のものは入れない）、
+   *   ファイルが消されていて保存先の無い文書にした文書の key の一覧（removed）
    * @example
-   * await ws.checkExternal() // → { reloaded: [a.key], stale: [b.key] }（a は未保存の変更なしで読み直し、b は未保存の変更ありで stale になった）
-   * await ws.checkExternal() // → { reloaded: [], stale: [] }（他で変更されていない。b は前から stale）
+   * await ws.checkExternal() // → { reloaded: [a.key], stale: [b.key], removed: [] }（a は未保存の変更なしで読み直し、b は未保存の変更ありで stale になった）
+   * await ws.checkExternal() // → { reloaded: [], stale: [], removed: [c.key] }（c.sysml が消されていた。c は ref が null になり、内容は残る）
+   * await ws.checkExternal() // → { reloaded: [], stale: [], removed: [] }（他で変更されていない。b は前から stale）
    */
-  async checkExternal(): Promise<{ reloaded: string[]; stale: string[] }> {
+  async checkExternal(): Promise<ExternalChanges> {
     const reloaded: string[] = [];
     const stale: string[] = [];
+    const removed: string[] = [];
     let any = false;
     for (const doc of this.docs) {
       const p = doc.ref && this.providers.get(doc.ref.provider);
@@ -739,8 +765,12 @@ export class Workspace {
       let cur;
       try {
         cur = await p.read(doc.ref);
-      } catch {
-        continue; // 消えた・読めないファイルは、保存するときに知らせる
+      } catch (e) {
+        // 読めないだけのファイル（許可が切れたなど）は、保存するときに知らせる
+        if (!isNotFound(e)) continue;
+        this.detach(doc);
+        removed.push(doc.key);
+        continue;
       }
       if (cur.version === doc.version) continue;
       any = true;
@@ -752,10 +782,51 @@ export class Workspace {
         reloaded.push(doc.key);
       }
     }
+    if (removed.length) this.persistDrafts();
+    // 他のアプリで足された・消されたファイルを、一覧に反映する
+    if (await this.relistFolder()) any = true;
     // 開いていないファイルも、他のアプリで変わっていればモデルに入れ直す（ADR-0021 §3）
     if (await this.readModelFiles()) any = true;
-    if (any) this.changed();
-    return { reloaded, stale };
+    if (any || removed.length) this.changed();
+    return { reloaded, stale, removed };
+  }
+
+  /**
+   * ファイルを消された文書を、内容と配置を残したまま、保存先の無い文書にする（F-FILE-8）。どこにも保存していない内容なので、
+   * 未保存の変更があるものとして扱い（F-FILE-11 の戻した下書きと同じ）、仮に開いていた文書も開いたままにする（次のファイルと置き換えない）。
+   *
+   * @param doc ファイルを消された文書
+   * @example
+   * this.detach(doc) // → doc.ref が null、doc.version が null、doc.savedText が ""、doc.layoutHome が "none"。doc.text と doc.layout はそのまま
+   */
+  private detach(doc: Doc): void {
+    Object.assign(doc, { ref: null, version: null, savedText: "", stale: false, layoutStale: false, ...this.noLayoutHome(doc.layout) });
+    delete doc.preview;
+  }
+
+  /**
+   * 開いているフォルダの一覧とプロジェクトの設定ファイルを読み直す（画面に戻ったとき。F-FILE-8）。変更は知らせない（呼び手がまとめて知らせる）。
+   * フォルダを開いていない・一覧を読めない（フォルダごと消された・許可が切れた）ときは、前の一覧のままにする。
+   *
+   * @returns 一覧（ファイルとフォルダのパス）か設定ファイルが前と変わったら true
+   * @example
+   * await this.relistFolder() // → true（他のアプリが c.sysml を足した）
+   * await this.relistFolder() // → false（変わっていない・フォルダを開いていない・一覧を読めない）
+   */
+  private async relistFolder(): Promise<boolean> {
+    const f = this.folderState;
+    if (!f) return false;
+    let entries, projectText;
+    try {
+      entries = await f.source.list(f.ref);
+      projectText = await readProjectText(f.source, f.ref);
+    } catch {
+      return false;
+    }
+    if (this.folderState !== f) return false;
+    const changed = projectText !== f.projectText || entryPaths(entries).join("\n") !== entryPaths(f.entries).join("\n");
+    if (changed) Object.assign(f, { entries, projectText });
+    return changed;
   }
 
   /**

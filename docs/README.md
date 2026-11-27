@@ -31,6 +31,7 @@
   - [リリース計画（0.1.0）](development/release-plan.md)
   - [リリース計画（0.2.0）](development/release-plan-0.2.0.md)
   - [リリース計画（0.3.0 から先：AI と共同編集）](development/release-plan-0.3.0.md)
+  - [機能の道のり（モデリング・解析・連携）](development/feature-roadmap.md)（案）
   - [テスト](development/testing.md)
   - [画面の言葉の手引き](development/ui-writing.md)
   - [文言の辞書](development/l10n.md)

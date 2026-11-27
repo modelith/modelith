@@ -128,9 +128,13 @@ export function chooseLicenses(spdx: string): string[] {
 
 /** ライセンスごとの、クレートに入っているライセンス文のファイル名（先にあるものを使う）。 */
 export const LICENSE_FILES: Record<string, string[]> = {
-  MIT: ["LICENSE-MIT", "LICENSE-MIT.md", "LICENSE"],
+  MIT: ["LICENSE-MIT", "LICENSE-MIT.md", "LICENSE", "LICENSE.md"],
   "Apache-2.0": ["LICENSE-APACHE", "LICENSE"],
-  "Unicode-3.0": ["LICENSE-UNICODE"],
+  "Unicode-3.0": ["LICENSE-UNICODE", "LICENSE"],
+  // ライセンスが 1 つだけのクレートは、LICENSE がその文（PNG を描く wasm の部品。ADR-0029）
+  "BSD-2-Clause": ["LICENSE"],
+  "BSD-3-Clause": ["LICENSE"],
+  Zlib: ["LICENSE"],
 };
 
 /**

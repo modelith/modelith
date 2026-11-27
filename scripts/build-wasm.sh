@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rust のコアを wasm にし、web から読める形（web/src/core/wasm/）に書き出す（ADR-0015）。
+# Rust のコアを wasm にし、web から読める形（web/src/core/wasm/）に書き出す（ADR-0015）。cli が PNG を書き出すときに使う wasm（cli/wasm/）も作る（ADR-0029）。
 # check.sh（web のテストの前）と公開のワークフローが使う。
 #   scripts/build-wasm.sh
 #
@@ -13,6 +13,7 @@ WASM_BINDGEN_VERSION_PINNED=0.2.130
 WASM_BINDGEN_SHA256=9687f3bb551b9f66f37ed32a40d7913a00f7962db653054e56857bc306c3227f
 
 OUT_DIR=web/src/core/wasm
+RASTER_OUT_DIR=cli/wasm
 
 locked_version() {
   awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print; exit }' Cargo.lock
@@ -52,3 +53,6 @@ version=$(locked_version)
 bindgen=$(ensure_wasm_bindgen "$version")
 cargo build -p modelith-wasm --target wasm32-unknown-unknown --release --quiet
 "$bindgen" target/wasm32-unknown-unknown/release/modelith_wasm.wasm --target web --out-dir "$OUT_DIR" --out-name modelith_core
+# cli が PNG を書き出すときにだけ使う wasm（ADR-0029）。コアの wasm とは別にし、ブラウザのアプリには入れない
+cargo build -p modelith-raster --target wasm32-unknown-unknown --release --quiet
+"$bindgen" target/wasm32-unknown-unknown/release/modelith_raster.wasm --target web --out-dir "$RASTER_OUT_DIR" --out-name modelith_raster

@@ -30,6 +30,9 @@ web/dist/
 cli/dist/
 # Rust のコアから作る wasm（scripts/build-wasm.sh）
 web/src/core/wasm/
+# cli が PNG を書き出すときに使う wasm（scripts/build-wasm.sh）と、フォント（scripts/fetch-fonts.sh）。ADR-0029
+cli/wasm/
+cli/fonts/
 web/test-results/
 web/playwright-report/
 

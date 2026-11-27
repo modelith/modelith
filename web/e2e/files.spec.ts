@@ -374,6 +374,8 @@ test("F-FILE-14: 何も開いていないとき、「サンプルを開く」で
   await closeSample(page);
   // Act
   await page.locator('#noDoc [data-nodoc="sample"]').click();
+  await page.locator('#dialogPick input[value="electric-kettle"]').check();
+  await page.locator('#dialogButtons [data-id="ok"]').click();
   // Assert
   await expect(page.locator("#docName")).toHaveText("electric-kettle.sysml");
   await expect(page.locator("#gNodes .node").first()).toBeVisible();

@@ -73,6 +73,8 @@ let projectKey: string | null = null;
 let project: ProjectFileResult | null = null;
 /** サンプルの文書（起動したときに開く）。 */
 let sampleDoc: Sample;
+/** 「サンプルを開く」の一覧に出すサンプル（F-FILE-20）。 */
+let sampleList: SampleChoice[] = [];
 /**
  * 「前回の続きを開く」を示して、利用者の操作を待っている前回の続き（F-FILE-13）。フォルダを開く許可が要るときだけ。
  * folder は前回のフォルダの名前、drafts は起動したときに下書きを戻した結果。待っていなければ null。
@@ -407,6 +409,22 @@ function newUntitled(): void {
  */
 function openSample(sample: Sample): void {
   showDoc(ws.newUntitled(sample.name, sample.text, sample.layout).key);
+}
+
+/**
+ * サンプルの一覧（分野ごとの名前と説明）を出し、選んだサンプルを開く（「サンプルを開く」。F-FILE-20）。
+ * 始めは一覧の最初のサンプルを選んでおく。やめたら何もしない。
+ */
+async function chooseSample(): Promise<void> {
+  const first = sampleList[0];
+  if (!first) return;
+  const r = await ask(t("app-files-samples-title"), t("app-files-samples-text"), [
+    { id: "cancel", label: t("app-files-button-cancel") },
+    { id: "ok", label: t("app-files-samples-open"), kind: "primary" },
+  ], undefined, undefined, { label: t("app-files-samples-pick-label"), value: first.id, options: sampleList.map((s) => ({ id: s.id, label: s.title, note: s.note })) });
+  if (r?.id !== "ok") return;
+  const picked = sampleList.find((s) => s.id === r.option);
+  if (picked) openSample(picked.doc);
 }
 
 /**
@@ -1784,13 +1802,20 @@ interface Sample {
   layout: string;
 }
 
+/** 「サンプルを開く」の一覧の 1 件（一覧の中で変わらない名前・一覧に出す名前・説明・サンプルの文書）。 */
+interface SampleChoice {
+  id: string;
+  title: string;
+  note: string;
+  doc: Sample;
+}
+
 /**
  * 開いているファイルが無いときの案内のボタン（前回の続きを開く・新しいファイル・ファイルを開く・フォルダを開く・サンプルを開く）に操作をつなぐ（F-FILE-13・F-FILE-14）。
  * フォルダを開けないブラウザでは、フォルダを開くボタンを出さない。
  *
- * @param sample サンプルの文書
  */
-function initNoDoc(sample: Sample): void {
+function initNoDoc(): void {
   $('#noDoc [data-nodoc="openFolder"]').hidden = !local;
   $("#noDoc").addEventListener("click", (ev) => {
     const c = closest(ev, "[data-nodoc]")?.dataset["nodoc"];
@@ -1798,7 +1823,7 @@ function initNoDoc(sample: Sample): void {
     else if (c === "new") newUntitled();
     else if (c === "open") void openFile();
     else if (c === "openFolder") void openFolder();
-    else if (c === "sample") openSample(sample);
+    else if (c === "sample") void chooseSample();
   });
 }
 
@@ -1809,14 +1834,15 @@ function initNoDoc(sample: Sample): void {
  * テキストと配置の変更をワークスペースに反映し、未保存のままページを離れるときに警告し（F-FILE-5）、
  * 画面に戻ったときに他のアプリでの変更を確かめる（F-FILE-8）。
  *
- * @param sample サンプルの文書（名前・テキスト・配置ファイルの文字列）
- * @param opts onResumed は、「前回の続きを開く」で戻した文書の解析結果が届いた後に呼ぶ関数（図のタブを戻す）
+ * @param sample 起動したときに開くサンプルの文書（名前・テキスト・配置ファイルの文字列）
+ * @param opts samples は「サンプルを開く」の一覧に出すサンプル（F-FILE-20）。onResumed は、「前回の続きを開く」で戻した文書の解析結果が届いた後に呼ぶ関数（図のタブを戻す）
  * @returns 始め方を決めて表示し終えたら解決する Promise（「前回の続きを開く」を示したときは、押されるのを待たずに解決する）
  * @example
- * await initFiles(SAMPLE_DOC, { onResumed: resumeTabs }) // → 前回の続き（無ければサンプル）を表示している
+ * await initFiles(START_SAMPLE, { samples: sampleChoices(), onResumed: resumeTabs }) // → 前回の続き（無ければサンプル）を表示している
  */
-export async function initFiles(sample: Sample, opts: { onResumed?: () => void } = {}): Promise<void> {
+export async function initFiles(sample: Sample, opts: { samples?: SampleChoice[]; onResumed?: () => void } = {}): Promise<void> {
   sampleDoc = sample;
+  sampleList = opts.samples ?? [];
   if (opts.onResumed) onResumed = opts.onResumed;
   const w = window as unknown as FsApi;
   local = hasFsAccess(window) ? new LocalFolderProvider(w, idbHandleStore) : null;
@@ -1869,10 +1895,10 @@ export async function initFiles(sample: Sample, opts: { onResumed?: () => void }
     browser: idbBrowserPlugins,
     data: idbPluginData,
   });
-  initNoDoc(sample);
+  initNoDoc();
   $("#btnSample").onclick = () => {
     closeMenus();
-    openSample(sample);
+    void chooseSample();
   };
   window.addEventListener("beforeunload", (ev) => {
     flushEdit();

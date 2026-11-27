@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Refused, type Core, type EditProposal, type EditRequest, type ElementSummary, type ProblemReport, type ProjectInput } from "./core.ts";
 import { versionOf } from "./edits.ts";
 import { memoryProposals } from "./proposals.ts";
-import { diagramRequest, editRequest, TOOLS, ToolError, toolsFor, unreadableReports, type Tool, type ToolContext } from "./tools.ts";
+import { diagramRequest, editRequest, ImageResult, outputFormat, TOOLS, ToolError, toolsFor, unreadableReports, type Tool, type ToolContext } from "./tools.ts";
 
 const RANGE = { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } };
 
@@ -62,6 +62,14 @@ const renderer: ToolContext["renderer"] = {
   },
 };
 
+/** SVG の文と倍率をそのまま覚えて返す、偽の図を PNG にする口。"refuse" を含む SVG は断り、「韓」を含む SVG は描けなかった文字にする。 */
+const rasterizer: ToolContext["rasterizer"] = {
+  png: (svg, scale) => {
+    if (svg.includes("refuse")) throw new Refused("The image would be empty or too large. Use a smaller scale.");
+    return { data: new TextEncoder().encode(`${scale}x ${svg}`), width: 100 * scale, height: 50 * scale, missing: svg.includes("韓") ? "韓" : "" };
+  },
+};
+
 /** 書いた中身を覚えるだけの、偽の書く口。 */
 function recorder(): { written: [string, string][]; writer: ToolContext["writer"] } {
   const written: [string, string][] = [];
@@ -70,7 +78,7 @@ function recorder(): { written: [string, string][]; writer: ToolContext["writer"
 
 /** 道具に渡すもの（読むだけの道具は、書く口と提案を覚える口を使わない）。 */
 function ctx(input: ProjectInput = project, more: Partial<ToolContext> = {}): ToolContext {
-  return { core, project: input, writer: recorder().writer, proposals: memoryProposals(), renderer, ...more };
+  return { core, project: input, writer: recorder().writer, proposals: memoryProposals(), renderer, rasterizer, ...more };
 }
 
 /** 名前で道具を引く。 */
@@ -314,7 +322,7 @@ describe("propose_edit・apply_edit", () => {
 describe("export_diagram", () => {
   it("F-AI-3: テキストに書いた図は、修飾名からファイルと名前を引いて書き出す（正常系）", () => {
     // Act
-    const request = diagramRequest(core, project, { format: "svg", diagram: "Shop::v" });
+    const request = diagramRequest(core, project, { diagram: "Shop::v" }, "svg");
     const got = tool("export_diagram").run(ctx(), { format: "drawio", diagram: "Shop::v" });
     // Assert
     expect(request).toEqual({ file: "shop.sysml", view: "v", format: "svg" });
@@ -323,8 +331,8 @@ describe("export_diagram", () => {
 
   it("F-AI-3: ファイルを渡すと、そのファイルの自動の図を書き出す（view を省くと all。同値分割）", () => {
     // Act
-    const byDefault = diagramRequest(core, project, { format: "svg", file: "shop.sysml" });
-    const chosen = diagramRequest(core, project, { format: "svg", file: "shop.sysml", view: "structure" });
+    const byDefault = diagramRequest(core, project, { file: "shop.sysml" }, "svg");
+    const chosen = diagramRequest(core, project, { file: "shop.sysml", view: "structure" }, "svg");
     // Assert
     expect(byDefault).toEqual({ file: "shop.sysml", auto: "all", format: "svg" });
     expect(chosen).toEqual({ file: "shop.sysml", auto: "structure", format: "svg" });
@@ -335,7 +343,7 @@ describe("export_diagram", () => {
     const start = { line: 3, character: 4 };
     const kinds: Core = { ...core, element: (_files, name) => ({ ...summary(name, name.split("::").at(-1) ?? "", "parts.sysml"), range: { start, end: start }, members: [], ports: [], relations: [] }) };
     // Act
-    const got = ["part def", "state def", "action def", "occurrence def"].map((kind) => diagramRequest(kinds, project, { format: "svg", subject: `P::${kind}` }));
+    const got = ["part def", "state def", "action def", "occurrence def"].map((kind) => diagramRequest(kinds, project, { subject: `P::${kind}` }, "svg"));
     // Assert
     expect(got.map((r) => [r.file, r.format, r.subject?.view, r.subject?.qualifiedName])).toEqual([
       ["parts.sysml", "svg", "ibd", "P::part def"],
@@ -350,25 +358,78 @@ describe("export_diagram", () => {
     // Arrange（Shop は package）
     const withPackage: Core = { ...core, element: (_files, name) => (name === "Shop" ? { ...ELEMENTS[0]!, members: [], ports: [], relations: [] } : null) };
     // Act
-    const run = (args: Record<string, string>) => () => diagramRequest(withPackage, project, args);
+    const run = (args: Record<string, string>) => () => diagramRequest(withPackage, project, args, "svg");
     // Assert
-    expect(run({ format: "svg", subject: "Shop::Gone" })).toThrow(new ToolError('No element named "Shop::Gone" was found. Use list_elements to see the qualified names.'));
-    expect(run({ format: "svg", subject: "Shop" })).toThrow(new ToolError('"Shop" is a package. A subject must be one of: part def, state def, action def, occurrence def.'));
-    expect(run({ format: "svg", subject: "Shop", diagram: "Shop::v" })).toThrow(new ToolError("Give exactly one of diagram, subject or file."));
-    expect(run({ format: "svg", subject: "Shop", file: "shop.sysml" })).toThrow(new ToolError("Give exactly one of diagram, subject or file."));
-    expect(run({ format: "svg", subject: "Shop", view: "all" })).toThrow(new ToolError("view is only used with file."));
+    expect(run({ subject: "Shop::Gone" })).toThrow(new ToolError('No element named "Shop::Gone" was found. Use list_elements to see the qualified names.'));
+    expect(run({ subject: "Shop" })).toThrow(new ToolError('"Shop" is a package. A subject must be one of: part def, state def, action def, occurrence def.'));
+    expect(run({ subject: "Shop", diagram: "Shop::v" })).toThrow(new ToolError("Give exactly one of diagram, subject or file."));
+    expect(run({ subject: "Shop", file: "shop.sysml" })).toThrow(new ToolError("Give exactly one of diagram, subject or file."));
+    expect(run({ subject: "Shop", view: "all" })).toThrow(new ToolError("view is only used with file."));
   });
 
-  it("形式が違う・形式なし・diagram と file の両方・どちらも無し・diagram に view・無い図は、理由つきで失敗を伝える（異常系）", () => {
+  it("diagram と file の両方・どちらも無し・diagram に view・無い図は、理由つきで失敗を伝える（異常系）", () => {
     // Act
-    const run = (args: Record<string, string>) => () => diagramRequest(core, project, args);
+    const run = (args: Record<string, string>) => () => diagramRequest(core, project, args, "svg");
     // Assert
-    expect(run({ format: "png", file: "shop.sysml" })).toThrow(new ToolError('Unknown format "png". Use svg or drawio.'));
-    expect(run({ file: "shop.sysml" })).toThrow(new ToolError('Unknown format "". Use svg or drawio.'));
-    expect(run({ format: "svg", diagram: "Shop::v", file: "shop.sysml" })).toThrow(new ToolError("Give exactly one of diagram, subject or file."));
-    expect(run({ format: "svg" })).toThrow(new ToolError("Give exactly one of diagram, subject or file."));
-    expect(run({ format: "svg", diagram: "Shop::v", view: "all" })).toThrow(new ToolError("view is only used with file."));
-    expect(run({ format: "svg", diagram: "Shop::gone" })).toThrow(new ToolError('No diagram named "Shop::gone" was found. Use list_diagrams to see the qualified names.'));
+    expect(run({ diagram: "Shop::v", file: "shop.sysml" })).toThrow(new ToolError("Give exactly one of diagram, subject or file."));
+    expect(run({})).toThrow(new ToolError("Give exactly one of diagram, subject or file."));
+    expect(run({ diagram: "Shop::v", view: "all" })).toThrow(new ToolError("view is only used with file."));
+    expect(run({ diagram: "Shop::gone" })).toThrow(new ToolError('No diagram named "Shop::gone" was found. Use list_diagrams to see the qualified names.'));
+  });
+
+  it.each([
+    ["svg", undefined, { format: "svg", scale: 1 }],
+    ["drawio", undefined, { format: "drawio", scale: 1 }],
+    ["png", undefined, { format: "png", scale: 1 }],
+    ["png", "1", { format: "png", scale: 1 }],
+    ["png", "3", { format: "png", scale: 3 }],
+  ])("F-AI-3: 形式 %s・倍率 %s を読む（倍率を省くと 1。同値分割・境界値）", (format, scale, expected) => {
+    // Act
+    const got = outputFormat({ format, scale });
+    // Assert
+    expect(got).toEqual(expected);
+  });
+
+  it("F-AI-3: 知らない形式・形式なし・1〜3 でない倍率・PNG でない形式の倍率は、理由つきで失敗を伝える（異常系・境界値）", () => {
+    // Act
+    const run = (args: Record<string, string>) => () => outputFormat(args);
+    // Assert
+    expect(run({ format: "jpeg" })).toThrow(new ToolError('Unknown format "jpeg". Use svg, drawio or png.'));
+    expect(run({})).toThrow(new ToolError('Unknown format "". Use svg, drawio or png.'));
+    expect(run({ format: "png", scale: "0" })).toThrow(new ToolError('Unknown scale "0". Use 1, 2 or 3.'));
+    expect(run({ format: "png", scale: "4" })).toThrow(new ToolError('Unknown scale "4". Use 1, 2 or 3.'));
+    expect(run({ format: "png", scale: "1.5" })).toThrow(new ToolError('Unknown scale "1.5". Use 1, 2 or 3.'));
+    expect(run({ format: "png", scale: "" })).toThrow(new ToolError('Unknown scale "". Use 1, 2 or 3.'));
+    expect(run({ format: "svg", scale: "2" })).toThrow(new ToolError("scale is only used with png."));
+  });
+
+  it("F-AI-3: PNG は、図を SVG で書き出してから画像にし、幅と高さを添えた画像の結果にする（正常系）", () => {
+    // Act
+    const got = tool("export_diagram").run(ctx(), { format: "png", diagram: "Shop::v", scale: "2" });
+    // Assert（偽の口は、渡された SVG と倍率を画像の中身にする）
+    expect(got).toBeInstanceOf(ImageResult);
+    const image = got as ImageResult;
+    expect(image.info).toEqual({ format: "png", file: "shop.sysml", width: 200, height: 100 });
+    expect(image.mimeType).toBe("image/png");
+    expect(new TextDecoder().decode(image.data)).toBe("2x svg:shop.sysml:v:-");
+  });
+
+  it("F-AI-3: PNG に描けなかった文字と、配置ファイルが読めなかった理由は、黙って捨てずに結果に添える（異常系）", () => {
+    // Arrange（図の中身に「韓」があり、配置ファイルが読めない）
+    const drawn: ToolContext["renderer"] = { render: () => ({ content: "<svg>韓</svg>", layoutProblem: "not JSON" }) };
+    // Act
+    const got = tool("export_diagram").run(ctx(project, { renderer: drawn }), { format: "png", file: "shop.sysml" }) as ImageResult;
+    // Assert
+    expect(got.info).toEqual({ format: "png", file: "shop.sysml", width: 100, height: 50, layoutProblem: "not JSON", missingCharacters: "韓" });
+  });
+
+  it("F-AI-3: 画像にできないときは、理由つきで失敗を伝える（異常系）", () => {
+    // Arrange
+    const drawn: ToolContext["renderer"] = { render: () => ({ content: "refuse" }) };
+    // Act
+    const run = () => tool("export_diagram").run(ctx(project, { renderer: drawn }), { format: "png", file: "shop.sysml" });
+    // Assert
+    expect(run).toThrow(new ToolError("The image would be empty or too large. Use a smaller scale."));
   });
 
   it("図を書き出す口が断った理由を、失敗の文として伝える（異常系）", () => {

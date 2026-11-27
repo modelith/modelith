@@ -52,11 +52,13 @@ it("export は、フォルダとオプションを読み、--out だけを分け
   const toStdout = parseArgs(["export", "./kettle", "--format", "svg", "--diagram", "Shop::overview"]);
   const toFile = parseArgs(["export", "./kettle", "--format", "drawio", "--file", "a.sysml", "--view", "structure", "--out", "a.drawio"]);
   const bySubject = parseArgs(["export", "./kettle", "--format", "svg", "--subject", "Shop::Cart"]);
+  const png = parseArgs(["export", "./kettle", "--format", "png", "--file", "a.sysml", "--scale", "2", "--out", "a.png"]);
   const bare = parseArgs(["export", "./kettle"]);
   // Assert
   expect(bySubject).toEqual({ kind: "export", folder: "./kettle", args: { format: "svg", subject: "Shop::Cart" } });
   expect(toStdout).toEqual({ kind: "export", folder: "./kettle", args: { format: "svg", diagram: "Shop::overview" } });
   expect(toFile).toEqual({ kind: "export", folder: "./kettle", args: { format: "drawio", file: "a.sysml", view: "structure" }, out: "a.drawio" });
+  expect(png).toEqual({ kind: "export", folder: "./kettle", args: { format: "png", file: "a.sysml", scale: "2" }, out: "a.png" });
   expect(bare).toEqual({ kind: "export", folder: "./kettle", args: {} });
 });
 

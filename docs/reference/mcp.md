@@ -3,7 +3,7 @@
 Claude Code や Codex などの AI のクライアントが、手元のフォルダにある SysML v2 のモデルを読み、確かめ、書き換え、図を書き出すための口（[ADR-0024](../adr/0024-ai-and-collaboration-foundation.md)、要求 F-AI-1〜F-AI-3）。
 [MCP](https://modelcontextprotocol.io/) のサーバとして、標準入出力で動く。
 
-いまできるのは **読む・確かめる・書く・図を書き出す（SVG・draw.io）** で、PNG の書き出しは、このあと足す。
+いまできるのは **読む・確かめる・書く・図を書き出す（SVG・draw.io・PNG）**。
 リリースに添付したパッケージから入れられる（下の「配る形に組み立てる」。0.3.0-alpha.1 から）。npm からも使える（`npx modelith-cli@next mcp <フォルダ>`。0.3.0-alpha.2 から。F-AI-4）。
 
 ## 動かし方
@@ -61,7 +61,7 @@ npm のレジストリには、リリースのワークフローが置き、メ�
 
 | 道具 | 引数 | 返すもの |
 | --- | --- | --- |
-| `export_diagram` | `format`（`svg`・`drawio`）と、`diagram`・`subject`・`file`（と `view`）のどれか 1 つ | 図の中身（`content`）。何も書かない |
+| `export_diagram` | `format`（`svg`・`drawio`・`png`）と、`diagram`・`subject`・`file`（と `view`）のどれか 1 つ。`png` には `scale`（`1`・`2`・`3`） | `svg`・`drawio` は図の中身（`content`）。`png` は幅と高さ（`width`・`height`）と、画像。何も書かない |
 
 - `diagram`：テキストに書いた図の修飾名（`list_diagrams` が返す `qualifiedName`）。
 - `subject`：図にしたい要素の修飾名（`list_elements` が返す `qualifiedName`）。テキストに図を書いていなくても、その要素の図を書き出す。
@@ -70,6 +70,10 @@ npm のレジストリには、リリースのワークフローが置き、メ�
 - `file`：モデルのファイル。そのファイルの自動の図を書き出す。`view` は `all`（すべて。既定）・`structure`（ブロック定義図）・`trace`（トレーサビリティ）・`control`（制御ループ）・`behavior`（振る舞い）。
 - アプリと同じ配置と描画を使う（ADR-0024 の 3）。モデルのファイルの隣に配置ファイル（`名前.layout.json`）があれば、その位置に描く。
   配置ファイルが読めないときは、自動に並べて書き出し、理由を `layoutProblem` に入れる。
+- `png`：AI のクライアントが図を「見る」ための形式。画面と同じ SVG を、ブラウザを使わずに画像にする（[ADR-0029](../adr/0029-headless-png.md)）。
+  形・配置・色は画面と同じ。文字は、パッケージに同梱したフォント（Noto Sans JP・IBM Plex Mono）で描くので、どこで動かしても同じ画像になる（画面は、見ている人のパソコンのフォントで描く）。
+  `scale` で 1 倍・2 倍・3 倍の大きさを選べる（省いたら 1 倍）。背景は白。
+  同梱のフォントに無い文字（日本語と英語のほかの言語の文字など）は画像に出ない。そのときは、描けなかった文字を `missingCharacters` に入れる。
 
 同じ書き出しを、コマンドラインからも使える。
 
@@ -77,6 +81,13 @@ npm のレジストリには、リリースのワークフローが置き、メ�
 node cli/src/main.ts export <フォルダ> --format svg --diagram Shop::overview > overview.svg
 node cli/src/main.ts export <フォルダ> --format svg --subject Shop::Cart > cart.svg
 node cli/src/main.ts export <フォルダ> --format drawio --file shop.sysml --view structure --out shop.drawio
+node cli/src/main.ts export <フォルダ> --format png --diagram Shop::overview --scale 2 --out overview.png
+```
+
+手元のソースから PNG を書き出すには、描画の wasm（`scripts/build-wasm.sh`）と、フォント（`scripts/fetch-fonts.sh`）が要る。フォントはリポジトリに入れていない。
+
+```bash
+scripts/build-wasm.sh && scripts/fetch-fonts.sh
 ```
 
 ## 道具（書く）

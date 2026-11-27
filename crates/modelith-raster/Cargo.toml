@@ -1,0 +1,23 @@
+[package]
+name = "modelith-raster"
+description = "Renders an SVG diagram of Modelith to a PNG image without a browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# SVG を画像にする（ADR-0029）。その所のフォントは読まない（system-fonts は付けない）。フォントは呼ぶ側が渡す
+resvg = { version = "0.50", default-features = false, features = ["text"] }
+# SVG に書いてある文字を集めるのと、フォントに文字の形があるかを見るのに使う（どちらも resvg が使っているのと同じ版。部品は増えない）
+roxmltree = "0.21"
+skrifa = { version = "0.49", default-features = false }
+wasm-bindgen = "0.2"
+
+[lints]
+workspace = true

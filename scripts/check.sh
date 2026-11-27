@@ -40,9 +40,10 @@ stage_static() {
   else
     cargo clippy --workspace --all-targets --all-features -- -D warnings
   fi
-  # web と cli の型検査とテストは、Rust のコアの wasm を使う（ADR-0015）
-  step "[static] wasm build"
+  # web と cli の型検査とテストは、Rust のコアの wasm を使う（ADR-0015）。cli のテストは、PNG のフォントも使う（ADR-0029）
+  step "[static] wasm build・フォントの取得"
   scripts/build-wasm.sh
+  scripts/fetch-fonts.sh
   step "[static] web: typecheck"
   npm run --prefix web -s typecheck
   step "[static] cli: typecheck"

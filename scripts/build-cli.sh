@@ -6,6 +6,7 @@
 # 手元では TypeScript のソースを Node でそのまま動かすが、npm で入れたパッケージ（node_modules の下）では、
 # Node が TypeScript を読まないので、JavaScript にして配る。束ねる道具は使わず、TypeScript のコンパイラだけで作る
 # （cli と、cli が使う web/src の描画とコアの包みを、フォルダの形のまま cli/dist/ に出す）。コアの wasm は写す。
+# PNG を書き出すための wasm とフォント（ADR-0029）も写す。
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -18,10 +19,15 @@ build() {
   (cd cli && node_modules/.bin/tsc -p tsconfig.build.json)
   mkdir -p "cli/dist/$wasm_dir"
   cp "$wasm_dir/modelith_core.js" "$wasm_dir/modelith_core_bg.wasm" "cli/dist/$wasm_dir/"
+  # PNG を書き出すときに使う、描画の wasm と、同梱のフォント（ADR-0029）。フォントは、決めた版を、ハッシュを確かめて取ってくる
+  scripts/fetch-fonts.sh
+  mkdir -p cli/dist/cli/wasm cli/dist/cli/fonts
+  cp cli/wasm/modelith_raster.js cli/wasm/modelith_raster_bg.wasm cli/dist/cli/wasm/
+  cp cli/fonts/NotoSansJP-Regular.otf cli/fonts/NotoSansJP-Bold.otf cli/fonts/IBMPlexMono-Regular.ttf cli/dist/cli/fonts/
   # 図に描く文言の辞書（ADR-0027。cli/src/l10n.ts が読む分だけ）
   mkdir -p cli/dist/web/src/locales/ja
   cp web/src/locales/ja/render.ftl web/src/locales/ja/core.ftl cli/dist/web/src/locales/ja/
-  # 本体のライセンス（AGPL-3.0 とプラグイン例外）と、wasm に組み込まれる第三者のクレートのライセンスを添える（AGPL §5・MIT など）
+  # 本体のライセンス（AGPL-3.0 とプラグイン例外）と、wasm に組み込まれる第三者のクレート・同梱のフォントのライセンスを添える（AGPL §5・MIT・OFL など）
   node web/tools/licenses-cli.ts cli/dist
   chmod +x cli/dist/cli/src/main.js
 }
@@ -37,10 +43,16 @@ smoke() {
   [[ $out == '<svg xmlns="http://www.w3.org/2000/svg"'* ]] || { echo "ERROR: 組み立てた cli が SVG を書き出しませんでした" >&2; exit 1; }
   out=$(node "$main" export "$sample" --format drawio --file electric-kettle.sysml)
   [[ $out == '<mxfile '* ]] || { echo "ERROR: 組み立てた cli が draw.io を書き出しませんでした" >&2; exit 1; }
+  # PNG は、同梱のフォントで、日本語の文字も欠けずに書き出せる（描けなかった文字があると、標準エラーに知らせが出る）
+  node "$main" export "$sample" --format png --file electric-kettle.sysml --out "$sample/all.png" 2>"$sample/png.err"
+  [[ $(head -c 4 "$sample/all.png" | tail -c 3) == PNG ]] || { echo "ERROR: 組み立てた cli が PNG を書き出しませんでした" >&2; exit 1; }
+  [[ ! -s $sample/png.err ]] || { echo "ERROR: 組み立てた cli の PNG に、知らせが出ました：$(cat "$sample/png.err")" >&2; exit 1; }
   files=$(cd cli && npm pack --dry-run --json --ignore-scripts 2>/dev/null | node -e 'let s="";process.stdin.on("data",(d)=>s+=d).on("end",()=>console.log(JSON.parse(s)[0].files.map((f)=>f.path).join("\n")))')
   local need
   for need in dist/cli/src/main.js dist/web/src/render/index.js "dist/$wasm_dir/modelith_core_bg.wasm" \
     dist/web/src/locales/ja/render.ftl dist/web/src/locales/ja/core.ftl \
+    dist/cli/wasm/modelith_raster.js dist/cli/wasm/modelith_raster_bg.wasm \
+    dist/cli/fonts/NotoSansJP-Regular.otf dist/cli/fonts/NotoSansJP-Bold.otf dist/cli/fonts/IBMPlexMono-Regular.ttf \
     dist/LICENSE.txt dist/licenses.txt README.md package.json; do
     grep -qxF "$need" <<<"$files" || { echo "ERROR: パッケージに $need が入っていません" >&2; exit 1; }
   done

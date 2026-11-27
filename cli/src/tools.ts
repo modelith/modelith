@@ -6,7 +6,7 @@
 
 import {
   Refused, type Core, type DiagramRequest, type EditRequest, type ProblemReport, type ProjectInput, type ProjectWriter, type ProposalStore,
-  type Renderer, type SubjectView,
+  type Rasterizer, type Renderer, type SubjectView,
 } from "./core.ts";
 import { applyEdits, versionOf } from "./edits.ts";
 
@@ -48,10 +48,37 @@ export interface ToolContext {
   proposals: ProposalStore;
   /** 図を書き出す口。 */
   renderer: Renderer;
+  /** 図を PNG にする口。 */
+  rasterizer: Rasterizer;
 }
 
 /** 道具が、AI のクライアントに文で伝える失敗（引数の誤り・見つからない要素）。 */
 export class ToolError extends Error {}
+
+/** 道具の結果のうち、画像を伴うもの（MCP では、説明の JSON と画像の 2 つにして返す）。 */
+export class ImageResult {
+  /** 画像の説明（JSON にできる値）。 */
+  readonly info: Record<string, unknown>;
+  /** 画像の種類（`image/png`）。 */
+  readonly mimeType: string;
+  /** 画像のファイルの中身。 */
+  readonly data: Uint8Array;
+
+  /**
+   * 画像を伴う結果を作る。
+   *
+   * @param info 画像の説明
+   * @param mimeType 画像の種類
+   * @param data 画像のファイルの中身
+   * @example
+   * new ImageResult({ format: "png", width: 40, height: 20 }, "image/png", png)
+   */
+  constructor(info: Record<string, unknown>, mimeType: string, data: Uint8Array) {
+    this.info = info;
+    this.mimeType = mimeType;
+    this.data = data;
+  }
+}
 
 /** 読めなかったファイルの問題の報告元（コアのモデルの問題と同じ）。 */
 const SOURCE = "modelith";
@@ -176,21 +203,33 @@ export const TOOLS: Tool[] = [
     name: "export_diagram",
     title: "Export a diagram",
     description:
-      "Draw a diagram of the model and return it as SVG or as a draw.io (diagrams.net) file, laid out the same way as in the Modelith app (saved positions are used). " +
+      "Draw a diagram of the model and return it as SVG, as a draw.io (diagrams.net) file or as a PNG image, laid out the same way as in the Modelith app (saved positions are used). " +
       "Give exactly one of: diagram (a diagram written in the model, by its qualified name from list_diagrams), " +
       "subject (an element, by its qualified name: a part def gives its internal block diagram, a state def its state machine diagram, an action def its activity diagram, an occurrence def its sequence diagram), " +
-      "or file (a model file, for an automatic diagram of it; view: all, structure, trace, control or behavior; default all). Nothing is written; the result has the diagram text in content.",
+      "or file (a model file, for an automatic diagram of it; view: all, structure, trace, control or behavior; default all). Nothing is written. " +
+      "For svg and drawio the result has the diagram text in content. For png the result is an image, with its width and height in pixels; use png to look at a diagram. " +
+      "A PNG is drawn with the fonts that come with Modelith (Japanese and Latin); characters they cannot draw are listed in missingCharacters.",
     params: {
-      format: { description: "svg or drawio.", required: true },
+      format: { description: "svg, drawio or png.", required: true },
       diagram: { description: "The qualified name of a diagram from list_diagrams, for example \"Shop::overview\"." },
       subject: { description: "The qualified name of a part def, state def, action def or occurrence def (from list_elements), to draw the diagram of that element." },
       file: { description: "A model file from list_files, for an automatic diagram of that file." },
       view: { description: "The automatic diagram: all (everything), structure (block definition), trace (requirement traceability), control or behavior. Default all. Only with file." },
+      scale: { description: "The size of a PNG: 1, 2 or 3 times the size of the diagram. Default 1. Only with png." },
     },
-    run: ({ core, project, renderer }, args) => {
-      const request = diagramRequest(core, project, args);
+    run: ({ core, project, renderer, rasterizer }, args) => {
+      const { format, scale } = outputFormat(args);
+      const request = diagramRequest(core, project, args, format === "drawio" ? "drawio" : "svg");
       try {
-        return { format: request.format, file: request.file, ...renderer.render(project, request) };
+        const drawn = renderer.render(project, request);
+        if (format !== "png") return { format, file: request.file, ...drawn };
+        const image = rasterizer.png(drawn.content, scale);
+        const info = {
+          format, file: request.file, width: image.width, height: image.height,
+          ...(drawn.layoutProblem === undefined ? {} : { layoutProblem: drawn.layoutProblem }),
+          ...(image.missing ? { missingCharacters: image.missing } : {}),
+        };
+        return new ImageResult(info, "image/png", image.data);
       } catch (e) {
         if (e instanceof Refused) throw new ToolError(e.message);
         throw e;
@@ -282,22 +321,49 @@ const SUBJECT_VIEWS: Record<string, SubjectView> = {
   "occurrence def": "seq",
 };
 
+/** 書き出せる形式。 */
+const FORMATS = ["svg", "drawio", "png"] as const;
+
+/** PNG の倍率（画面の「エクスポート…」と同じ 1 倍・2 倍・3 倍）。 */
+const SCALES = ["1", "2", "3"];
+
+/**
+ * 道具の引数から、書き出す形式と、PNG の倍率を読む。
+ *
+ * @param args export_diagram の引数
+ * @returns 形式と倍率（省いたら 1）。形式が違う、倍率が 1・2・3 でない、PNG でないのに倍率があるときは、理由を書いた ToolError を投げる
+ * @example
+ * outputFormat({ format: "svg" })               // → { format: "svg", scale: 1 }
+ * outputFormat({ format: "png", scale: "2" })   // → { format: "png", scale: 2 }
+ * outputFormat({ format: "jpeg" })              // → ToolError("Unknown format \"jpeg\". Use svg, drawio or png.") を投げる
+ * outputFormat({ format: "png", scale: "1.5" }) // → ToolError("Unknown scale \"1.5\". Use 1, 2 or 3.") を投げる
+ * outputFormat({ format: "svg", scale: "2" })   // → ToolError("scale is only used with png.") を投げる
+ */
+export function outputFormat(args: Record<string, string | undefined>): { format: (typeof FORMATS)[number]; scale: number } {
+  const format = FORMATS.find((f) => f === args.format);
+  if (!format) throw new ToolError(`Unknown format "${args.format ?? ""}". Use svg, drawio or png.`);
+  if (args.scale === undefined) return { format, scale: 1 };
+  if (format !== "png") throw new ToolError("scale is only used with png.");
+  if (!SCALES.includes(args.scale)) throw new ToolError(`Unknown scale "${args.scale}". Use 1, 2 or 3.`);
+  return { format, scale: Number(args.scale) };
+}
+
 /**
  * 道具の引数から、書き出す図の指定を作る。テキストに書いた図は、修飾名からファイルと名前を引く。
  *
  * @param core コアの操作（図の一覧を引く）
  * @param project 今読んだプロジェクト
  * @param args export_diagram の引数
- * @returns 図の指定。形式が違う、diagram・subject・file のうち 1 つだけでない、その図や要素が無い、図にできない種類の要素のときは、理由を書いた ToolError を投げる
+ * @param format 図を書き出す形式（PNG は、SVG を書き出してから画像にする）
+ * @returns 図の指定。diagram・subject・file のうち 1 つだけでない、その図や要素が無い、図にできない種類の要素のときは、理由を書いた ToolError を投げる
  * @example
- * diagramRequest(core, project, { format: "svg", diagram: "Shop::overview" }) // → { file: "shop.sysml", view: "overview", format: "svg" }
- * diagramRequest(core, project, { format: "drawio", file: "shop.sysml" })     // → { file: "shop.sysml", auto: "all", format: "drawio" }
- * diagramRequest(core, project, { format: "svg", subject: "Shop::Cart" })     // → { file: "shop.sysml", subject: { qualifiedName: "Shop::Cart", view: "ibd", start: … }, format: "svg" }
- * diagramRequest(core, project, { format: "png", file: "shop.sysml" })        // → ToolError("Unknown format \"png\". Use svg or drawio.") を投げる
+ * diagramRequest(core, project, { diagram: "Shop::overview" }, "svg") // → { file: "shop.sysml", view: "overview", format: "svg" }
+ * diagramRequest(core, project, { file: "shop.sysml" }, "drawio")     // → { file: "shop.sysml", auto: "all", format: "drawio" }
+ * diagramRequest(core, project, { subject: "Shop::Cart" }, "svg")     // → { file: "shop.sysml", subject: { qualifiedName: "Shop::Cart", view: "ibd", start: … }, format: "svg" }
+ * diagramRequest(core, project, { diagram: "Shop::overview", file: "shop.sysml" }, "svg") // → ToolError("Give exactly one of diagram, subject or file.") を投げる
  */
-export function diagramRequest(core: Core, project: ProjectInput, args: Record<string, string | undefined>): DiagramRequest {
-  const { format, diagram, subject, file, view } = args;
-  if (format !== "svg" && format !== "drawio") throw new ToolError(`Unknown format "${format ?? ""}". Use svg or drawio.`);
+export function diagramRequest(core: Core, project: ProjectInput, args: Record<string, string | undefined>, format: DiagramRequest["format"]): DiagramRequest {
+  const { diagram, subject, file, view } = args;
   if ([diagram, subject, file].filter((x) => x !== undefined).length !== 1) throw new ToolError("Give exactly one of diagram, subject or file.");
   if (view !== undefined && file === undefined) throw new ToolError("view is only used with file.");
   if (subject !== undefined) {

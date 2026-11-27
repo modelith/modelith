@@ -10,12 +10,14 @@ import type { EditProposal, ElementDetail, ElementSummary, ProblemReport } from 
 import { fsProjectReader, fsProjectWriter } from "./fs-project.ts";
 import { callTool, createServer } from "./mcp-server.ts";
 import { memoryProposals } from "./proposals.ts";
+import { loadRasterizer } from "./raster.ts";
 import { TOOLS, toolsFor } from "./tools.ts";
 import { loadWasmCore, parseResult } from "./wasm-core.ts";
 import { loadWebRenderer } from "./web-render.ts";
 
 const core = loadWasmCore();
 const renderer = loadWebRenderer();
+const rasterizer = loadRasterizer();
 let folder: string;
 let client: Client;
 
@@ -47,7 +49,7 @@ async function json<T>(name: string, args: Record<string, string> = {}): Promise
 async function connect(direct: boolean): Promise<void> {
   await client?.close();
   const server = createServer(toolsFor(direct), {
-    core, reader: fsProjectReader(folder), writer: fsProjectWriter(folder), proposals: memoryProposals(), renderer, version: "0.0.0-test",
+    core, reader: fsProjectReader(folder), writer: fsProjectWriter(folder), proposals: memoryProposals(), renderer, rasterizer, version: "0.0.0-test",
   });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   client = new Client({ name: "test", version: "0" });
@@ -375,12 +377,31 @@ describe("MCP のサーバ：図を書き出す", () => {
     const noDiagram = await call("export_diagram", { format: "svg", diagram: "App::gone" });
     const noFile = await call("export_diagram", { format: "svg", file: "nope.sysml" });
     const noView = await call("export_diagram", { format: "svg", file: "req.sysml", view: "ibd" });
-    const png = await call("export_diagram", { format: "png", file: "req.sysml" });
+    const jpeg = await call("export_diagram", { format: "jpeg", file: "req.sysml" });
+    const scaledSvg = await call("export_diagram", { format: "svg", file: "req.sysml", scale: "2" });
     // Assert
     expect(noDiagram).toEqual({ isError: true, text: 'No diagram named "App::gone" was found. Use list_diagrams to see the qualified names.' });
     expect(noFile).toEqual({ isError: true, text: "The file nope.sysml was not found." });
     expect(noView).toEqual({ isError: true, text: 'Unknown view "ibd". Use one of: all, structure, trace, control, behavior.' });
-    expect(png).toEqual({ isError: true, text: 'Unknown format "png". Use svg or drawio.' });
+    expect(jpeg).toEqual({ isError: true, text: 'Unknown format "jpeg". Use svg, drawio or png.' });
+    expect(scaledSvg).toEqual({ isError: true, text: "scale is only used with png." });
+  });
+
+  it("F-AI-3: PNG は、幅と高さの説明と、画像（base64 の PNG）の 2 つで返す。倍率を掛けると、その倍の大きさになる（正常系）", async () => {
+    // Act
+    const once = await client.callTool({ name: "export_diagram", arguments: { format: "png", file: "req.sysml" } });
+    const twice = await client.callTool({ name: "export_diagram", arguments: { format: "png", file: "req.sysml", scale: "2" } });
+    // Assert
+    const parts = (result: typeof once) => result.content as [{ type: string; text: string }, { type: string; data: string; mimeType: string }];
+    const [info, image] = parts(once);
+    const small = JSON.parse(info.text) as { format: string; file: string; width: number; height: number };
+    const large = JSON.parse(parts(twice)[0].text) as { width: number; height: number };
+    expect(once.isError).not.toBe(true);
+    expect(small).toEqual({ format: "png", file: "req.sysml", width: small.width, height: small.height });
+    expect(small.width).toBeGreaterThan(0);
+    expect([large.width, large.height]).toEqual([small.width * 2, small.height * 2]);
+    expect([image.type, image.mimeType]).toEqual(["image", "image/png"]);
+    expect(Buffer.from(image.data, "base64").subarray(0, 8)).toEqual(Buffer.from("\x89PNG\r\n\x1a\n", "latin1"));
   });
 });
 
@@ -403,7 +424,7 @@ describe("callTool・parseResult", () => {
     // Arrange
     const reader = { read: () => Promise.reject(new Error("permission denied")) };
     // Act
-    const got = await callTool(TOOLS[0]!, { core, reader, writer: fsProjectWriter(folder), proposals: memoryProposals(), renderer }, {});
+    const got = await callTool(TOOLS[0]!, { core, reader, writer: fsProjectWriter(folder), proposals: memoryProposals(), renderer, rasterizer }, {});
     // Assert
     expect(got).toEqual({ isError: true, content: [{ type: "text", text: "The project could not be read or written (permission denied)." }] });
   });

@@ -72,6 +72,24 @@ export interface Renderer {
   render(project: ProjectInput, request: DiagramRequest): DiagramOutput;
 }
 
+/** PNG にした図。 */
+export interface PngImage {
+  /** PNG のファイルの中身。 */
+  data: Uint8Array;
+  /** 幅（ピクセル）。 */
+  width: number;
+  /** 高さ（ピクセル）。 */
+  height: number;
+  /** 同梱のフォントに形が無く、描けなかった文字（つなげた文字列。無ければ空）。 */
+  missing: string;
+}
+
+/** SVG の図を PNG の画像にする口（ADR-0029：ブラウザを使わず、同梱のフォントで描く）。ファイルには触れない。 */
+export interface Rasterizer {
+  /** SVG を、倍率を掛けた大きさの PNG にする（背景は白）。画像にできないときは Refused を投げる。 */
+  png(svg: string, scale: number): PngImage;
+}
+
 /** コアが、編集の意図を当てられないと断ったこと（理由は message。指す要素が無い・名前が使えないなど）。 */
 export class Refused extends Error {}
 

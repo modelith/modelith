@@ -371,6 +371,12 @@ package ModelithRequirements {
                    削除は、消すものの名前と、元に戻せないことを示して確かめてから行い、隣の配置ファイルも消し、開いていたファイルを閉じる。未保存の変更があればそのことも示す。
                    パスのコピーは開いたフォルダの名前から始まるパス（ブラウザはパソコンの中のフォルダの場所を教えないため）、相対パスのコピーはフォルダの中からのパスをクリップボードに入れる */
         }
+        requirement def <'F-FILE-20'> SampleCollectionReq {
+            doc /* 「サンプルを開く」を選ぶと、公式のサンプルの一覧を出す。一覧は入門（要求のトレース・構造と接続・振る舞い）を先に、分野ごとのまとまったモデルを後に並べ、
+                   分野と題、何を学べるかの説明を示す。選んで「開く」を押すと、保存先の無いファイル（F-FILE-11）として開く。やめたら何も開かない。
+                   サンプルはどれもエラー無しで読める。起動したときに開くサンプル（F-FILE-13・F-FILE-14）は、今までどおり 1 つ（電気ケトル）。
+                   サンプルはリポジトリの中に置き、リポジトリのライセンスで配る（利用者のモデルの共有の場は、ここでは扱わない） */
+        }
         requirement def <'F-FILE-14'> NoOpenFileReq {
             doc /* 最後のファイルを閉じても、新しいファイルを勝手に作らない。開いているファイルが無いときは、そのことと、新しいファイル・ファイルを開く・サンプルを開く操作を示す。すべて閉じて終えたら、次に開いたときもファイルを開いていない状態から始める */
         }
@@ -700,6 +706,7 @@ package ModelithRequirements {
         #derivation dependency from PreviewOpenReq to FilesNeed;
         #derivation dependency from EditStartCheckReq to SafetyNeed;
         #derivation dependency from FileListMenuReq to FilesNeed;
+        #derivation dependency from SampleCollectionReq to FilesNeed;
         #derivation dependency from SvgExportReq to ExportNeed;
         #derivation dependency from RuleCheckReq to ExtendNeed;
         #derivation dependency from RuleParityReq to ExtendNeed;
@@ -891,6 +898,7 @@ package ModelithRequirements {
         satisfy EditStartCheckReq by AppShell;
         satisfy FileListMenuReq by Workspace;
         satisfy FileListMenuReq by AppShell;
+        satisfy SampleCollectionReq by AppShell;
         satisfy SvgExportReq by Exporter;
         satisfy RuleCheckReq by RuleEngine;
         satisfy RuleParityReq by Cli;
@@ -1568,6 +1576,13 @@ package ModelithRequirements {
                    web/e2e/preview-open.spec.ts：フォルダの一覧で 1 回クリックしたファイルは仮に開き（名前は斜体）、次のファイルと置き換わること、ダブルクリック・編集したファイルは置き換わらないこと、開いているファイルの一覧でダブルクリックすると開いたままになること */
             objective {
                 verify PreviewOpenReq;
+            }
+        }
+        verification def SampleCollectionTest {
+            doc /* web/src/app/sample-catalog.test.ts：一覧の並びと名前・説明、ファイル名が重ならないこと、どのサンプルもエラー無しで読めて図に出す要素があること、起動したときのサンプルが一覧の電気ケトルと同じこと。
+                   web/e2e/samples.spec.ts：「サンプルを開く」で一覧が出て、選んだサンプルが保存先の無いファイルとして開き図が出ること、何も選び直さなければ最初のサンプルが開くこと、やめたら何も開かないこと */
+            objective {
+                verify SampleCollectionReq;
             }
         }
         verification def ExternalChangeNoticeTest {

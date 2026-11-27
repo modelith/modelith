@@ -7,7 +7,8 @@ import type { Entry } from "./types";
 const goldens = import.meta.glob<Record<string, unknown>>("../../../reference/golden/*.json", { eager: true, import: "default" });
 const cases = {
   ...import.meta.glob<string>("../../../reference/golden/cases/*.sysml", { eager: true, query: "?raw", import: "default" }),
-  ...import.meta.glob<string>("../samples/*.sysml", { eager: true, query: "?raw", import: "default" }),
+  // サンプル集のほかのサンプル（F-FILE-20）はモックと比べない（gen-golden.mjs と同じ）
+  ...import.meta.glob<string>("../samples/electric-kettle.sysml", { eager: true, query: "?raw", import: "default" }),
 };
 
 const baseName = (path: string): string => path.replace(/^.*\//, "").replace(/\.\w+$/, "");

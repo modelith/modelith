@@ -26,7 +26,11 @@ export function rustCrateParts(): BundledPart[] {
     const licenses = chooseLicenses(p.license ?? "");
     const texts = licenses.map((l) => {
       // 配布物にライセンス文の無いクレートは、そのリポジトリから写しておいたもの（tools/third-party-licenses/<名前>/）を使う。
-      // 今は該当なし（写したら、どこから写したかをここに書く）
+      // 写したもの（文言の層の Fluent の実装が使うクレート。ADR-0027）：
+      // - fluent-langneg：https://github.com/projectfluent/fluent-langneg-rs の LICENSE-MIT
+      // - intl_pluralrules：https://github.com/zbraniecki/pluralrules の intl_pluralrules/LICENSE-MIT
+      // - tinystr・zerofrom・zerovec：それぞれの配布物の LICENSE（Unicode-3.0。https://github.com/unicode-org/icu4x の LICENSE と同じ）を、
+      //   ここで探す名前（LICENSE-UNICODE）で置いた
       const copied = fileURLToPath(new URL(`./third-party-licenses/${p.name}`, import.meta.url));
       const file = [...licenseDirs(p.manifest_path.replace(/\\/g, "/"), p.source), copied]
         .flatMap((dir) => (LICENSE_FILES[l] ?? []).map((f) => join(dir, f)))

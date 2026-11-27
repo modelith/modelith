@@ -22,7 +22,7 @@ fn run(text: &str, json: &str) -> (String, Outcome) {
 
 fn refused(text: &str, json: &str) -> String {
     let intent: Intent = serde_json::from_str(json).unwrap_or_else(|e| panic!("{json}: {e}"));
-    edit(text, &intent).expect_err(json)
+    edit(text, &intent).expect_err(json).render()
 }
 
 /// 光らせる範囲の文字列（編集後のテキストの UTF-16 の位置）。
@@ -2133,7 +2133,7 @@ fn element_of_another_file_is_not_rewritten() {
         assert_eq!(
             got,
             Err(Refused {
-                reason: IN_OTHER_FILE.to_owned(),
+                reason: Message::verbatim(IN_OTHER_FILE),
                 file: Some(1),
                 shown_in: None
             }),
@@ -2312,7 +2312,7 @@ fn package_of_another_file_is_not_chosen_when_the_open_file_has_none() {
     assert_eq!(
         none,
         Err(Refused {
-            reason: "要素を配置するパッケージがありません".to_owned(),
+            reason: Message::verbatim("要素を配置するパッケージがありません"),
             file: None,
             shown_in: None
         })
@@ -2320,7 +2320,9 @@ fn package_of_another_file_is_not_chosen_when_the_open_file_has_none() {
     assert_eq!(
         view,
         Err(Refused {
-            reason: "図を置くパッケージがありません。先にパッケージを作ってください".to_owned(),
+            reason: Message::verbatim(
+                "図を置くパッケージがありません。先にパッケージを作ってください"
+            ),
             file: None,
             shown_in: None
         })
@@ -2375,7 +2377,7 @@ fn element_of_another_file_is_still_not_rewritten_when_the_open_file_has_the_sam
         assert_eq!(
             got,
             Err(Refused {
-                reason: IN_OTHER_FILE.to_owned(),
+                reason: Message::verbatim(IN_OTHER_FILE),
                 file: Some(1),
                 shown_in: None
             }),
@@ -2574,7 +2576,7 @@ fn deleting_an_element_that_a_view_of_another_file_shows_is_refused_with_the_rea
         assert_eq!(
             got,
             Err(Refused {
-                reason: SHOWN_IN_OTHER_FILE.to_owned(),
+                reason: Message::verbatim(SHOWN_IN_OTHER_FILE),
                 file: None,
                 shown_in: Some(1)
             }),
@@ -2594,7 +2596,7 @@ fn deleting_an_element_of_another_file_is_still_refused_as_an_element_of_that_fi
     assert_eq!(
         got,
         Err(Refused {
-            reason: IN_OTHER_FILE.to_owned(),
+            reason: Message::verbatim(IN_OTHER_FILE),
             file: Some(1),
             shown_in: None
         })
@@ -2708,7 +2710,10 @@ fn qualified_name_key_of_another_file_is_not_rewritten() {
     // Act
     let got = run_in(text, json).expect_err(json);
     // Assert
-    assert_eq!((got.reason.as_str(), got.file), (IN_OTHER_FILE, Some(1)));
+    assert_eq!(
+        (got.reason, got.file),
+        (Message::verbatim(IN_OTHER_FILE), Some(1))
+    );
 }
 
 // ---- 名前と入れる先を決めて要素を足す（`addElement`。ADR-0024 の 1、F-AI-2） ----
@@ -2791,5 +2796,8 @@ fn add_element_into_an_element_of_another_file_is_refused() {
     // Act
     let got = run_in(text, json).expect_err(json);
     // Assert
-    assert_eq!((got.reason.as_str(), got.file), (IN_OTHER_FILE, Some(1)));
+    assert_eq!(
+        (got.reason, got.file),
+        (Message::verbatim(IN_OTHER_FILE), Some(1))
+    );
 }

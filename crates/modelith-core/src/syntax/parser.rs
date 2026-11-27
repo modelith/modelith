@@ -2,6 +2,7 @@
 //! 木そのものは作らない（rust-analyzer と同じ方式。ADR-0015）。
 
 use super::kind::SyntaxKind;
+use crate::Message;
 
 /// パーサが読むトークン（空白・注記を除いたもの）。
 #[derive(Debug, Clone, Copy)]
@@ -31,7 +32,7 @@ pub(crate) enum Event {
     Finish,
     Error {
         at: ErrorAt,
-        message: String,
+        message: Message,
     },
     /// 捨てた `Start`。
     Tombstone,
@@ -479,11 +480,8 @@ impl<'t> Parser<'t> {
     ///
     /// - `at`：エラーの位置（意味のあるトークンの番号と、その先頭か末尾か）
     /// - `message`：画面に出すエラーの文言
-    pub fn error_at(&mut self, at: ErrorAt, message: impl Into<String>) {
-        self.events.push(Event::Error {
-            at,
-            message: message.into(),
-        });
+    pub fn error_at(&mut self, at: ErrorAt, message: Message) {
+        self.events.push(Event::Error { at, message });
     }
 
     /// 今のトークンの先頭にエラーを置く（末尾ならファイルの末尾）。読み進めない。
@@ -491,7 +489,7 @@ impl<'t> Parser<'t> {
     /// # 引数
     ///
     /// - `message`：画面に出すエラーの文言
-    pub fn error(&mut self, message: impl Into<String>) {
+    pub fn error(&mut self, message: Message) {
         self.error_at(ErrorAt::Start(self.pos), message);
     }
 
@@ -502,7 +500,7 @@ impl<'t> Parser<'t> {
     /// # 引数
     ///
     /// - `message`：画面に出すエラーの文言
-    pub fn error_after_previous(&mut self, message: impl Into<String>) {
+    pub fn error_after_previous(&mut self, message: Message) {
         let at = self
             .pos
             .checked_sub(1)

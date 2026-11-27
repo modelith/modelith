@@ -5,10 +5,12 @@
 
 use std::collections::BTreeMap;
 
+use modelith_core::Message;
 use modelith_core::write::{self, EditRequest, VersionedFile, Workspace};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
+use crate::messages::install_renderer;
 use crate::read::to_json;
 
 /// 受け取るファイル 1 つ。
@@ -77,6 +79,7 @@ fn propose_edit_json(
     plugin_files: &str,
     request: &str,
 ) -> String {
+    install_renderer();
     let inputs = match serde_json::from_str::<Vec<FileInput>>(files) {
         Ok(i) => i,
         Err(e) => return error_json("ファイルの一覧", &e),
@@ -126,7 +129,9 @@ fn propose_edit_json(
 /// error_json("編集の意図", &e) → r#"{"error":"編集の意図を読み込めませんでした（expected value at line 1 column 1）"}"#
 /// ```
 fn error_json(what: &str, e: &serde_json::Error) -> String {
-    to_json(&serde_json::json!({ "error": format!("{what}を読み込めませんでした（{e}）") }))
+    to_json(
+        &serde_json::json!({ "error": Message::verbatim(format!("{what}を読み込めませんでした（{e}）")) }),
+    )
 }
 
 #[cfg(test)]

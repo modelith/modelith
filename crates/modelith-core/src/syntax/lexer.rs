@@ -4,6 +4,7 @@
 //! トークンの長さを足すと入力の長さに一致する（ロスレス）。
 
 use super::kind::{SyntaxKind, is_keyword};
+use crate::Message;
 
 /// トークン 1 つ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,7 +18,7 @@ pub struct Token {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LexError {
     pub offset: usize,
-    pub message: String,
+    pub message: Message,
 }
 
 /// テキストをトークンに分ける（KerML 8.2.2.1）。どんな入力でも止まらず、トークンの長さの和は入力の長さに等しい。
@@ -49,7 +50,7 @@ pub fn tokenize(text: &str) -> (Vec<Token>, Vec<LexError>) {
         if let Some(message) = error {
             errors.push(LexError {
                 offset,
-                message: message.to_owned(),
+                message: Message::verbatim(message.to_owned()),
             });
         }
         tokens.push(Token { kind, len });

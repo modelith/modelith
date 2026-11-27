@@ -25,6 +25,7 @@ pub use views::{is_standard_view, std_view_label};
 
 use std::collections::{HashMap, HashSet};
 
+use crate::Message;
 use crate::project::text::{is_qualified, last_segment, path_segs, ref_segs, shown_path, unquote};
 use crate::project::{Entry, Import, ParseResult, RelKind, Span, merge};
 use filters::{Filter, filter_of};
@@ -779,7 +780,7 @@ impl<'a> Builder<'a> {
     /// - `pos`：問題の位置（UTF-16 のオフセット）
     /// - `msg`：画面に出す文
     /// - `kind`：問題の種類。None はエラー、`Some("gap")` はトレースの抜け、`Some("unsupported")` はまだ扱えない構文
-    pub(crate) fn problem(&mut self, pos: usize, msg: String, kind: Option<&'static str>) {
+    pub(crate) fn problem(&mut self, pos: usize, msg: Message, kind: Option<&'static str>) {
         // まだ扱えない構文は、それ自体が知らせの種類（F-EDIT-11）
         let code = kind.filter(|k| *k == "unsupported");
         self.model.problems.push(Problem {
@@ -1270,7 +1271,10 @@ impl<'a> Builder<'a> {
                 let who = if u.name.is_empty() { &u.kind } else { &u.name };
                 self.problem(
                     u.start,
-                    format!("型「{}」が見つかりません（{who}）", shown_path(path)),
+                    Message::verbatim(format!(
+                        "型「{}」が見つかりません（{who}）",
+                        shown_path(path)
+                    )),
                     None,
                 );
             }
@@ -1324,7 +1328,9 @@ impl<'a> Builder<'a> {
                     if let Some(who) = missing {
                         self.problem(
                             r.start,
-                            format!("「満たす」関係の相手「{who}」が見つかりません（satisfy）"),
+                            Message::verbatim(format!(
+                                "「満たす」関係の相手「{who}」が見つかりません（satisfy）"
+                            )),
                             None,
                         );
                         continue;
@@ -1348,7 +1354,9 @@ impl<'a> Builder<'a> {
                     if er.is_none() {
                         self.problem(
                             r.start,
-                            format!("「検証する」関係の相手「{req}」が見つかりません（verify）"),
+                            Message::verbatim(format!(
+                                "「検証する」関係の相手「{req}」が見つかりません（verify）"
+                            )),
                             None,
                         );
                         continue;
@@ -1376,7 +1384,9 @@ impl<'a> Builder<'a> {
                             let shown = if path.is_empty() { ty } else { path };
                             self.problem(
                                 r.start,
-                                format!("扱う関心事「{shown}」が見つかりません（frame）"),
+                                Message::verbatim(format!(
+                                    "扱う関心事「{shown}」が見つかりません（frame）"
+                                )),
                                 None,
                             );
                         }
@@ -1387,12 +1397,14 @@ impl<'a> Builder<'a> {
                     if let Some(who) = self.missing_end(ends, pe) {
                         self.problem(
                             r.start,
-                            format!("線の接続先「{who}」が見つかりません（connect）"),
+                            Message::verbatim(format!(
+                                "線の接続先「{who}」が見つかりません（connect）"
+                            )),
                             None,
                         );
                     } else if let Some(miss) = self.missing_chain(ends, pe) {
                         let msg = format!("線の接続先{miss}が見つかりません（connect）");
-                        self.problem(r.start, msg, None);
+                        self.problem(r.start, Message::verbatim(msg), None);
                     }
                 }
                 RelKind::Flow {
@@ -1417,7 +1429,9 @@ impl<'a> Builder<'a> {
                         let who = if ea.is_none() { ra } else { rb };
                         self.problem(
                             r.start,
-                            format!("線の接続先「{who}」が見つかりません（{rel}）"),
+                            Message::verbatim(format!(
+                                "線の接続先「{who}」が見つかりません（{rel}）"
+                            )),
                             None,
                         );
                         continue;
@@ -1449,7 +1463,7 @@ impl<'a> Builder<'a> {
                     for (head, x) in [(ea, ra), (eb, rb)] {
                         if let Some(miss) = self.chain_miss(head, x, checked) {
                             let msg = format!("線の接続先{miss}が見つかりません（{rel}）");
-                            self.problem(r.start, msg, None);
+                            self.problem(r.start, Message::verbatim(msg), None);
                         }
                     }
                 }
@@ -1464,9 +1478,9 @@ impl<'a> Builder<'a> {
                             let who = if a.is_none() { ra } else { rb };
                             self.problem(
                                 r.start,
-                                format!(
+                                Message::verbatim(format!(
                                     "「導出」関係の相手「{who}」が見つかりません（derivation）"
-                                ),
+                                )),
                                 None,
                             );
                         }
@@ -1478,11 +1492,11 @@ impl<'a> Builder<'a> {
                         let head = pe.and_then(|pe| self.child_named(pe, seg));
                         if head.is_none() {
                             let owner = pe.map_or("", |pe| self.e(pe).name.as_str());
-                            self.problem(r.start, format!("メッセージの相手「{seg}」が「{owner}」の中にありません（message）"), None);
+                            self.problem(r.start, Message::verbatim(format!("メッセージの相手「{seg}」が「{owner}」の中にありません（message）")), None);
                         } else if let Some(miss) = self.chain_miss(head, x, 0) {
                             // 2 段目から先（`a.sub.e` のイベント）も、部品の中をたどって確かめる
                             let msg = format!("メッセージの相手{miss}が見つかりません（message）");
-                            self.problem(r.start, msg, None);
+                            self.problem(r.start, Message::verbatim(msg), None);
                         }
                     }
                 }
@@ -1492,12 +1506,14 @@ impl<'a> Builder<'a> {
                     if let Some(who) = self.missing_end(&ends, pe) {
                         self.problem(
                             r.start,
-                            format!("「結び付け」の相手「{who}」が見つかりません（bind）"),
+                            Message::verbatim(format!(
+                                "「結び付け」の相手「{who}」が見つかりません（bind）"
+                            )),
                             None,
                         );
                     } else if let Some(miss) = self.missing_chain(&ends, pe) {
                         let msg = format!("「結び付け」の相手{miss}が見つかりません（bind）");
-                        self.problem(r.start, msg, None);
+                        self.problem(r.start, Message::verbatim(msg), None);
                     }
                 }
                 RelKind::Allocate {
@@ -1510,7 +1526,9 @@ impl<'a> Builder<'a> {
                         let who = if ea.is_none() { ra } else { rb };
                         self.problem(
                             r.start,
-                            format!("「割り当て」関係の相手「{who}」が見つかりません（allocate）"),
+                            Message::verbatim(format!(
+                                "「割り当て」関係の相手「{who}」が見つかりません（allocate）"
+                            )),
                             None,
                         );
                         continue;
@@ -1552,7 +1570,9 @@ impl<'a> Builder<'a> {
                         let who = if ea.is_none() { ra } else { rb };
                         self.problem(
                             r.start,
-                            format!("「依存」関係の相手「{who}」が見つかりません（dependency）"),
+                            Message::verbatim(format!(
+                                "「依存」関係の相手「{who}」が見つかりません（dependency）"
+                            )),
                             None,
                         );
                         continue;
@@ -1682,7 +1702,7 @@ impl<'a> Builder<'a> {
         {
             // 要素自身の中身にも、その型の定義の中身（`part x : AB;` の AB のポート。#345）にも無い
             let msg = format!("ポート「{seg}」が {} にありません", node.name);
-            self.problem(pos, msg, None);
+            self.problem(pos, Message::verbatim(msg), None);
         }
     }
 
@@ -1747,20 +1767,20 @@ impl<'a> Builder<'a> {
         for m in &p.missing_about {
             self.problem(
                 m.pos,
-                format!(
+                Message::verbatim(format!(
                     "メタデータを付ける相手「{}」が見つかりません（metadata about）",
                     m.name
-                ),
+                )),
                 None,
             );
         }
         for m in &p.missing_comment_about {
             self.problem(
                 m.pos,
-                format!(
+                Message::verbatim(format!(
                     "メモを付ける相手「{}」が見つかりません（comment about）",
                     m.name
-                ),
+                )),
                 None,
             );
         }
@@ -1769,7 +1789,9 @@ impl<'a> Builder<'a> {
             let head = truncate_utf16(&u.head, 40);
             self.problem(
                 u.start,
-                format!("「{head}」は Modelith ではまだ扱えないため、図とツリーに出ません"),
+                Message::verbatim(format!(
+                    "「{head}」は Modelith ではまだ扱えないため、図とツリーに出ません"
+                )),
                 Some("unsupported"),
             );
         }
@@ -1905,7 +1927,7 @@ impl<'a> Builder<'a> {
         for (pos, code, msg) in gaps {
             self.model.problems.push(Problem {
                 pos,
-                msg,
+                msg: Message::verbatim(msg),
                 kind: Some("gap"),
                 code: Some(code),
                 level: None,

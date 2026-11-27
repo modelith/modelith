@@ -1,18 +1,22 @@
 //! ブラウザ向けの wasm バインディング。Web Worker 内で読み込まれ、
 //! UI とは LSP と同じ形のメッセージでやり取りする（ADR-0003）。
 
+mod messages;
 mod read;
 mod write;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
+use modelith_core::Message;
 use modelith_core::levels::{self, Levels};
 use modelith_core::project::ParseResult;
 use modelith_core::project::merge::Files;
 use modelith_core::rules::{self, LoadedPlugin};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+
+use messages::install_renderer;
 
 /// コアのバージョンを返す。
 ///
@@ -395,6 +399,7 @@ pub fn project_problems(text: &str) -> String {
 /// project_problems_json("package App;", &[]) → "[]"   // 覚えたファイルが無い
 /// ```
 fn project_problems_json(text: &str, plugins: &[LoadedPlugin]) -> String {
+    install_renderer();
     let focus = FOCUS.with(|f| f.borrow().clone());
     let now = modelith_core::project::merge::parse_file(text);
     let open = focus.as_deref().zip(now.as_ref());
@@ -580,12 +585,13 @@ fn enabled_by_default() -> bool {
 /// load_plugin_set("[") → active: []、summary: {"error":"…"}
 /// ```
 fn load_plugin_set(json: &str) -> PluginSet {
+    install_renderer();
     let inputs: Vec<PluginInput> = match serde_json::from_str(json) {
         Ok(i) => i,
         Err(e) => {
             return PluginSet {
                 active: vec![],
-                summary: serde_json::json!({ "error": format!("プラグインを読み込めませんでした（{e}）") }).to_string(),
+                summary: serde_json::json!({ "error": Message::verbatim(format!("プラグインを読み込めませんでした（{e}）")) }).to_string(),
             };
         }
     };
@@ -634,8 +640,9 @@ fn load_plugin_set(json: &str) -> PluginSet {
 /// update_project_plugin_json("{}", "jp.x", r#"{"op":"x"}"#) → r#"{"refused":"変更を読み込めませんでした（…）"}"#
 /// ```
 fn update_project_plugin_json(text: &str, id: &str, change: &str) -> String {
+    install_renderer();
     let result = serde_json::from_str::<modelith_core::project_file::PluginChange>(change)
-        .map_err(|e| format!("変更を読み込めませんでした（{e}）"))
+        .map_err(|e| Message::verbatim(format!("変更を読み込めませんでした（{e}）")))
         .and_then(|c| modelith_core::project_file::update_plugin(text, id, &c));
     match result {
         Ok(text) => serde_json::json!({ "text": text }),
@@ -663,12 +670,13 @@ fn update_project_plugin_json(text: &str, id: &str, change: &str) -> String {
 /// update_project_level_json("{}", "unsupported", "loud") → r#"{"refused":"重さ「loud」は選べません"}"#
 /// ```
 fn update_project_level_json(text: &str, kind: &str, level: &str) -> String {
+    install_renderer();
     let chosen = if level.is_empty() {
         Ok(None)
     } else {
         serde_json::from_value::<modelith_core::project_file::Level>(serde_json::json!(level))
             .map(Some)
-            .map_err(|_| format!("重さ「{level}」は選べません"))
+            .map_err(|_| Message::verbatim(format!("重さ「{level}」は選べません")))
     };
     match chosen.and_then(|l| modelith_core::project_file::update_level(text, kind, l)) {
         Ok(text) => serde_json::json!({ "text": text }),
@@ -694,6 +702,7 @@ fn update_project_level_json(text: &str, kind: &str, level: &str) -> String {
 /// describe_plugin_json("{")         → r#"{"refused":"modelith-plugin.json の 1 行目：書式にエラーがあるため読み込めません（JSON：…）"}"#
 /// ```
 fn describe_plugin_json(text: &str) -> String {
+    install_renderer();
     let file = rules::MANIFEST_FILE;
     match rules::describe_manifest(file, text) {
         Ok(info) => serde_json::json!({ "plugin": info }),
@@ -701,7 +710,7 @@ fn describe_plugin_json(text: &str) -> String {
             let at = p
                 .place
                 .map_or(String::new(), |pl| format!(" の {} 行目", pl.line));
-            serde_json::json!({ "refused": format!("{file}{at}：{}", p.message) })
+            serde_json::json!({ "refused": Message::verbatim(format!("{file}{at}：{}", p.message)) })
         }
     }
     .to_string()
@@ -725,6 +734,7 @@ fn describe_plugin_json(text: &str) -> String {
 /// parse_project_file_json("")   → "{\"project\":null,\"problems\":[{\"severity\":\"error\",…}]}"
 /// ```
 fn parse_project_file_json(text: &str) -> String {
+    install_renderer();
     serde_json::to_string(&modelith_core::project_file::parse(text))
         .unwrap_or_else(|e| format!(r#"{{"error":"{e}"}}"#))
 }
@@ -792,14 +802,15 @@ fn model_snapshot_json(text: &str) -> String {
 /// check_plugin_message_json("", r#"{"type":"ready"}"#, r#"["fs"]"#) → r#"{"refused":"権限の並びを読み込めませんでした（…）"}"#
 /// ```
 fn check_plugin_message_json(text: &str, message: &str, permissions: &str) -> String {
+    install_renderer();
     let result = serde_json::from_str::<Vec<rules::Permission>>(permissions)
-        .map_err(|e| format!("権限の並びを読み込めませんでした（{e}）"))
+        .map_err(|e| Message::verbatim(format!("権限の並びを読み込めませんでした（{e}）")))
         .and_then(|p| modelith_core::plugin_host::check_message(text, message, &p));
     let json = match result {
         Ok(checked) => serde_json::to_string(&checked),
         Err(refused) => Ok(refused_json(&refused)),
     };
-    json.unwrap_or_else(|e| refused_json(&e.to_string()))
+    json.unwrap_or_else(|e| refused_json(&Message::verbatim(e.to_string())))
 }
 
 /// 断りの JSON（`{ "refused": 理由 }`）を作る。理由に `"` や `\` があっても、JSON として壊れない。
@@ -818,7 +829,7 @@ fn check_plugin_message_json(text: &str, message: &str, permissions: &str) -> St
 /// refused_json("使えません")      → r#"{"refused":"使えません"}"#
 /// refused_json(r#"名前 "a\b""#) → r#"{"refused":"名前 \"a\\b\""}"#
 /// ```
-fn refused_json(reason: &str) -> String {
+fn refused_json(reason: &Message) -> String {
     serde_json::json!({ "refused": reason }).to_string()
 }
 
@@ -868,9 +879,14 @@ fn edit_json(text: &str, intent: &str) -> String {
 ///   → r#"{"refused":"この要素はほかのファイルにあります。…","file":"parts.sysml"}"#
 /// ```
 fn edit_json_in(text: &str, paths: &[String], parsed: Vec<ParseResult>, intent: &str) -> String {
+    install_renderer();
     let intent = match serde_json::from_str::<modelith_core::edit::Intent>(intent) {
         Ok(i) => i,
-        Err(e) => return refused_json(&format!("操作を読み込めませんでした（{e}）")),
+        Err(e) => {
+            return refused_json(&Message::verbatim(format!(
+                "操作を読み込めませんでした（{e}）"
+            )));
+        }
     };
     let json = match modelith_core::edit::edit_in(text, parsed, &intent) {
         Ok(out) => serde_json::to_string(&out),
@@ -887,7 +903,7 @@ fn edit_json_in(text: &str, paths: &[String], parsed: Vec<ParseResult>, intent: 
             })
         }
     };
-    json.unwrap_or_else(|e| refused_json(&e.to_string()))
+    json.unwrap_or_else(|e| refused_json(&Message::verbatim(e.to_string())))
 }
 
 #[derive(Serialize)]
@@ -970,6 +986,7 @@ fn analysis_json_in(
     parsed: Vec<ParseResult>,
     plugins: &[LoadedPlugin],
 ) -> String {
+    install_renderer();
     let parse = modelith_core::project::merge::join(text, parsed);
     let whole = modelith_core::model::build_whole(&parse);
     let findings = rules::check(plugins, &parse, &whole);
@@ -1010,7 +1027,7 @@ mod tests {
         // Arrange（JSON を壊しうる文字：二重引用符・バックスラッシュ）
         let reason = r#"ファイル "a\b" を読み込めません"#;
         // Act
-        let json = refused_json(reason);
+        let json = refused_json(&Message::verbatim(reason));
         // Assert（JSON として読め、理由がそのまま戻る）
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
         assert_eq!(parsed["refused"], reason);
@@ -1227,6 +1244,17 @@ mod tests {
         assert!(
             bad.starts_with(r#"{"refused":"modelith-plugin.json の 2 行目："#),
             "{bad}"
+        );
+    }
+
+    #[test]
+    fn core_messages_are_written_as_sentences_of_the_dictionary() {
+        // Act（異常系：閉じていない JSON。理由の文は、コアがコードで返し、文言の層の辞書で文になる。ADR-0027 §3）
+        let json = describe_plugin_json("{");
+        // Assert
+        assert_eq!(
+            json,
+            r#"{"refused":"modelith-plugin.json の 1 行目：書式にエラーがあるため読み込めません（JSON：途中で終わっています。閉じる括弧や「\"」が足りません）"}"#
         );
     }
 

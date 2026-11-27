@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 
 use super::Builder;
+use crate::Message;
 use crate::project::merge::file_of;
 
 impl Builder<'_> {
@@ -38,10 +39,10 @@ impl Builder<'_> {
             };
             self.problem(
                 e.start,
-                format!(
+                Message::verbatim(format!(
                     "「{}」という名前は、{at}で既に使われています。どちらかの名前を変えてください",
                     e.name
-                ),
+                )),
                 None,
             );
         }

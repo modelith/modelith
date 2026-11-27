@@ -799,7 +799,9 @@ package ModelithRequirements {
             doc /* 利用状況とエラーの送信（予定：0.3.0。ADR-0026） */
         }
         part def Messages {
-            doc /* 文言を言語ごとの辞書で作る層。画面の文言は web/src/l10n（辞書は web/src/locales/<言語>/<場所>.ftl。図を書き出す cli は、図に描く文の辞書だけを cli/src/l10n.ts で読む）。問題の文は crates/modelith-messages（予定：0.3.0。コアは言語を知らない）。ADR-0027 */
+            doc /* 文言を言語ごとの辞書で作る層。画面の文言は web/src/l10n（辞書は web/src/locales/<言語>/<場所>.ftl。図を書き出す cli は、図に描く文の辞書だけを cli/src/l10n.ts で読む）。問題の文は crates/modelith-messages（辞書は crates/modelith-messages/locales/<言語>/<場所>.ftl。公式の実装 fluent-bundle で読む）。
+                   コアは言語を知らず、利用者に見せる文を、種類のコードと値（modelith_core::message::Message）で返す。入口（crates/modelith-wasm・crates/modelith-cli）が、文言の層をコアの文にする関数として入れ（set_renderer）、JSON と出力には文にしたものを書く。依存の向きは「入口 → 文言の層 → コア」だけ。
+                   辞書に移し終えたのは、JSON・YAML を読めなかった理由の文（read-error）。ほかの文は、そのまま出す文（Message::verbatim）として運び、0.3.0 の間に場所ごとに辞書へ移す。外から届いた文（プラグインのルールの文・OS の失敗の理由）は、移した後もそのまま出す。ADR-0027 */
         }
 
         part def Modelith {
@@ -1633,7 +1635,10 @@ package ModelithRequirements {
             doc /* web/src/l10n/translator.test.ts：辞書から文を作る（値の差し込み・見えない記号を入れない・値のタグと波かっこを文字として入れる・先の辞書に無いキーは次の辞書・数での複数形の選び分け・無いキーと足りない値の知らせ）。
                    web/tools/l10n.test.ts と scripts/check.sh の静的検査（web/tools/l10n-cli.ts）：辞書のキーと値の名前の形、キーが辞書のファイルの名前で始まること、コードが使うキーが辞書にあること、使われていないキーが無いこと、移し終えたフォルダに文が直接書かれていないこと（コメントは見ない）。
                    cli/src/mcp-server.test.ts：書き出した図の中の文が、辞書の文であること。web/src/render/boundary.test.ts：描画が、文言の口（辞書は呼ぶ側が入れる）のほかに頼らないこと。scripts/build-cli.sh --smoke：配る cli に、図に描く文の辞書が入っていること。
-                   web/tools/l10n-html.test.ts：画面の骨組み（index.html）に書いたキーを、ビルドのときに辞書の文で埋めること（要素の中身と属性・文のタグを文字として入れる・中身が空でない要素を止める）と、骨組みに直接書いた文を見つけること */
+                   web/tools/l10n-html.test.ts：画面の骨組み（index.html）に書いたキーを、ビルドのときに辞書の文で埋めること（要素の中身と属性・文のタグを文字として入れる・中身が空でない要素を止める）と、骨組みに直接書いた文を見つけること。
+                   crates/modelith-core/src/message.rs：コアの返す文（種類のコードと値）の組み立て、文言の層を入れていないときの決まった形（コード{名前=値}。中の文も同じ形）、そのまま出す文、JSON には文にしたものを書くこと、文字列とは文にしたもので比べること。crates/modelith-core/src/read_error.rs：読めなかった理由を、文ではなくコードと値で返すこと。
+                   crates/modelith-messages/src/lib.rs：辞書が誤りなく読めること、キーの形とキーが辞書のファイルの名前で始まること、コードと値から辞書の文を作る（中の文を先に文にして差し込む・値のタグと波かっこを文字として入れる・見えない記号を入れない・辞書に無いコードと足りない値は決まった形に戻す）、読めなかった理由の文が辞書に移す前の文と同じこと。
+                   crates/modelith-wasm/src/messages.rs と crates/modelith-wasm/src/lib.rs：入口が文言の層を入れると、コアの文が辞書の文で JSON に書かれること、コードと値の JSON から文を作る口（renderMessage。Rust と TypeScript の実装を比べるためのもの） */
             objective {
                 verify DictionaryReq;
             }

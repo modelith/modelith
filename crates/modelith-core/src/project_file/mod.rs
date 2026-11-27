@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::LineIndex;
+use crate::{LineIndex, Message, read_error};
 
 #[cfg(test)]
 mod tests;
@@ -84,7 +84,7 @@ pub struct Problem {
     /// 1 始まりの列（UTF-16 コード単位）。
     pub column: u32,
     /// 画面にそのまま出す文（画面の言葉の手引きに従う）。
-    pub message: String,
+    pub message: Message,
 }
 
 /// 設定ファイルを読み取った結果。
@@ -138,7 +138,7 @@ pub fn parse(text: &str) -> Parsed {
     if text.trim().is_empty() {
         return failed(error(
             locator.of_offset(0),
-            "中身が空です。少なくとも { } と書いてください",
+            Message::verbatim("中身が空です。少なくとも { } と書いてください"),
         ));
     }
     let mut value: Value = match serde_json::from_str(text) {
@@ -162,10 +162,7 @@ pub fn parse(text: &str) -> Parsed {
         Err(e) => {
             return failed(error(
                 locator.of_offset(0),
-                &format!(
-                    "設定を読み込めませんでした（{}）",
-                    crate::read_error::read_reason(&e.to_string())
-                ),
+                read_error::bad_settings(read_error::read_reason(&e.to_string())),
             ));
         }
     };
@@ -174,9 +171,9 @@ pub fn parse(text: &str) -> Parsed {
         problem(
             Severity::Warning,
             locator.of_key(&["levels", kind]),
-            &format!(
+            Message::verbatim(format!(
                 "知らせ「{kind}」の重さは、この版の知らない値です。この版では既定の重さにし、削除せずに残します"
-            ),
+            )),
         )
     }));
     problems.sort_by_key(|p| (p.line, p.column));
@@ -250,14 +247,19 @@ pub enum PluginChange {
 /// update_plugin("{}", "jp.x", Remove) → Err("プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません")
 /// update_plugin("{", "jp.x", Remove)  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 2 文字目：…")
 /// ```
-pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<String, String> {
+pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<String, Message> {
     let mut project = parsed_for_change(text)?;
-    let missing =
-        || format!("プロジェクトの設定（modelith.json）に、プラグイン「{id}」がありません");
+    let missing = || {
+        Message::verbatim(format!(
+            "プロジェクトの設定（modelith.json）に、プラグイン「{id}」がありません"
+        ))
+    };
     match change {
         PluginChange::Add { version } => {
             if id.parse::<modelith_plugin_protocol::PluginId>().is_err() {
-                return Err(format!("プラグインの ID「{id}」の形が正しくありません"));
+                return Err(Message::verbatim(format!(
+                    "プラグインの ID「{id}」の形が正しくありません"
+                )));
             }
             let entry = project.plugins.entry(id.to_owned()).or_insert(PluginUse {
                 version: None,
@@ -297,7 +299,7 @@ pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<Stri
 /// update_level(r#"{"levels":{"unsupported":"off"}}"#, "unsupported", None) → Ok("{\n  \"plugins\": {}\n}\n")
 /// update_level("{", "unsupported", None) → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 2 文字目：…")
 /// ```
-pub fn update_level(text: &str, kind: &str, level: Option<Level>) -> Result<String, String> {
+pub fn update_level(text: &str, kind: &str, level: Option<Level>) -> Result<String, Message> {
     let mut project = parsed_for_change(text)?;
     match level {
         Some(level) => {
@@ -326,7 +328,7 @@ pub fn update_level(text: &str, kind: &str, level: Option<Level>) -> Result<Stri
 /// parsed_for_change("{}") → Ok(ProjectFile::default())
 /// parsed_for_change("{")  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 2 文字目：…")
 /// ```
-fn parsed_for_change(text: &str) -> Result<ProjectFile, String> {
+fn parsed_for_change(text: &str) -> Result<ProjectFile, Message> {
     let parsed = parse(text);
     parsed.project.ok_or_else(|| {
         let reason = parsed
@@ -335,7 +337,9 @@ fn parsed_for_change(text: &str) -> Result<ProjectFile, String> {
             .find(|p| p.severity == Severity::Error)
             .map(|p| format!("{} 行目 {} 文字目：{}", p.line, p.column, p.message))
             .unwrap_or_default();
-        format!("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。{reason}")
+        Message::verbatim(format!(
+            "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。{reason}"
+        ))
     })
 }
 
@@ -462,7 +466,7 @@ fn failed(problem: Problem) -> Parsed {
 /// ```text
 /// error((2, 3), "x") → Problem { severity: Error, line: 2, column: 3, message: "x" }
 /// ```
-fn error(at: (u32, u32), message: &str) -> Problem {
+fn error(at: (u32, u32), message: Message) -> Problem {
     problem(Severity::Error, at, message)
 }
 
@@ -483,12 +487,12 @@ fn error(at: (u32, u32), message: &str) -> Problem {
 /// ```text
 /// problem(Warning, (1, 3), "x") → Problem { severity: Warning, line: 1, column: 3, message: "x" }
 /// ```
-fn problem(severity: Severity, at: (u32, u32), message: &str) -> Problem {
+fn problem(severity: Severity, at: (u32, u32), message: Message) -> Problem {
     Problem {
         severity,
         line: at.0,
         column: at.1,
-        message: message.to_owned(),
+        message,
     }
 }
 
@@ -521,14 +525,11 @@ fn syntax_problem(locator: &Locator, text: &str, e: &serde_json::Error) -> Probl
     // JSON にはコメントを書けない。コメントの位置で止まったら、そう伝える（#266）
     let rest = text.get(offset..).unwrap_or("").trim_start();
     let reason = if rest.starts_with("//") || rest.starts_with("/*") {
-        "コメント（// や /* */）は書けません"
+        read_error::comment_reason()
     } else {
-        crate::read_error::read_reason(&e.to_string())
+        read_error::read_reason(&e.to_string())
     };
-    error(
-        at,
-        &format!("書式にエラーがあるため読み込めません（JSON：{reason}）"),
-    )
+    error(at, read_error::bad_format("JSON", reason, None))
 }
 
 /// 決まった項目の型を確かめ、違うものを誤りにする（`name` は文字、`plugins` は `{ }` など）。
@@ -554,7 +555,7 @@ fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
     let Some(root) = value.as_object() else {
         return vec![error(
             locator.of_offset(0),
-            "一番外側を { } で囲んでください（JSON のオブジェクト）",
+            Message::verbatim("一番外側を { } で囲んでください（JSON のオブジェクト）"),
         )];
     };
     let mut problems = Vec::new();
@@ -564,7 +565,7 @@ fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
     {
         problems.push(error(
             locator.of_key(&["name"]),
-            "プロジェクト名（name）は、文字列を \" \" で囲んで書いてください",
+            Message::verbatim("プロジェクト名（name）は、文字列を \" \" で囲んで書いてください"),
         ));
     }
     match root.get("plugins") {
@@ -576,7 +577,7 @@ fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
         }
         Some(_) => problems.push(error(
             locator.of_key(&["plugins"]),
-            "プラグインの一覧（plugins）は { } で囲んで書いてください",
+            Message::verbatim("プラグインの一覧（plugins）は { } で囲んで書いてください"),
         )),
     }
     match root.get("levels") {
@@ -586,14 +587,14 @@ fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
                 if !matches!(level.as_str(), Some("error" | "warning" | "info" | "off")) {
                     problems.push(error(
                         locator.of_key(&["levels", kind]),
-                        &format!("知らせ「{kind}」の重さは、\"error\"・\"warning\"・\"info\"・\"off\" のどれかで書いてください"),
+                        Message::verbatim(format!("知らせ「{kind}」の重さは、\"error\"・\"warning\"・\"info\"・\"off\" のどれかで書いてください")),
                     ));
                 }
             }
         }
         Some(_) => problems.push(error(
             locator.of_key(&["levels"]),
-            "知らせの重さ（levels）は { } で囲んで書いてください",
+            Message::verbatim("知らせの重さ（levels）は { } で囲んで書いてください"),
         )),
     }
     problems
@@ -622,7 +623,9 @@ fn plugin_type_problems(id: &str, plugin: &Value, locator: &Locator) -> Vec<Prob
     let Some(fields) = plugin.as_object() else {
         return vec![error(
             locator.of_key(&["plugins", id]),
-            &format!("プラグイン「{id}」の設定は {{ }} で囲んで書いてください"),
+            Message::verbatim(format!(
+                "プラグイン「{id}」の設定は {{ }} で囲んで書いてください"
+            )),
         )];
     };
     let mut problems = Vec::new();
@@ -632,15 +635,17 @@ fn plugin_type_problems(id: &str, plugin: &Value, locator: &Locator) -> Vec<Prob
     {
         problems.push(error(
             locator.of_key(&["plugins", id, "version"]),
-            &format!(
+            Message::verbatim(format!(
                 "プラグイン「{id}」のバージョン（version）は、文字列を \" \" で囲んで書いてください（例：\"0.2.0\"）"
-            ),
+            )),
         ));
     }
     if fields.get("enabled").is_some_and(|v| !v.is_boolean()) {
         problems.push(error(
             locator.of_key(&["plugins", id, "enabled"]),
-            &format!("プラグイン「{id}」の有効・無効（enabled）は true か false で書いてください"),
+            Message::verbatim(format!(
+                "プラグイン「{id}」の有効・無効（enabled）は true か false で書いてください"
+            )),
         ));
     }
     problems
@@ -668,7 +673,7 @@ fn unknown_key_problems(project: &ProjectFile, locator: &Locator) -> Vec<Problem
         problem(
             Severity::Warning,
             locator.of_key(&[key]),
-            &format!("不明な項目「{key}」があります。削除せずに残します"),
+            Message::verbatim(format!("不明な項目「{key}」があります。削除せずに残します")),
         )
     });
     let in_plugins = project.plugins.iter().flat_map(|(id, plugin)| {
@@ -676,9 +681,9 @@ fn unknown_key_problems(project: &ProjectFile, locator: &Locator) -> Vec<Problem
             problem(
                 Severity::Warning,
                 locator.of_key(&["plugins", id, key]),
-                &format!(
+                Message::verbatim(format!(
                     "プラグイン「{id}」の設定に、不明な項目「{key}」があります。削除せずに残します"
-                ),
+                )),
             )
         })
     });
@@ -690,9 +695,9 @@ fn unknown_key_problems(project: &ProjectFile, locator: &Locator) -> Vec<Problem
             problem(
                 Severity::Warning,
                 locator.of_key(&["levels", kind]),
-                &format!(
+                Message::verbatim(format!(
                     "知らせの重さ（levels）に、不明な種類「{kind}」があります。削除せずに残します"
-                ),
+                )),
             )
         });
     top.chain(in_plugins).chain(in_levels).collect()

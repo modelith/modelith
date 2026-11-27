@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use modelith_plugin_protocol::{Diagnostic, DiagnosticSeverity, Position, ProblemReport, Range};
 
 use super::SourceFile;
+use crate::Message;
 use crate::levels::{self, KINDS, Levels};
 use crate::model::Problem;
 use crate::plugin_host::Positions;
@@ -191,7 +192,7 @@ fn load_report(p: &LoadProblem) -> ProblemReport {
 fn setting_diagnostic(
     place: Option<Place>,
     severity: DiagnosticSeverity,
-    message: &str,
+    message: &Message,
 ) -> Diagnostic {
     let at = place.map_or(
         Position {
@@ -206,7 +207,7 @@ fn setting_diagnostic(
     Diagnostic {
         range: Range { start: at, end: at },
         severity,
-        message: message.to_owned(),
+        message: message.render(),
         code: None,
         source: Some(SOURCE.to_owned()),
     }
@@ -239,7 +240,7 @@ fn model_diagnostic(p: &Problem, range: Range) -> Diagnostic {
     Diagnostic {
         range,
         severity: chosen.unwrap_or_else(|| default_severity(p.code)),
-        message: p.msg.clone(),
+        message: p.msg.render(),
         code: p.code.map(str::to_owned),
         source: Some(SOURCE.to_owned()),
     }
@@ -602,7 +603,7 @@ mod tests {
         let third = Some(Place { line: 3, column: 5 });
         // Act
         let got = [first, third, None].map(|p| {
-            setting_diagnostic(p, DiagnosticSeverity::Error, "m")
+            setting_diagnostic(p, DiagnosticSeverity::Error, &Message::verbatim("m"))
                 .range
                 .start
         });

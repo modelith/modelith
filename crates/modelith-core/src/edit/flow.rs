@@ -8,6 +8,7 @@ use super::ops::{EdgeAt, missing};
 use super::text::insert_into;
 use super::{Doc, Refusal};
 
+use crate::Message;
 use crate::model::ActionFlow;
 
 /// アクション定義の、アクションの流れの図。
@@ -56,9 +57,7 @@ pub(super) fn entry_of(d: &Doc<'_>, c: usize, key: &str) -> Result<Option<usize>
     let Some(n) = flow_of(d, c).and_then(|f| f.nodes.iter().find(|n| n.key == key)) else {
         return Ok(None);
     };
-    n.entry.map(Some).ok_or_else(|| {
-        "開始と終了の記号は、順序の線から決まります。記号を消すときは、つながる線を削除してください".to_owned()
-    })
+    n.entry.map(Some).ok_or_else(|| Message::verbatim("開始と終了の記号は、順序の線から決まります。記号を消すときは、つながる線を削除してください"))
 }
 
 /// アクションの流れの図の線（継起・順序付きの流れ）の ID と、消す範囲。
@@ -139,15 +138,19 @@ pub(super) fn add_succession(
     };
     // 開始・終了の記号（入れ子の本体のものも、暗黙の要素は宣言を持たない）
     if node(to)?.kind == "start" && node(to)?.entry.is_none() {
-        return Err("開始の記号へ向かう順序の線は引けません".to_owned());
+        return Err(Message::verbatim("開始の記号へ向かう順序の線は引けません"));
     }
     if node(from)?.kind == "done" && node(from)?.entry.is_none() {
-        return Err("終了の記号から始まる順序の線は引けません".to_owned());
+        return Err(Message::verbatim(
+            "終了の記号から始まる順序の線は引けません",
+        ));
     }
     // 順序は同じ本体の中の要素どうしにだけ引き、その本体（入れ子なら、本体を持つアクション）に書く
     let container = node(from)?.container.clone();
     if node(to)?.container != container {
-        return Err("順序の線は、同じアクションの中の要素どうしにだけ引けます".to_owned());
+        return Err(Message::verbatim(
+            "順序の線は、同じアクションの中の要素どうしにだけ引けます",
+        ));
     }
     let host = match &container {
         Some(k) => node(k)?.entry.ok_or_else(|| missing(k))?,
@@ -156,10 +159,9 @@ pub(super) fn add_succession(
     let name_of = |key: &str| -> Result<String, Refusal> {
         let n = node(key)?;
         if n.name.is_empty() {
-            return Err(
-                "名前の無い要素は、図から順序の線でつなげません。テキストで名前を付けてから線を引いてください"
-                    .to_owned(),
-            );
+            return Err(Message::verbatim(
+                "名前の無い要素は、図から順序の線でつなげません。テキストで名前を付けてから線を引いてください",
+            ));
         }
         Ok(sysml_name(&n.name))
     };
@@ -169,7 +171,7 @@ pub(super) fn add_succession(
         .iter()
         .any(|e| e.kind == "succession" && e.from == from && e.to == to && e.label.is_empty())
     {
-        return Err("同じ順序の線が既にあります".to_owned());
+        return Err(Message::verbatim("同じ順序の線が既にあります"));
     }
     let snippet = format!("first {} then {};", name_of(from)?, name_of(to)?);
     let (text, a, b) = insert_into(d.text, d.target(host), &snippet);

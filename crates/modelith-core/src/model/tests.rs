@@ -70,7 +70,7 @@ fn usage_with_unknown_type_is_an_error_but_library_type_is_not() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(msgs.len(), 1, "{msgs:?}");
     assert!(msgs[0].contains("Nope"), "{msgs:?}");
     assert_eq!(m.problems[0].kind, None);
@@ -119,10 +119,10 @@ fn unsupported_statement_head_is_shortened_to_40_utf16_units() {
         .iter()
         .find(|p| p.kind == Some("unsupported"))
         .expect("まだ扱えない構文");
-    assert!(info.msg.contains('…'), "{}", info.msg);
-    assert!(!info.msg.contains(&name), "{}", info.msg);
-    let shown = info
-        .msg
+    assert!(info.msg.render().contains('…'), "{}", info.msg);
+    assert!(!info.msg.render().contains(&name), "{}", info.msg);
+    let text = info.msg.render();
+    let shown = text
         .split('「')
         .nth(1)
         .and_then(|m| m.split('」').next())
@@ -167,8 +167,8 @@ fn gap_model(decl: &str) -> String {
 fn gap_msgs(m: &Model, word: &str) -> Vec<String> {
     m.problems
         .iter()
-        .filter(|p| p.kind == Some("gap") && p.msg.contains(word))
-        .map(|p| p.msg.clone())
+        .filter(|p| p.kind == Some("gap") && p.msg.render().contains(word))
+        .map(|p| p.msg.render())
         .collect()
 }
 
@@ -238,7 +238,7 @@ fn view_filter_with_a_value_comparison_is_reported_and_not_used() {
     let (_, m) = run(text);
     // Assert
     assert_eq!(m.views[0].node_keys, ["A"]);
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(
         msgs,
         [
@@ -278,11 +278,11 @@ fn view_render_that_reaches_no_standard_rendering_is_reported() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m
+    let msgs: Vec<String> = m
         .problems
         .iter()
         .filter(|p| p.kind == Some("unsupported"))
-        .map(|p| p.msg.as_str())
+        .map(|p| p.msg.render())
         .collect();
     assert_eq!(
         msgs,
@@ -596,11 +596,11 @@ fn exposed_package_becomes_frame_with_its_nested_elements() {
     assert_eq!(frames, [("Q", "Q", vec!["B", "C"])]);
 }
 
-fn errors(m: &Model) -> Vec<&str> {
+fn errors(m: &Model) -> Vec<String> {
     m.problems
         .iter()
         .filter(|p| p.kind.is_none())
-        .map(|p| p.msg.as_str())
+        .map(|p| p.msg.render())
         .collect()
 }
 
@@ -832,11 +832,11 @@ fn assert_satisfy_draws_a_line_and_not_satisfy_does_not_count_as_satisfying() {
         .map(|e| e.to.as_str())
         .collect();
     assert_eq!(satisfies, ["R1"]);
-    let gaps: Vec<&str> = m
+    let gaps: Vec<String> = m
         .problems
         .iter()
-        .filter(|p| p.kind == Some("gap") && p.msg.contains("満たす"))
-        .map(|p| p.msg.as_str())
+        .filter(|p| p.kind == Some("gap") && p.msg.render().contains("満たす"))
+        .map(|p| p.msg.render())
         .collect();
     assert_eq!(gaps.len(), 1, "{gaps:?}");
     assert!(gaps[0].contains("R2"), "{gaps:?}");
@@ -1049,7 +1049,7 @@ fn keyword_less_feature_with_a_missing_type_is_reported() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(msgs, ["型「Nope」が見つかりません（x）"]);
 }
 
@@ -1071,7 +1071,7 @@ fn missing_feature_of_an_untyped_part_end_is_reported() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(
         msgs,
         [
@@ -1111,7 +1111,7 @@ fn declaring_satisfy_with_a_missing_type_or_subject_is_reported() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(
         msgs,
         [
@@ -1174,7 +1174,7 @@ fn dependency_with_a_missing_end_is_a_problem_but_undrawn_ends_are_not() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(
         msgs,
         ["「依存」関係の相手「Nope」が見つかりません（dependency）"]
@@ -1216,7 +1216,7 @@ fn allocation_with_a_missing_end_is_a_problem_but_undrawn_ends_are_not() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(
         msgs,
         ["「割り当て」関係の相手「Nope」が見つかりません（allocate）"]
@@ -1262,7 +1262,7 @@ fn nary_connection_and_binding_report_a_missing_end() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(
         msgs,
         [
@@ -1282,7 +1282,7 @@ const CHAIN_MODEL: &str = "package P { port def Pt { in item x : Real; out item 
 /// 連鎖の模型の V の本体に `body` を書いたときの、問題の文。
 fn chain_problems(body: &str) -> Vec<String> {
     let (_, m) = run(&format!("{CHAIN_MODEL}{body} }} }}"));
-    m.problems.into_iter().map(|p| p.msg).collect()
+    m.problems.into_iter().map(|p| p.msg.render()).collect()
 }
 
 #[test]
@@ -1342,7 +1342,7 @@ fn message_end_event_of_a_nested_part_is_checked() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(
         msgs,
         [
@@ -1489,7 +1489,7 @@ fn missing_succession_end_and_cyclic_order_are_reported() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(
         msgs,
         [
@@ -1568,10 +1568,11 @@ fn comment_about_missing_target_is_a_problem() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<(&str, Option<&str>)> = m
-        .problems
+    let texts: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
+    let msgs: Vec<(&str, Option<&str>)> = texts
         .iter()
-        .map(|p| (p.msg.as_str(), p.kind))
+        .map(String::as_str)
+        .zip(m.problems.iter().map(|p| p.kind))
         .collect();
     assert_eq!(
         msgs,
@@ -1672,7 +1673,7 @@ fn action_flow_reports_a_flow_end_that_is_not_found() {
     let (_, m) = run(text);
     // Assert
     assert!(flow(&m, "A").edges.is_empty());
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(msgs, ["線の接続先「nope」が見つかりません（flow）"]);
 }
 
@@ -1864,7 +1865,7 @@ fn flow_without_from_to_a_missing_end_is_reported() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(msgs, ["線の接続先「gone」が見つかりません（flow）"]);
 }
 
@@ -1929,7 +1930,7 @@ fn frame_reference_to_a_missing_concern_is_reported() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(msgs, ["扱う関心事「nope」が見つかりません（frame）"]);
 }
 
@@ -1970,7 +1971,7 @@ fn succession_to_a_missing_action_is_a_problem() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(
         msgs,
         [
@@ -2114,7 +2115,7 @@ fn transition_to_a_missing_state_is_a_problem() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(
         msgs,
         [
@@ -2512,12 +2513,13 @@ fn elements_with_an_empty_quoted_name_are_reported() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let notices: Vec<(&str, usize)> = m
+    let notices: Vec<(String, usize)> = m
         .problems
         .iter()
         .filter(|p| p.kind == Some("unsupported"))
-        .map(|p| (p.msg.as_str(), p.pos))
+        .map(|p| (p.msg.render(), p.pos))
         .collect();
+    let notices: Vec<(&str, usize)> = notices.iter().map(|(m, pos)| (m.as_str(), *pos)).collect();
     assert_eq!(
         notices,
         [
@@ -2547,7 +2549,7 @@ fn unnamed_and_one_character_names_are_not_reported_as_empty_names() {
     assert_eq!(
         m.problems
             .iter()
-            .map(|p| p.msg.as_str())
+            .map(|p| p.msg.render())
             .collect::<Vec<_>>(),
         Vec::<&str>::new()
     );
@@ -2593,7 +2595,7 @@ fn a_missing_second_type_is_reported_and_library_types_are_not() {
     // Act
     let (_, m) = run(text);
     // Assert
-    let msgs: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(msgs, ["型「Nope」が見つかりません（x）"]);
 }
 
@@ -2672,7 +2674,7 @@ fn a_filter_that_cannot_be_read_is_reported_and_not_applied() {
     let m = run_files(focus, &[MARKED]);
     let (_, one) = run(single);
     // Assert
-    let msgs = |m: &Model| -> Vec<String> { m.problems.iter().map(|p| p.msg.clone()).collect() };
+    let msgs = |m: &Model| -> Vec<String> { m.problems.iter().map(|p| p.msg.render()).collect() };
     assert_eq!(
         msgs(&m),
         [
@@ -2723,7 +2725,7 @@ fn missing_quoted_name_with_colons_is_reported_as_one_name() {
         "package P { part y : 'no::such'; part def Z :> 'no::such'; alias T for 'no::such'; import 'no::such'::*; }",
     );
     // Act
-    let messages: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let messages: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     // Assert
     assert_eq!(
         messages,
@@ -2761,7 +2763,7 @@ fn missing_relation_target_with_colons_is_shown_without_quotes_in_views() {
     // Arrange（異常系：図に出す要素が無い）
     let (_, m) = run("package P { view v { expose 'no::such'; } }");
     // Act
-    let messages: Vec<&str> = m.problems.iter().map(|p| p.msg.as_str()).collect();
+    let messages: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     // Assert
     assert_eq!(
         messages,
@@ -2778,8 +2780,14 @@ fn flow_end_may_be_a_port_of_the_type_of_a_usage() {
     let missing =
         "package P { part def AB { port pq; } part x : AB; part z : AB; flow x.nope to z.pq; }";
     // Act
-    let messages =
-        |text: &str| -> Vec<String> { run(text).1.problems.into_iter().map(|p| p.msg).collect() };
+    let messages = |text: &str| -> Vec<String> {
+        run(text)
+            .1
+            .problems
+            .into_iter()
+            .map(|p| p.msg.render())
+            .collect()
+    };
     // Assert
     assert_eq!(messages(typed), Vec::<String>::new());
     assert_eq!(messages(own), Vec::<String>::new());
@@ -2798,11 +2806,11 @@ fn flow_end_may_be_a_port_of_the_type_of_a_usage() {
 // ---- 同じ場所の同じ名前（F-EDIT-5・#326） ----
 
 /// 問題一覧のうち、同じ名前を知らせる文。
-fn duplicate_msgs(m: &Model) -> Vec<&str> {
+fn duplicate_msgs(m: &Model) -> Vec<String> {
     m.problems
         .iter()
-        .filter(|p| p.msg.contains("既に使われています"))
-        .map(|p| p.msg.as_str())
+        .filter(|p| p.msg.render().contains("既に使われています"))
+        .map(|p| p.msg.render())
         .collect()
 }
 
@@ -2816,7 +2824,7 @@ fn second_element_with_the_same_name_in_the_same_owner_is_reported() {
     let found: Vec<_> = m
         .problems
         .iter()
-        .filter(|p| p.msg.contains("既に使われています"))
+        .filter(|p| p.msg.render().contains("既に使われています"))
         .collect();
     assert_eq!(found.len(), 1);
     assert_eq!(

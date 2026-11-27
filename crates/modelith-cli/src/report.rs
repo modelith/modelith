@@ -1,5 +1,6 @@
 //! `modelith check` の出力（1 件 1 行と、最後のまとめの行）を組み立てる。入出力は持たない。
 
+use modelith_core::Message;
 use modelith_core::project_file;
 use modelith_core::rules::{DiagnosticSeverity, LoadProblem, Located, Place};
 
@@ -11,7 +12,7 @@ pub struct Entry {
     /// ファイルの中の位置。ファイル全体のことなら `None`。
     pub place: Option<Place>,
     pub severity: DiagnosticSeverity,
-    pub message: String,
+    pub message: Message,
     /// 出どころ（`プラグイン/ルール` か `プラグイン`）。無ければ `None`。
     pub source: Option<String>,
 }
@@ -96,7 +97,7 @@ pub fn from_finding(path: &str, l: &Located) -> Entry {
         path: path.to_owned(),
         place: Some(l.place),
         severity: l.finding.severity,
-        message: l.finding.message.clone(),
+        message: Message::verbatim(l.finding.message.clone()),
         source: Some(format!("{}/{}", l.finding.plugin, l.finding.rule)),
     }
 }
@@ -202,7 +203,7 @@ mod tests {
             path: path.to_owned(),
             place: place.map(|(line, column)| Place { line, column }),
             severity,
-            message: "m".to_owned(),
+            message: Message::verbatim("m"),
             source: Some("jp.x/r".to_owned()),
         }
     }
@@ -308,7 +309,7 @@ mod tests {
             severity: project_file::Severity::Warning,
             line: 1,
             column: 3,
-            message: "不明な項目".to_owned(),
+            message: Message::verbatim("不明な項目"),
         };
         // Act
         let got = line(&from_project_problem(&p));

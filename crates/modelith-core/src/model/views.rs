@@ -6,6 +6,7 @@ use std::collections::HashSet;
 
 use super::filters::filter_of;
 use super::{Builder, Frame, View};
+use crate::Message;
 use crate::project::text::{is_qualified, last_segment, shown_path, unquote};
 use crate::project::{Entry, Expose};
 
@@ -377,7 +378,7 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
                 v.name,
                 std.unwrap_or("")
             );
-            b.problem(v.start, msg, Some("unsupported"));
+            b.problem(v.start, Message::verbatim(msg), Some("unsupported"));
         }
         if let Some(r) = &render {
             match b.standard_rendering(r).flatten() {
@@ -387,7 +388,7 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
                         "図「{}」の表し方（{r}）はまだ扱えないため、図として描きます（render）",
                         v.name
                     );
-                    b.problem(v.start, msg, Some("unsupported"));
+                    b.problem(v.start, Message::verbatim(msg), Some("unsupported"));
                 }
             }
         }
@@ -400,7 +401,7 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
                         "図「{}」の絞り込み「{f}」はまだ扱えないため、絞り込まずに描きます（filter）",
                         v.name
                     );
-                    b.problem(v.start, msg, Some("unsupported"));
+                    b.problem(v.start, Message::verbatim(msg), Some("unsupported"));
                 }
             }
         }
@@ -414,7 +415,7 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
                     v.name,
                     shown_path(&x.target)
                 );
-                b.problem(x.start, msg, None);
+                b.problem(x.start, Message::verbatim(msg), None);
                 continue;
             };
             targets.push(target);
@@ -426,7 +427,7 @@ pub(super) fn build_views(b: &mut Builder<'_>) {
                             "図「{}」の絞り込み「{f}」はまだ扱えないため、絞り込まずに描きます（expose の [ ]）",
                             v.name
                         );
-                        b.problem(x.start, msg, Some("unsupported"));
+                        b.problem(x.start, Message::verbatim(msg), Some("unsupported"));
                     }
                     t
                 }

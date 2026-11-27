@@ -8,6 +8,8 @@ use super::super::{
     describe_manifest, element_kinds, load_plugin, load_plugin_files,
 };
 use super::{DIR, ID, load_files, load_yaml, manifest, one_rule};
+use crate::Message;
+use crate::message::Arg;
 
 /// 読み込みの問題を「パス:行:列 文」の形にする（位置が無ければ「パス 文」）。
 fn problems(plugin: &super::LoadedPlugin) -> Vec<String> {
@@ -26,7 +28,7 @@ fn rule_problems(target: &str, require: &str) -> Vec<String> {
     load_yaml(&one_rule(target, require))
         .problems
         .into_iter()
-        .map(|p| p.message)
+        .map(|p| p.message.render())
         .collect()
 }
 
@@ -172,7 +174,7 @@ fn missing_plugin_tells_which_plugin_to_add() {
 #[test]
 fn unreadable_manifest_is_reported_with_the_reason() {
     // Arrange
-    let read = |_: &str| Err(ReadError::Other("UTF-8 ではありません".to_owned()));
+    let read = |_: &str| Err(ReadError::Other(Message::verbatim("UTF-8 ではありません")));
     // Act
     let plugin = load_plugin(ID, read);
     // Assert
@@ -191,14 +193,17 @@ fn manifest_json_syntax_error_has_line_and_column() {
     // Act
     let plugin = load_files(ID, &[(&format!("{DIR}/modelith-plugin.json"), text)]);
     // Assert
-    let all = problems(&plugin);
-    assert_eq!(all.len(), 1, "{all:?}");
-    assert!(
-        all[0].starts_with(&format!(
-            "{DIR}/modelith-plugin.json:3:1 書式にエラーがあるため読み込めません（JSON："
-        )),
-        "{all:?}"
-    );
+    let all: Vec<_> = plugin
+        .problems
+        .iter()
+        .map(|p| (p.path.as_str(), p.place, &p.message))
+        .collect();
+    let path = format!("{DIR}/modelith-plugin.json");
+    let at = Some(Place { line: 3, column: 1 });
+    let message = Message::new("read-error.format")
+        .arg("format", "JSON")
+        .arg_message("reason", Message::new("read-error.trailing-comma"));
+    assert_eq!(all, [(path.as_str(), at, &message)]);
 }
 
 #[test]
@@ -494,13 +499,17 @@ fn yaml_syntax_error_has_line_and_column() {
     // Act
     let plugin = load_yaml(yaml);
     // Assert
-    let all = problems(&plugin);
-    assert_eq!(all.len(), 1, "{all:?}");
-    assert!(
-        all[0].starts_with(&format!(
-            "{DIR}/rules.yaml:4:1 書式にエラーがあるため読み込めません（YAML："
-        )),
-        "{all:?}"
+    let all: Vec<_> = plugin
+        .problems
+        .iter()
+        .map(|p| (p.path.as_str(), p.place, p.message.code))
+        .collect();
+    let path = format!("{DIR}/rules.yaml");
+    let at = Some(Place { line: 4, column: 1 });
+    assert_eq!(all, [(path.as_str(), at, "read-error.format")]);
+    assert_eq!(
+        plugin.problems[0].message.args[0],
+        ("format", Arg::Text("YAML".to_owned()))
     );
 }
 
@@ -543,7 +552,7 @@ fn unknown_key_at_each_level_is_reported() {
     let messages: Vec<String> = cases
         .iter()
         .flat_map(|c| load_yaml(c).problems)
-        .map(|p| p.message)
+        .map(|p| p.message.render())
         .collect();
     // Assert
     assert_eq!(messages.len(), cases.len(), "{messages:?}");
@@ -565,7 +574,7 @@ fn missing_field_and_unknown_severity_are_explained() {
     let got: Vec<String> = [missing.to_owned(), fatal]
         .iter()
         .flat_map(|y| load_yaml(y).problems)
-        .map(|p| p.message)
+        .map(|p| p.message.render())
         .collect();
     // Assert
     assert!(
@@ -594,7 +603,7 @@ fn rule_problems_of(yaml: &str) -> Vec<String> {
     load_yaml(yaml)
         .problems
         .into_iter()
-        .map(|p| p.message)
+        .map(|p| p.message.render())
         .collect()
 }
 
@@ -729,18 +738,20 @@ fn describe_serde_error_puts_the_meaning_first() {
         "EOF while parsing a value at line 1 column 0",
     ];
     // Act
-    let got: Vec<String> = raws
+    let got: Vec<Message> = raws
         .iter()
         .map(|r| describe_serde_error(r, "JSON"))
         .collect();
-    // Assert
+    // Assert（辞書に移した文は、コードと値で比べる。ADR-0027 §3）
     assert_eq!(
         got,
         [
-            "不明な項目「x」があります（場所：a）",
-            "必要な項目「rules」がありません",
-            "指定できない値「fatal」です",
-            "書式にエラーがあるため読み込めません（JSON：途中で終わっています。閉じる括弧や「\"」が足りません）",
+            Message::verbatim("不明な項目「x」があります（場所：a）"),
+            Message::verbatim("必要な項目「rules」がありません"),
+            Message::verbatim("指定できない値「fatal」です"),
+            Message::new("read-error.format")
+                .arg("format", "JSON")
+                .arg_message("reason", Message::new("read-error.eof")),
         ]
     );
 }
@@ -823,7 +834,7 @@ fn load_plugin_files_without_files_is_not_installed() {
 #[test]
 fn unreadable_manifest_counts_as_installed() {
     // Arrange（異常系: ファイルはあるが読めない）
-    let read = |_: &str| Err(ReadError::Other("権限がありません".to_owned()));
+    let read = |_: &str| Err(ReadError::Other(Message::verbatim("権限がありません")));
     // Act
     let plugin = load_plugin(ID, read);
     // Assert
@@ -883,13 +894,10 @@ fn describe_manifest_reports_broken_json_and_bad_ids_with_place() {
     let broken = "{\n  \"id\": ";
     let bad_id = r#"{"id":"../x","name":"n","version":"0.1.0","apiVersion":"0","runtime":"rules","license":"MIT"}"#;
     // Act
-    let a = describe_manifest("m.json", broken).map_err(|p| (p.place.is_some(), p.message));
-    let b = describe_manifest("m.json", bad_id).map_err(|p| p.message);
+    let a = describe_manifest("m.json", broken).map_err(|p| (p.place.is_some(), p.message.code));
+    let b = describe_manifest("m.json", bad_id).map_err(|p| p.message.render());
     // Assert
-    assert!(
-        matches!(a, Err((true, ref m)) if m.starts_with("書式にエラーがあるため読み込めません（JSON：")),
-        "{a:?}"
-    );
+    assert!(matches!(a, Err((true, "read-error.format"))), "{a:?}");
     assert!(
         matches!(b, Err(ref m) if m.starts_with("プラグインの ID は")),
         "{b:?}"

@@ -21,6 +21,24 @@ fn problems_of(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// 読み取れなかった理由を添えた誤り（「書式にエラーがあるため読み込めません（JSON：理由）」）の、位置と文。
+/// 文は、文ではなくコードと値で比べる（ADR-0027 §3）。
+fn bad_json(line: u32, column: u32, reason: &'static str) -> (Severity, u32, u32, Message) {
+    let message = Message::new("read-error.format")
+        .arg("format", "JSON")
+        .arg_message("reason", Message::new(reason));
+    (Severity::Error, line, column, message)
+}
+
+/// 問題の、重さ・位置・文（コードと値）。
+fn coded_problems_of(text: &str) -> Vec<(Severity, u32, u32, Message)> {
+    parse(text)
+        .problems
+        .into_iter()
+        .map(|p| (p.severity, p.line, p.column, p.message))
+        .collect()
+}
+
 // --- parse: 正常系 ---
 
 #[test]
@@ -145,10 +163,8 @@ fn parse_reports_invalid_json_at_its_line_and_column() {
     // Assert（列は UTF-16 の単位で数える：「給水」は 2 単位）
     assert_eq!(parsed.project, None);
     assert_eq!(
-        problems_of(text),
-        vec![
-            "Error 2:16 書式にエラーがあるため読み込めません（JSON：項目の間の「,」か、閉じる「}」が足りません）"
-        ]
+        coded_problems_of(text),
+        [bad_json(2, 16, "read-error.expected-comma-or-brace")]
     );
 }
 
@@ -157,14 +173,9 @@ fn parse_reports_unclosed_object() {
     // Arrange（境界値: 開いただけ）
     let text = "{";
     // Act
-    let problems = problems_of(text);
+    let problems = coded_problems_of(text);
     // Assert
-    assert_eq!(
-        problems,
-        vec![
-            "Error 1:1 書式にエラーがあるため読み込めません（JSON：途中で終わっています。閉じる括弧や「\"」が足りません）"
-        ]
-    );
+    assert_eq!(problems, [bad_json(1, 1, "read-error.eof")]);
 }
 
 #[test]
@@ -358,8 +369,9 @@ fn update_plugin_refuses_to_change_an_entry_that_is_not_there() {
     let off = update_plugin(text, "jp.x", &PluginChange::SetEnabled { enabled: false });
     let removed = update_plugin(text, "jp.x", &PluginChange::Remove);
     // Assert
-    let expected =
-        Err("プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません".to_owned());
+    let expected = Err(Message::verbatim(
+        "プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません",
+    ));
     assert_eq!((off, removed), (expected.clone(), expected));
 }
 
@@ -372,7 +384,9 @@ fn update_plugin_refuses_a_broken_file_with_its_line() {
     // Assert
     assert_eq!(
         out,
-        Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。2 行目 3 文字目：プロジェクト名（name）は、文字列を \" \" で囲んで書いてください".to_owned())
+        Err(Message::verbatim(
+            "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。2 行目 3 文字目：プロジェクト名（name）は、文字列を \" \" で囲んで書いてください"
+        ))
     );
 }
 
@@ -391,7 +405,9 @@ fn update_plugin_refuses_to_add_a_malformed_id() {
     // Assert
     assert_eq!(
         out,
-        Err("プラグインの ID「../x」の形が正しくありません".to_owned())
+        Err(Message::verbatim(
+            "プラグインの ID「../x」の形が正しくありません"
+        ))
     );
 }
 
@@ -527,7 +543,7 @@ fn update_level_refuses_a_broken_file_with_its_line() {
     // Act
     let r = update_level("{", "unsupported", Some(Level::Off));
     // Assert（異常系）
-    let reason = r.expect_err("誤りのある設定は書き換えない");
+    let reason = r.expect_err("誤りのある設定は書き換えない").render();
     assert!(
         reason.starts_with(
             "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 "
@@ -541,14 +557,8 @@ fn a_comment_is_reported_as_not_allowed() {
     // Arrange（異常系：JSON にはコメントを書けない。行・列と、コメントが書けないことを示す。#266）
     for text in ["{\n  // memo\n  \"name\": \"x\"\n}", "{\n  /* memo */\n}"] {
         // Act
-        let got = problems_of(text);
+        let got = coded_problems_of(text);
         // Assert
-        assert_eq!(
-            got,
-            vec![
-                "Error 2:3 書式にエラーがあるため読み込めません（JSON：コメント（// や /* */）は書けません）"
-            ],
-            "{text}"
-        );
+        assert_eq!(got, [bad_json(2, 3, "read-error.comment")], "{text}");
     }
 }

@@ -27,6 +27,8 @@ const USAGE: &str = "使い方: modelith check <フォルダ> | modelith --versi
 /// modelith check a b      → 同上
 /// ```
 fn main() -> ExitCode {
+    // コアの返す文（コードと値）を、文言の層の辞書で文にする（ADR-0027 §3）
+    modelith_core::message::set_renderer(modelith_messages::render);
     let args: Vec<String> = std::env::args().skip(1).collect();
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     match args.as_slice() {

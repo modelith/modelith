@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use super::chains::ChainEnd;
 use super::{Builder, Edge, Lifeline, Sequence, SequenceEvent, SequenceMessage};
+use crate::Message;
 use crate::project::text::ref_segs;
 use crate::project::{RelKind, Span};
 
@@ -210,7 +211,7 @@ impl Builder<'_> {
         if cyclic {
             let name = &self.e(def).name;
             let msg = format!("シナリオ「{name}」の順序が循環しています（succession）");
-            self.problem(self.e(def).start, msg, None);
+            self.problem(self.e(def).start, Message::verbatim(msg), None);
         }
         let row = |it: Item| rows.get(&it).copied().unwrap_or(0);
         let mut seq_events: Vec<SequenceEvent> = events
@@ -453,7 +454,7 @@ impl Builder<'_> {
                     EndAt::Missing => {
                         let msg =
                             format!("「順序」の相手「{reference}」が見つかりません（succession）");
-                        self.problem(r.start, msg, None);
+                        self.problem(r.start, Message::verbatim(msg), None);
                     }
                 }
             }

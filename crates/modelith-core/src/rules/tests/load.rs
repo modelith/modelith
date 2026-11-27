@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use super::super::load::{describe_serde_error, inside_plugin, rule_places};
+use super::super::load::{arg_list, describe_serde_error, inside_plugin, rule_places};
 use super::super::{
     Command, Exporter, Importer, ManifestInfo, Permission, Place, ReadError, Runtime,
     describe_manifest, element_kinds, load_plugin, load_plugin_files,
@@ -12,6 +12,7 @@ use crate::Message;
 use crate::message::Arg;
 
 /// 読み込みの問題を「パス:行:列 文」の形にする（位置が無ければ「パス 文」）。
+/// 文は、辞書を通さない決まった形（`コード{名前=値}`）になる（コアのテストは、文ではなくコードと値で確かめる。ADR-0027 §3）。
 fn problems(plugin: &super::LoadedPlugin) -> Vec<String> {
     plugin
         .problems
@@ -23,7 +24,7 @@ fn problems(plugin: &super::LoadedPlugin) -> Vec<String> {
         .collect()
 }
 
-/// ルール 1 つの YAML を読み、問題の文だけを返す。
+/// ルール 1 つの YAML を読み、問題の文（`コード{名前=値}` の形）だけを返す。
 fn rule_problems(target: &str, require: &str) -> Vec<String> {
     load_yaml(&one_rule(target, require))
         .problems
@@ -150,9 +151,7 @@ fn malformed_plugin_id_is_reported_without_reading() {
     assert_eq!(reads, 0);
     assert_eq!(
         problems(&plugin),
-        [
-            "modelith.json プラグインの ID「../evil」の形が正しくありません。英小文字・数字・「-」を「.」で区切って書いてください（例：jp.example.rules）"
-        ]
+        ["modelith.json rules.project-plugin-id-invalid{id=../evil}"]
     );
 }
 
@@ -166,14 +165,14 @@ fn missing_plugin_tells_which_plugin_to_add() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/modelith-plugin.json このプロジェクトで使うプラグイン「{ID}」が追加されていません。プラグインを {DIR}/ に追加してください（modelith-plugin.json が見つかりません）"
+            "{DIR}/modelith-plugin.json rules.plugin-not-installed{{id={ID}, dir=.modelith/plugins, file=modelith-plugin.json}}"
         )]
     );
 }
 
 #[test]
 fn unreadable_manifest_is_reported_with_the_reason() {
-    // Arrange
+    // Arrange（理由は、呼び出し側が渡す外の文）
     let read = |_: &str| Err(ReadError::Other(Message::verbatim("UTF-8 ではありません")));
     // Act
     let plugin = load_plugin(ID, read);
@@ -181,7 +180,7 @@ fn unreadable_manifest_is_reported_with_the_reason() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/modelith-plugin.json プラグイン「{ID}」のマニフェストを読み込めません（UTF-8 ではありません）"
+            "{DIR}/modelith-plugin.json rules.manifest-unreadable{{id={ID}, reason=UTF-8 ではありません}}"
         )]
     );
 }
@@ -216,7 +215,7 @@ fn unknown_key_in_manifest_is_named() {
     let all = problems(&plugin);
     assert_eq!(all.len(), 1, "{all:?}");
     assert!(
-        all[0].ends_with("不明な項目「licence」があります"),
+        all[0].ends_with(" rules.field-unknown{key=licence}"),
         "{all:?}"
     );
 }
@@ -240,7 +239,7 @@ fn unsupported_api_version_is_reported_at_the_key_and_rules_are_not_read() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/modelith-plugin.json:5:3 対応していないバージョン（apiVersion「1」）のプラグインです。この Modelith が対応しているのは「0」です"
+            "{DIR}/modelith-plugin.json:5:3 rules.api-version-unsupported{{found=1, supported=0}}"
         )]
     );
 }
@@ -267,7 +266,7 @@ fn plugin_for_other_modelith_versions_is_reported_at_the_key_and_rules_are_not_r
     let all = problems(&plugin);
     assert_eq!(all.len(), 1, "{all:?}");
     assert!(
-        all[0].contains("このプラグインが動く Modelith の版は「>=9.0.0」です。この Modelith（"),
+        all[0].contains(" rules.engines-mismatch{range=>=9.0.0, host="),
         "{all:?}"
     );
 }
@@ -298,9 +297,7 @@ fn badly_written_modelith_range_is_reported() {
     let all = problems(&plugin);
     assert_eq!(all.len(), 1, "{all:?}");
     assert!(
-        all[0].contains(
-            "動く Modelith の版の範囲（engines.modelith「latest」）の書き方が正しくありません"
-        ),
+        all[0].ends_with(" rules.engines-range-invalid{range=latest}"),
         "{all:?}"
     );
 }
@@ -315,7 +312,7 @@ fn wasm_component_runtime_is_reported() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/modelith-plugin.json:6:3 WebAssembly で動くプラグイン（runtime: wasm-component）には、まだ対応していません"
+            "{DIR}/modelith-plugin.json:6:3 rules.wasm-component-unsupported{{}}"
         )]
     );
 }
@@ -362,7 +359,7 @@ fn browser_plugin_without_main_is_reported() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/modelith-plugin.json 画面に機能を追加するプラグイン（runtime: browser）には、プログラムのファイル（main）を書いてください"
+            "{DIR}/modelith-plugin.json rules.main-file-required{{}}"
         )]
     );
 }
@@ -377,7 +374,7 @@ fn browser_plugin_main_outside_the_folder_is_reported() {
     let got = problems(&plugin);
     assert_eq!(got.len(), 1);
     assert!(
-        got[0].ends_with("プログラムのファイル「../main.js」は、プラグインのフォルダの中を、そこからの相対パスで指してください"),
+        got[0].ends_with(" rules.main-file-outside{path=../main.js}"),
         "{got:?}"
     );
 }
@@ -391,9 +388,7 @@ fn browser_plugin_with_a_missing_main_file_is_reported() {
     // Assert
     assert_eq!(
         problems(&plugin),
-        [format!(
-            "{DIR}/main.js マニフェストに書かれたプログラムのファイルが見つかりません（main）"
-        )]
+        [format!("{DIR}/main.js rules.main-file-missing{{}}")]
     );
 }
 
@@ -407,7 +402,7 @@ fn manifest_id_must_match_the_project_entry() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/modelith-plugin.json:2:3 マニフェストの ID「jp.example.other」が、プロジェクトに書かれた ID「{ID}」と違います"
+            "{DIR}/modelith-plugin.json:2:3 rules.id-mismatch{{manifest=jp.example.other, project={ID}}}"
         )]
     );
 }
@@ -430,7 +425,7 @@ fn rule_paths_outside_the_plugin_folder_are_rejected_but_others_load() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/modelith-plugin.json:8:30 ルールのファイル「../secret.yaml」は、プラグインのフォルダの中を、そこからの相対パスで指してください"
+            "{DIR}/modelith-plugin.json:8:30 rules.rule-file-outside{{path=../secret.yaml}}"
         )]
     );
 }
@@ -444,9 +439,7 @@ fn missing_rule_file_is_reported() {
     // Assert
     assert_eq!(
         problems(&plugin),
-        [format!(
-            "{DIR}/rules.yaml マニフェストに書かれたルールのファイルが見つかりません（contributes.rules）"
-        )]
+        [format!("{DIR}/rules.yaml rules.rule-file-missing{{}}")]
     );
 }
 
@@ -533,7 +526,7 @@ fn unknown_key_in_require_is_named_at_its_line() {
     assert_eq!(
         problems(&plugin),
         [format!(
-            "{DIR}/rules.yaml:8:7 不明な項目「incomin」があります（場所：rules[0].require）"
+            "{DIR}/rules.yaml:8:7 rules.field-unknown-at{{key=incomin, place=rules[0].require}}"
         )]
     );
 }
@@ -559,7 +552,7 @@ fn unknown_key_at_each_level_is_reported() {
     assert!(
         messages
             .iter()
-            .all(|m| m.starts_with("不明な項目「extra」があります")),
+            .all(|m| m.starts_with("rules.field-unknown") && m.contains("{key=extra")),
         "{messages:?}"
     );
 }
@@ -578,10 +571,13 @@ fn missing_field_and_unknown_severity_are_explained() {
         .collect();
     // Assert
     assert!(
-        got[0].starts_with("必要な項目「severity」がありません"),
+        got[0].starts_with("rules.field-missing") && got[0].contains("{key=severity"),
         "{got:?}"
     );
-    assert!(got[1].starts_with("指定できない値「fatal」です"), "{got:?}");
+    assert!(
+        got[1].starts_with("rules.value-not-allowed") && got[1].contains("{value=fatal"),
+        "{got:?}"
+    );
 }
 
 #[test]
@@ -591,14 +587,10 @@ fn malformed_rule_id_is_explained() {
     // Act
     let got = rule_problems_of(&yaml);
     // Assert
-    assert_eq!(got.len(), 1);
-    assert!(
-        got[0].starts_with("ルールの ID は、英小文字・数字・「-」で書いてください"),
-        "{got:?}"
-    );
+    assert_eq!(got, ["rules.rule-id-invalid{}"]);
 }
 
-/// YAML 全体を読み、問題の文だけを返す。
+/// YAML 全体を読み、問題の文（`コード{名前=値}` の形）だけを返す。
 fn rule_problems_of(yaml: &str) -> Vec<String> {
     load_yaml(yaml)
         .problems
@@ -619,11 +611,14 @@ fn regex_errors_are_reported_for_match_and_nested_require() {
     assert_eq!(all.len(), 2, "{all:?}");
     assert!(
         all[0].starts_with(&format!(
-            "{DIR}/rules.yaml:2:5 ルール「r1」：名前の正規表現にエラーがあります（match.name「[a」："
+            "{DIR}/rules.yaml:2:5 rules.in-rule{{id=r1, problem=rules.regex-invalid{{at=match.name, pattern=[a, reason="
         )),
         "{all:?}"
     );
-    assert!(all[1].contains("（require.not.name「(」："), "{all:?}");
+    assert!(
+        all[1].contains("rules.regex-invalid{at=require.not.name, pattern=(, reason="),
+        "{all:?}"
+    );
 }
 
 #[test]
@@ -635,7 +630,7 @@ fn ports_min_greater_than_max_is_reported() {
     // Assert
     assert_eq!(
         got,
-        ["ルール「r1」：ポートの数の下限（3）が上限（2）より大きいです（require.ports）"]
+        ["rules.in-rule{id=r1, problem=rules.ports-min-over-max{min=3, max=2, at=require}}"]
     );
 }
 
@@ -646,10 +641,7 @@ fn empty_kind_list_is_reported() {
     // Act
     let got = rule_problems(target, "{}");
     // Assert
-    assert_eq!(
-        got,
-        ["ルール「r1」：ルールを当てる要素の種類（match.kind）が空です。1 つ以上書いてください"]
-    );
+    assert_eq!(got, ["rules.in-rule{id=r1, problem=rules.kinds-empty{}}"]);
 }
 
 #[test]
@@ -661,7 +653,7 @@ fn unknown_element_kind_is_reported() {
     // Assert
     assert_eq!(got.len(), 2, "{got:?}");
     assert!(
-        got[0].starts_with("ルール「r1」：不明な要素の種類「view def」です（match.kind）。指定できる種類：occurrence def・part def"),
+        got[0].starts_with("rules.in-rule{id=r1, problem=rules.kind-unknown{kind=view def, allowed=rules.list-join{first=occurrence def, rest=rules.list-join{first=part def, "),
         "{got:?}"
     );
 }
@@ -676,8 +668,8 @@ fn unknown_and_empty_relation_lists_are_reported() {
     assert_eq!(
         got,
         [
-            "ルール「r1」：不明な関係の種類「derive」です（require.incoming）。指定できる種類：satisfy・verify・frame・derivation・flow",
-            "ルール「r1」：関係の種類（require.outgoing）が空です。1 つ以上書いてください",
+            "rules.in-rule{id=r1, problem=rules.relation-unknown{kind=derive, at=require.incoming, allowed=rules.list-join{first=satisfy, rest=rules.list-join{first=verify, rest=rules.list-join{first=frame, rest=rules.list-join{first=derivation, rest=flow}}}}}}",
+            "rules.in-rule{id=r1, problem=rules.relations-empty{at=require.outgoing}}",
         ]
     );
 }
@@ -705,7 +697,7 @@ fn duplicate_rule_ids_are_reported_at_the_second_one() {
     // Assert
     let ids: Vec<&str> = plugin.rules.iter().map(|r| r.id.as_str()).collect();
     assert_eq!(ids, ["x", "y"]);
-    let message = "ルールの ID「x」が重複しています。プラグインの中で 1 つにしてください";
+    let message = "rules.duplicate-id{id=x}";
     assert_eq!(
         problems(&plugin),
         [
@@ -742,16 +734,90 @@ fn describe_serde_error_puts_the_meaning_first() {
         .iter()
         .map(|r| describe_serde_error(r, "JSON"))
         .collect();
-    // Assert（辞書に移した文は、コードと値で比べる。ADR-0027 §3）
+    // Assert（コードと値で比べる。ADR-0027 §3）
     assert_eq!(
         got,
         [
-            Message::verbatim("不明な項目「x」があります（場所：a）"),
-            Message::verbatim("必要な項目「rules」がありません"),
-            Message::verbatim("指定できない値「fatal」です"),
+            Message::new("rules.field-unknown-at")
+                .arg("key", "x")
+                .arg("place", "a"),
+            Message::new("rules.field-missing").arg("key", "rules"),
+            Message::new("rules.value-not-allowed").arg("value", "fatal"),
             Message::new("read-error.format")
                 .arg("format", "JSON")
                 .arg_message("reason", Message::new("read-error.eof")),
+        ]
+    );
+}
+
+#[test]
+fn describe_serde_error_adds_the_place_to_each_kind_when_known() {
+    // Arrange（場所が分かるときは、場所を添える文のコードになる）
+    let raws = [
+        "rules[0]: missing field `severity`",
+        "rules[0].severity: unknown variant `fatal`, expected one of `error`",
+        "unknown field `x`, expected `y`",
+    ];
+    // Act
+    let got: Vec<Message> = raws
+        .iter()
+        .map(|r| describe_serde_error(r, "YAML"))
+        .collect();
+    // Assert
+    assert_eq!(
+        got,
+        [
+            Message::new("rules.field-missing-at")
+                .arg("key", "severity")
+                .arg("place", "rules[0]"),
+            Message::new("rules.value-not-allowed-at")
+                .arg("value", "fatal")
+                .arg("place", "rules[0].severity"),
+            Message::new("rules.field-unknown").arg("key", "x"),
+        ]
+    );
+}
+
+#[test]
+fn describe_serde_error_names_malformed_ids_without_values() {
+    // Arrange（ルールの ID と、プラグインの ID の形の誤り）
+    let raws = ["rules[0].id: invalid rule id", "invalid plugin id"];
+    // Act
+    let got: Vec<Message> = raws
+        .iter()
+        .map(|r| describe_serde_error(r, "YAML"))
+        .collect();
+    // Assert
+    assert_eq!(
+        got,
+        [
+            Message::new("rules.rule-id-invalid"),
+            Message::new("rules.plugin-id-invalid"),
+        ]
+    );
+}
+
+#[test]
+fn arg_list_nests_the_join_message_for_two_or_more_names() {
+    // Arrange（境界値：0・1・2・3 個）
+    let lists: [&[&str]; 4] = [&[], &["a"], &["a", "b"], &["a", "b", "c"]];
+    // Act
+    let got: Vec<Message> = lists
+        .iter()
+        .map(|l| arg_list(Message::new("x.y"), "allowed", l))
+        .collect();
+    // Assert（区切りの字は、コアでは決めない）
+    let join = |first: &str| Message::new("rules.list-join").arg("first", first);
+    assert_eq!(
+        got,
+        [
+            Message::new("x.y").arg("allowed", ""),
+            Message::new("x.y").arg("allowed", "a"),
+            Message::new("x.y").arg_message("allowed", join("a").arg("rest", "b")),
+            Message::new("x.y").arg_message(
+                "allowed",
+                join("a").arg_message("rest", join("b").arg("rest", "c"))
+            ),
         ]
     );
 }
@@ -895,11 +961,8 @@ fn describe_manifest_reports_broken_json_and_bad_ids_with_place() {
     let bad_id = r#"{"id":"../x","name":"n","version":"0.1.0","apiVersion":"0","runtime":"rules","license":"MIT"}"#;
     // Act
     let a = describe_manifest("m.json", broken).map_err(|p| (p.place.is_some(), p.message.code));
-    let b = describe_manifest("m.json", bad_id).map_err(|p| p.message.render());
+    let b = describe_manifest("m.json", bad_id).map_err(|p| p.message);
     // Assert
     assert!(matches!(a, Err((true, "read-error.format"))), "{a:?}");
-    assert!(
-        matches!(b, Err(ref m) if m.starts_with("プラグインの ID は")),
-        "{b:?}"
-    );
+    assert_eq!(b, Err(Message::new("rules.plugin-id-invalid")));
 }

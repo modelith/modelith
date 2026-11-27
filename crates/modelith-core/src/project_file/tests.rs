@@ -13,6 +13,7 @@ fn project_of(text: &str) -> ProjectFile {
 }
 
 /// 問題を「重さ 行:列 文」の 1 行ずつにする。
+/// 文は、辞書を通さない決まった形（`コード{名前=値}`）になる（コアのテストは、文ではなくコードと値で確かめる。ADR-0027 §3）。
 fn problems_of(text: &str) -> Vec<String> {
     parse(text)
         .problems
@@ -115,8 +116,8 @@ fn parse_keeps_unknown_keys_and_warns_with_their_positions() {
     assert_eq!(
         problems_of(text),
         vec![
-            "Warning 3:3 不明な項目「rules」があります。削除せずに残します",
-            "Warning 4:26 プラグイン「jp.a」の設定に、不明な項目「color」があります。削除せずに残します",
+            "Warning 3:3 project.key-unknown{key=rules}",
+            "Warning 4:26 project.plugin-key-unknown{id=jp.a, key=color}",
         ]
     );
 }
@@ -146,10 +147,7 @@ fn parse_rejects_empty_text() {
     let results: Vec<Vec<String>> = inputs.iter().map(|t| problems_of(t)).collect();
     // Assert
     for r in results {
-        assert_eq!(
-            r,
-            vec!["Error 1:1 中身が空です。少なくとも { } と書いてください"]
-        );
+        assert_eq!(r, vec!["Error 1:1 project.empty{}"]);
     }
     assert_eq!(parse("").project, None);
 }
@@ -186,10 +184,7 @@ fn parse_rejects_a_top_level_that_is_not_an_object() {
     let parsed = parse(text);
     // Assert
     assert_eq!(parsed.project, None);
-    assert_eq!(
-        problems_of(text),
-        vec!["Error 1:1 一番外側を { } で囲んでください（JSON のオブジェクト）"]
-    );
+    assert_eq!(problems_of(text), vec!["Error 1:1 project.not-object{}"]);
 }
 
 #[test]
@@ -203,8 +198,8 @@ fn parse_reports_wrong_types_at_the_keys() {
     assert_eq!(
         problems_of(text),
         vec![
-            "Error 2:3 プロジェクト名（name）は、文字列を \" \" で囲んで書いてください",
-            "Error 3:3 プラグインの一覧（plugins）は { } で囲んで書いてください",
+            "Error 2:3 project.name-not-string{}",
+            "Error 3:3 project.plugins-not-object{}",
         ]
     );
 }
@@ -219,9 +214,9 @@ fn parse_reports_wrong_types_inside_a_plugin() {
     assert_eq!(
         problems,
         vec![
-            "Error 1:14 プラグイン「a」の設定は { } で囲んで書いてください",
-            "Error 1:28 プラグイン「b」のバージョン（version）は、文字列を \" \" で囲んで書いてください（例：\"0.2.0\"）",
-            "Error 1:42 プラグイン「b」の有効・無効（enabled）は true か false で書いてください",
+            "Error 1:14 project.plugin-not-object{id=a}",
+            "Error 1:28 project.plugin-version-not-string{id=b}",
+            "Error 1:42 project.plugin-enabled-not-boolean{id=b}",
         ]
     );
 }
@@ -369,9 +364,7 @@ fn update_plugin_refuses_to_change_an_entry_that_is_not_there() {
     let off = update_plugin(text, "jp.x", &PluginChange::SetEnabled { enabled: false });
     let removed = update_plugin(text, "jp.x", &PluginChange::Remove);
     // Assert
-    let expected = Err(Message::verbatim(
-        "プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません",
-    ));
+    let expected = Err(Message::new("project.plugin-missing").arg("id", "jp.x"));
     assert_eq!((off, removed), (expected.clone(), expected));
 }
 
@@ -384,9 +377,10 @@ fn update_plugin_refuses_a_broken_file_with_its_line() {
     // Assert
     assert_eq!(
         out,
-        Err(Message::verbatim(
-            "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。2 行目 3 文字目：プロジェクト名（name）は、文字列を \" \" で囲んで書いてください"
-        ))
+        Err(Message::new("project.cannot-change-at")
+            .arg("line", "2")
+            .arg("column", "3")
+            .arg_message("reason", Message::new("project.name-not-string")))
     );
 }
 
@@ -405,9 +399,7 @@ fn update_plugin_refuses_to_add_a_malformed_id() {
     // Assert
     assert_eq!(
         out,
-        Err(Message::verbatim(
-            "プラグインの ID「../x」の形が正しくありません"
-        ))
+        Err(Message::new("project.plugin-id-invalid").arg("id", "../x"))
     );
 }
 
@@ -463,9 +455,7 @@ fn parse_rejects_a_level_that_is_not_a_string() {
     assert_eq!(parsed.project, None);
     assert_eq!(
         problems_of(text),
-        vec![
-            "Error 3:5 知らせ「unsupported」の重さは、\"error\"・\"warning\"・\"info\"・\"off\" のどれかで書いてください",
-        ]
+        vec!["Error 3:5 project.level-invalid{kind=unsupported}",]
     );
 }
 
@@ -481,9 +471,7 @@ fn parse_keeps_a_level_value_this_version_does_not_know() {
     assert_eq!(project.levels.get("unsupported"), Some(&Level::Off));
     assert_eq!(
         problems_of(text),
-        vec![
-            "Warning 4:5 知らせ「trace.verify」の重さは、この版の知らない値です。この版では既定の重さにし、削除せずに残します",
-        ]
+        vec!["Warning 4:5 project.level-value-unknown{kind=trace.verify}",]
     );
     assert_eq!(to_text(&project), text);
 }
@@ -495,10 +483,7 @@ fn parse_rejects_levels_that_are_not_an_object() {
     // Act
     let problems = problems_of(text);
     // Assert
-    assert_eq!(
-        problems,
-        vec!["Error 1:3 知らせの重さ（levels）は { } で囲んで書いてください"]
-    );
+    assert_eq!(problems, vec!["Error 1:3 project.levels-not-object{}"]);
 }
 
 #[test]
@@ -511,9 +496,7 @@ fn parse_keeps_an_unknown_level_kind_and_warns() {
     assert_eq!(project.levels.get("trace.verfy"), Some(&Level::Off));
     assert_eq!(
         problems_of(text),
-        vec![
-            "Warning 2:15 知らせの重さ（levels）に、不明な種類「trace.verfy」があります。削除せずに残します"
-        ]
+        vec!["Warning 2:15 project.level-kind-unknown{kind=trace.verfy}"]
     );
 }
 
@@ -542,13 +525,18 @@ fn update_level_none_returns_to_the_default_and_drops_an_empty_levels() {
 fn update_level_refuses_a_broken_file_with_its_line() {
     // Act
     let r = update_level("{", "unsupported", Some(Level::Off));
-    // Assert（異常系）
-    let reason = r.expect_err("誤りのある設定は書き換えない").render();
-    assert!(
-        reason.starts_with(
-            "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 "
-        ),
-        "{reason}"
+    // Assert（異常系：最初の誤りの行・列と、その文を添える）
+    assert_eq!(
+        r,
+        Err(Message::new("project.cannot-change-at")
+            .arg("line", "1")
+            .arg("column", "1")
+            .arg_message(
+                "reason",
+                Message::new("read-error.format")
+                    .arg("format", "JSON")
+                    .arg_message("reason", Message::new("read-error.eof"))
+            ))
     );
 }
 

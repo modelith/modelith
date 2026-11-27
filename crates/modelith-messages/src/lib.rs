@@ -17,6 +17,9 @@ const JA: &[(&str, &str)] = &[
     ("syntax", include_str!("../locales/ja/syntax.ftl")),
     ("edit", include_str!("../locales/ja/edit.ftl")),
     ("model", include_str!("../locales/ja/model.ftl")),
+    ("rules", include_str!("../locales/ja/rules.ftl")),
+    ("project", include_str!("../locales/ja/project.ftl")),
+    ("plugin", include_str!("../locales/ja/plugin.ftl")),
 ];
 
 thread_local! {

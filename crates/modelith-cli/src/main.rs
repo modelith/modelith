@@ -6,8 +6,10 @@ mod report;
 use std::path::Path;
 use std::process::ExitCode;
 
-/// 使い方の 1 行。
-const USAGE: &str = "使い方: modelith check <フォルダ> | modelith --version";
+use modelith_core::Message;
+
+/// 使い方の 1 行の、文のコード（文は辞書の `cli-usage`）。
+const USAGE: &str = "cli.usage";
 
 /// コマンドラインの引数を見て、版を表示するか、検査するか、使い方を示す。標準出力・標準エラーに書く。
 ///
@@ -51,7 +53,7 @@ fn main() -> ExitCode {
             }
         },
         _ => {
-            eprintln!("{USAGE}");
+            eprintln!("{}", Message::new(USAGE));
             ExitCode::from(2)
         }
     }

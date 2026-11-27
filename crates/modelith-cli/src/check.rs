@@ -22,33 +22,27 @@ use crate::report::{self, Entry};
 /// # 戻り値
 ///
 /// 出力のテキスト（1 件 1 行とまとめの行）と、誤り（読み込みの誤りを含む）が 1 件でもあるか。
-/// フォルダや `modelith.json` を読めないときは、理由の文を `Err` で返す。
+/// フォルダや `modelith.json` を読めないときは、理由の文（`cli.folder-missing` などのコードと値）を `Err` で返す。
 ///
 /// # 例
 ///
 /// ```text
 /// run(Path::new("proj"))    → Ok(("model.sysml:2:3: 警告: … [jp.x/r1]\nファイル 1 件をチェックしました：…\n", false))
-/// run(Path::new("missing")) → Err("フォルダ「missing」が見つかりません")
+/// run(Path::new("missing")) → Err(Message::new("cli.folder-missing").arg("path", "missing"))   // 「フォルダ「missing」が見つかりません」
 /// ```
 pub fn run(folder: &Path) -> Result<(String, bool), Message> {
     if !folder.is_dir() {
-        return Err(Message::verbatim(format!(
-            "フォルダ「{}」が見つかりません",
-            folder.display()
-        )));
+        return Err(Message::new("cli.folder-missing").arg("path", folder.display().to_string()));
     }
     let project_text = match read_text(&folder.join("modelith.json")) {
         Ok(text) => text,
         Err(ReadError::NotFound) => {
-            return Err(Message::verbatim(format!(
-                "フォルダ「{}」に modelith.json がありません。プロジェクトのフォルダを指定してください",
-                folder.display()
-            )));
+            return Err(
+                Message::new("cli.project-file-missing").arg("path", folder.display().to_string())
+            );
         }
         Err(ReadError::Other(reason)) => {
-            return Err(Message::verbatim(format!(
-                "modelith.json を読み込めません（{reason}）"
-            )));
+            return Err(Message::new("cli.project-file-unreadable").arg_message("reason", reason));
         }
     };
     let parsed = project_file::parse(&project_text);
@@ -74,8 +68,10 @@ pub fn run(folder: &Path) -> Result<(String, bool), Message> {
                 .map(|p| report::from_load_problem(&plugin.id, p)),
         );
     }
-    let files = model_files(folder)
-        .map_err(|e| Message::verbatim(format!("フォルダの内容を読み込めません（{e}）")))?;
+    let files = model_files(folder).map_err(|e| {
+        Message::new("cli.folder-unreadable")
+            .arg_message("reason", Message::verbatim(e.to_string()))
+    })?;
     // フォルダのすべてのファイルを 1 つのモデルとし、ファイルごとにその要素を検査する（ADR-0021）
     let mut texts: Vec<(String, String)> = Vec::new();
     for file in &files {
@@ -119,7 +115,7 @@ pub fn run(folder: &Path) -> Result<(String, bool), Message> {
 ///
 /// # 戻り値
 ///
-/// 位置の無い誤りの 1 件。
+/// 位置の無い誤りの 1 件。文は `cli.file-unreadable` で、理由（`reason`）は、無いなら `cli.file-missing`、ほかは受け取った理由。
 ///
 /// # 例
 ///
@@ -128,14 +124,14 @@ pub fn run(folder: &Path) -> Result<(String, bool), Message> {
 /// ```
 fn unreadable_model(path: &str, e: &ReadError) -> Entry {
     let reason = match e {
-        ReadError::NotFound => Message::verbatim("見つかりません"),
+        ReadError::NotFound => Message::new("cli.file-missing"),
         ReadError::Other(reason) => reason.clone(),
     };
     Entry {
         path: path.to_owned(),
         place: None,
         severity: rules::DiagnosticSeverity::Error,
-        message: Message::verbatim(format!("ファイルを読み込めません（{reason}）")),
+        message: Message::new("cli.file-unreadable").arg_message("reason", reason),
         source: None,
     }
 }
@@ -155,17 +151,15 @@ fn unreadable_model(path: &str, e: &ReadError) -> Entry {
 /// ```text
 /// read_text("proj/modelith.json") → Ok("{ … }")
 /// read_text("proj/none.json")     → Err(NotFound)
-/// read_text("proj/link.yaml")     → Err(Other("シンボリックリンクは読みません"))   // link.yaml がシンボリックリンク
+/// read_text("proj/link.yaml")     → Err(Other(Message::new("cli.symlink")))    // link.yaml がシンボリックリンク
+/// read_text("proj/binary.sysml")  → Err(Other(Message::new("cli.not-utf8")))   // UTF-8 でない
 /// ```
 fn read_text(path: &Path) -> Result<String, ReadError> {
     if is_symlink(path).map_err(read_error)? {
-        return Err(ReadError::Other(Message::verbatim(
-            "シンボリックリンクは読みません",
-        )));
+        return Err(ReadError::Other(Message::new("cli.symlink")));
     }
     let bytes = fs::read(path).map_err(read_error)?;
-    String::from_utf8(bytes)
-        .map_err(|_| ReadError::Other(Message::verbatim("UTF-8 のテキストではありません")))
+    String::from_utf8(bytes).map_err(|_| ReadError::Other(Message::new("cli.not-utf8")))
 }
 
 /// パスそのものがシンボリックリンクか（リンクの先は見ない）。

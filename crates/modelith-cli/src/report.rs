@@ -102,7 +102,7 @@ pub fn from_finding(path: &str, l: &Located) -> Entry {
     }
 }
 
-/// 重さを、出力の言葉にする。
+/// 重さを、出力の言葉（の文のコード）にする。
 ///
 /// # 引数
 ///
@@ -110,21 +110,49 @@ pub fn from_finding(path: &str, l: &Located) -> Entry {
 ///
 /// # 戻り値
 ///
-/// 「エラー」「警告」「情報」「ヒント」のいずれか。
+/// 値の無い文。文にすると「エラー」「警告」「情報」「ヒント」のいずれか。
 ///
 /// # 例
 ///
 /// ```text
-/// label(Error)       → "エラー"
-/// label(Information) → "情報"
+/// label(Error)       → Message::new("cli.severity-error")         // 「エラー」
+/// label(Information) → Message::new("cli.severity-information")   // 「情報」
 /// ```
-pub fn label(s: DiagnosticSeverity) -> &'static str {
-    match s {
-        DiagnosticSeverity::Error => "エラー",
-        DiagnosticSeverity::Warning => "警告",
-        DiagnosticSeverity::Information => "情報",
-        DiagnosticSeverity::Hint => "ヒント",
-    }
+pub fn label(s: DiagnosticSeverity) -> Message {
+    Message::new(match s {
+        DiagnosticSeverity::Error => "cli.severity-error",
+        DiagnosticSeverity::Warning => "cli.severity-warning",
+        DiagnosticSeverity::Information => "cli.severity-information",
+        DiagnosticSeverity::Hint => "cli.severity-hint",
+    })
+}
+
+/// まとめの行の文を作る。
+///
+/// # 引数
+///
+/// - `files`：検査したモデルのファイルの数
+/// - `counts`：重さごとの件数（誤り・注意・情報・ヒントの順）
+///
+/// # 戻り値
+///
+/// コードが `cli.summary` の文。数は文字にして渡す（ADR-0027 §2）。
+///
+/// # 例
+///
+/// ```text
+/// summary(2, [1, 0, 3, 0])
+///   → Message::new("cli.summary").arg("files", "2").arg("errors", "1").arg("warnings", "0").arg("information", "3").arg("hints", "0")
+///   // 「ファイル 2 件をチェックしました：エラー 1 件・警告 0 件・情報 3 件・ヒント 0 件」
+/// ```
+pub fn summary(files: usize, counts: [usize; 4]) -> Message {
+    let [errors, warnings, information, hints] = counts;
+    Message::new("cli.summary")
+        .arg("files", files.to_string())
+        .arg("errors", errors.to_string())
+        .arg("warnings", warnings.to_string())
+        .arg("information", information.to_string())
+        .arg("hints", hints.to_string())
 }
 
 /// 1 件を 1 行にする（`パス:行:列: 重さ: 文 [出どころ]`）。
@@ -136,6 +164,7 @@ pub fn label(s: DiagnosticSeverity) -> &'static str {
 /// # 戻り値
 ///
 /// 改行を含まない 1 行。位置が無ければ `パス: 重さ: 文`、出どころが無ければ末尾の `[…]` を書かない。
+/// 重さと文は、文言の層の辞書で文にする（文にする関数を入れていなくても同じ）。
 ///
 /// # 例
 ///
@@ -154,8 +183,8 @@ pub fn line(e: &Entry) -> String {
     format!(
         "{}{at}: {}: {}{source}",
         e.path,
-        label(e.severity),
-        e.message
+        modelith_messages::render(&label(e.severity)),
+        modelith_messages::render(&e.message)
     )
 }
 
@@ -185,12 +214,14 @@ pub fn render(mut entries: Vec<Entry>, files: usize) -> (String, bool) {
     let count = |s: DiagnosticSeverity| entries.iter().filter(|e| e.severity == s).count();
     let errors = count(DiagnosticSeverity::Error);
     let mut out: String = entries.iter().map(|e| line(e) + "\n").collect();
-    out.push_str(&format!(
-        "ファイル {files} 件をチェックしました：エラー {errors} 件・警告 {} 件・情報 {} 件・ヒント {} 件\n",
+    let counts = [
+        errors,
         count(DiagnosticSeverity::Warning),
         count(DiagnosticSeverity::Information),
         count(DiagnosticSeverity::Hint),
-    ));
+    ];
+    out.push_str(&modelith_messages::render(&summary(files, counts)));
+    out.push('\n');
     (out, errors > 0)
 }
 
@@ -239,9 +270,17 @@ mod tests {
             DiagnosticSeverity::Hint,
         ];
         // Act
-        let got: Vec<&str> = all.into_iter().map(label).collect();
-        // Assert
-        assert_eq!(got, ["エラー", "警告", "情報", "ヒント"]);
+        let got: Vec<Message> = all.into_iter().map(label).collect();
+        // Assert（文ではなく、コードで確かめる。文は modelith-messages の tests/cli.rs）
+        assert_eq!(
+            got,
+            [
+                Message::new("cli.severity-error"),
+                Message::new("cli.severity-warning"),
+                Message::new("cli.severity-information"),
+                Message::new("cli.severity-hint"),
+            ]
+        );
     }
 
     #[test]

@@ -605,10 +605,12 @@ fn add_node(
         lines.push(format!("@Phase {{ stage = {en}::{ph}; }}"));
     }
     match kind {
+        // l10n-ignore: モデルに書くテキスト（文言の辞書ではなく、足す要素のひな形）
         "requirement def" => lines.push("doc /* ここに要求文を書く */".to_owned()),
         "constraint def" => {
             lines.extend(["in x : Real; in y : Real;".to_owned(), "y == x".to_owned()])
         }
+        // l10n-ignore: モデルに書くテキスト（足す要素のひな形）
         "occurrence def" => lines.push("doc /* シナリオの説明 */".to_owned()),
         _ => {}
     }

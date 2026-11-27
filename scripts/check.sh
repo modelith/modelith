@@ -30,6 +30,8 @@ stage_static() {
   node web/tools/doc-comments-cli.ts web/tools web/src cli/src crates
   # 文言の辞書（ADR-0027）。辞書の形と、コードが使うキーを確かめる。3 つめからの引数は、文の直書きを止める場所（画面のコードのすべてと、画面の骨組み）
   node web/tools/l10n-cli.ts web/src/locales/ja web/src web/src web/index.html
+  # コア側（Rust）の辞書。キーに当たるコードが使われていることと、Rust のコードに文が直接書かれていないことを確かめる
+  node web/tools/l10n-rust-cli.ts crates/modelith-messages/locales/ja crates
   shellcheck -x scripts/*.sh scripts/lib/*.sh .claude/hooks/*.sh
   step "[static] rust: fmt / $([[ $MODE == fast ]] && echo check || echo clippy)"
   cargo fmt --all -- --check

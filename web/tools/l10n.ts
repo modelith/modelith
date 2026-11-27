@@ -140,6 +140,83 @@ export function hardcodedText(source: string): Finding[] {
 }
 
 /**
+ * Rust のコメントを、同じ長さの空白に置き換える（行の数と位置は変えない）。文字列の中の `//` はコメントにしない。
+ *
+ * @param source Rust のソース
+ * @returns コメント（`//`・`///`・`/* … *\/`）を空白にしたソース
+ * @example
+ * stripRustComments('let a = "x//y"; // 説明') // → 'let a = "x//y";        '
+ */
+export function stripRustComments(source: string): string {
+  const out = source.split("");
+  const blank = (from: number, to: number): void => {
+    for (let k = from; k < to; k++) if (out[k] !== "\n") out[k] = " ";
+  };
+  let i = 0;
+  while (i < source.length) {
+    if (source.startsWith("//", i)) {
+      const end = source.indexOf("\n", i);
+      const stop = end < 0 ? source.length : end;
+      blank(i, stop);
+      i = stop;
+    } else if (source.startsWith("/*", i)) {
+      const end = source.indexOf("*/", i + 2);
+      const stop = end < 0 ? source.length : end + 2;
+      blank(i, stop);
+      i = stop;
+    } else if (/^b?r#*"/.test(source.slice(i, i + 10))) {
+      const hashes = /^b?r(#*)"/.exec(source.slice(i, i + 10))?.[1] ?? "";
+      const end = source.indexOf(`"${hashes}`, source.indexOf('"', i) + 1);
+      i = end < 0 ? source.length : end + 1 + hashes.length;
+    } else if (source[i] === '"') {
+      let k = i + 1;
+      while (k < source.length && source[k] !== '"') k += source[k] === "\\" ? 2 : 1;
+      i = k + 1;
+    } else if (source[i] === "'" && /^'(\\.[^']*|[^\\'])'/.test(source.slice(i, i + 12))) {
+      // 文字のリテラル（'a'・'\n'・'\u{3042}'）。ライフタイム（'a）は閉じる ' が無いので、ここには来ない
+      i = source.indexOf("'", i + 2) + 1;
+    } else i++;
+  }
+  return out.join("");
+}
+
+/**
+ * Rust のソースから、ファイルの中に書いたテストのモジュール（`#[cfg(test)]` を付けた `mod … {`）より後ろを除く。
+ * 別のファイルのテストを読み込む宣言（`#[cfg(test)]` の次の行が `mod tests;`）は、テストの始まりにしない。
+ *
+ * @param source Rust のソース
+ * @returns テストのモジュールより前の部分
+ * @example
+ * withoutRustTests("fn f() {}\n#[cfg(test)]\nmod tests {\n}") // → "fn f() {}\n"
+ * withoutRustTests("#[cfg(test)]\nmod tests;\nfn f() {}")     // → そのまま
+ */
+export function withoutRustTests(source: string): string {
+  const tests = source.search(/^[ \t]*#\[cfg\(test\)\][ \t]*\n[ \t]*(?:pub(?:\([a-z]+\))? )?mod \w+ \{/m);
+  return tests < 0 ? source : source.slice(0, tests);
+}
+
+/**
+ * Rust のコードに直接書かれた文（日本語を含む行）を探す。コメントと、ファイルの中に書いたテストのモジュールは見ない。
+ *
+ * @param source Rust のソース
+ * @returns 文が直接書かれた行。`l10n-ignore` と書いた行と、その次の行は除く
+ * @example
+ * hardcodedRustText('let m = "見つかりません"; // 説明')          // → [{ line: 1, message: 'let m = "見つかりません";' }]
+ * hardcodedRustText('#[cfg(test)]\nmod tests {\n  const A: &str = "文";\n}') // → []
+ */
+export function hardcodedRustText(source: string): Finding[] {
+  const body = withoutRustTests(source);
+  const original = body.split("\n");
+  return stripRustComments(body)
+    .split("\n")
+    .flatMap((text, k) => {
+      if (!JAPANESE.test(text)) return [];
+      if (original[k]?.includes(IGNORE_MARK) || original[k - 1]?.includes(IGNORE_MARK)) return [];
+      return [{ line: k + 1, message: text.trim() }];
+    });
+}
+
+/**
  * 辞書（.ftl）のキーを取り出し、決まり（ADR-0027 の 2）に合わない所を探す。
  *
  * @param ftl 辞書の中身

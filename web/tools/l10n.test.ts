@@ -1,6 +1,6 @@
 // 文言の辞書の検査（ADR-0027 の 6）。
 import { describe, expect, it } from "vitest";
-import { checkDictionaries, checkDictionary, hardcodedText, keyUsage, stripTsComments } from "./l10n";
+import { checkDictionaries, checkDictionary, hardcodedRustText, hardcodedText, keyUsage, stripRustComments, stripTsComments } from "./l10n";
 
 describe("stripTsComments", () => {
   it("行のコメントとブロックのコメントを、同じ長さの空白にする", () => {
@@ -78,6 +78,56 @@ describe("hardcodedText", () => {
 
   it("英字だけの文字列は返さない", () => {
     expect(hardcodedText('const a = "saved"; const b = `x-${y}`;')).toEqual([]);
+  });
+});
+
+describe("stripRustComments", () => {
+  it("行のコメント・doc コメント・ブロックのコメントを、同じ長さの空白にする", () => {
+    const source = "/// 説明\nlet a = 1; // 説明\n/* 説明 */ let b = 2;";
+
+    const out = stripRustComments(source);
+
+    expect(out).toBe(`${" ".repeat(6)}\nlet a = 1; ${" ".repeat(5)}\n${" ".repeat(8)} let b = 2;`);
+  });
+
+  it("文字列・生の文字列・文字のリテラルの中の // は、コメントにしない", () => {
+    const source = 'let a = "x//y"; let b = r#"a"//b"#; let c = \x27/\x27; let d = \x27"\x27; // 説明';
+
+    expect(stripRustComments(source)).toBe(`let a = "x//y"; let b = r#"a"//b"#; let c = '/'; let d = '"'; ${" ".repeat(5)}`);
+  });
+
+  it("ライフタイム（'a）を、文字のリテラルの始まりにしない", () => {
+    const source = "fn f<'a>(x: &'a str) -> &'a str { x } // 説明";
+
+    expect(stripRustComments(source)).toBe(`fn f<'a>(x: &'a str) -> &'a str { x } ${" ".repeat(5)}`);
+  });
+});
+
+describe("hardcodedRustText", () => {
+  it("文字列に書いた日本語の行を返し、コメントの日本語は返さない", () => {
+    const found = hardcodedRustText('/// 説明\nlet m = "見つかりません"; // 説明\nlet n = 1;');
+
+    expect(found).toEqual([{ line: 2, message: 'let m = "見つかりません";' }]);
+  });
+
+  it("ファイルの中に書いたテストのモジュールは見ない", () => {
+    expect(hardcodedRustText('fn f() {}\n#[cfg(test)]\nmod tests {\n  const A: &str = "文";\n}')).toEqual([]);
+  });
+
+  it("別のファイルのテストを読み込む宣言の後ろは見る", () => {
+    const found = hardcodedRustText('#[cfg(test)]\nmod tests;\nconst A: &str = "文";');
+
+    expect(found.map((f) => f.line)).toEqual([3]);
+  });
+
+  it("l10n-ignore と書いた行と、その次の行は返さない", () => {
+    const source = '// l10n-ignore: モデルに書くテキスト\nlet a = "ここに書く";\nlet b = "次の次";';
+
+    expect(hardcodedRustText(source).map((f) => f.line)).toEqual([3]);
+  });
+
+  it("日本語が無ければ、何も返さない", () => {
+    expect(hardcodedRustText('let a = "ok";')).toEqual([]);
   });
 });
 

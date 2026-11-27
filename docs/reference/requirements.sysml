@@ -525,7 +525,8 @@ package ModelithRequirements {
         }
         requirement def <'F-L10N-3'> DictionaryReq {
             doc /* 画面の文言を、言語ごとの辞書（Fluent の .ftl）に置き、コードはキーと値を渡して文を受け取る。辞書を足せば、コードを変えずに言語を増やせる。
-                   0.3.0 の間は日本語の辞書だけで、画面の言葉は変わらない。移し終えたフォルダのコードに文を直接書くと、検査で止まる。画面の骨組み（index.html）にはキーを書き、ビルドのときに辞書の文で埋める（スクリプトを読み込む前から文が見える）。
+                   0.3.0 の間は日本語の辞書だけで、画面の言葉は変わらない。画面のコードにも、コア（Rust）のコードにも、文を直接書くと検査で止まる。
+                   コアは、問題一覧・構文エラー・図の操作の断りなどの文を、種類のコードと値で返し、文言の層が辞書で文にする。同じ辞書と値からは、Rust と TypeScript のどちらの実装でも同じ文になる。画面の骨組み（index.html）にはキーを書き、ビルドのときに辞書の文で埋める（スクリプトを読み込む前から文が見える）。
                    値に書かれたタグは文字として入り、値の前後に見えない記号を入れない */
         }
         requirement def <'F-L10N-2'> LocalizedProblemsReq {
@@ -1639,6 +1640,9 @@ package ModelithRequirements {
                    crates/modelith-core/src/message.rs：コアの返す文（種類のコードと値）の組み立て、文言の層を入れていないときの決まった形（コード{名前=値}。中の文も同じ形）、そのまま出す文、JSON には文にしたものを書くこと、文字列とは文にしたもので比べること。crates/modelith-core/src/read_error.rs：読めなかった理由を、文ではなくコードと値で返すこと。
                    crates/modelith-messages/src/lib.rs：辞書が誤りなく読めること、キーの形とキーが辞書のファイルの名前で始まること、コードと値から辞書の文を作る（中の文を先に文にして差し込む・値のタグと波かっこを文字として入れる・見えない記号を入れない・辞書に無いコードと足りない値は決まった形に戻す）、読めなかった理由の文が辞書に移す前の文と同じこと。
                    crates/modelith-wasm/src/messages.rs と crates/modelith-wasm/src/lib.rs：入口が文言の層を入れると、コアの文が辞書の文で JSON に書かれること、コードと値の JSON から文を作る口（renderMessage。Rust と TypeScript の実装を比べるためのもの） */
+            doc /* crates/modelith-messages/tests/*.rs：コア側の辞書（構文・図の操作・モデルの問題・ルール・設定ファイル・プラグイン・知らせの種類・wasm と CLI の入口）のすべてのキーが、移す前と同じ文になること、辞書のキーとテストの場合がそろっていること。
+                   web/src/l10n/parity.test.ts：コア側の辞書のすべてのキーを、同じ値（タグ・波かっこ・引用符・絵文字・BMP の外の漢字・数字・空の値）で Rust（wasm の renderMessage）と TypeScript の実装に通し、同じ文になること、見えない記号が入らないこと。
+                   scripts/check.sh の静的検査（web/tools/l10n-rust-cli.ts）と web/tools/l10n.test.ts：コア側の辞書のキーの形、キーに当たるコードがコードで使われていること、Rust のコード（テストを除く）に文が直接書かれていないこと */
             objective {
                 verify DictionaryReq;
             }

@@ -418,6 +418,7 @@ pub(super) fn init_phases(d: &Doc<'_>, new_package: Option<&str>) -> Result<Chan
     };
     let i1 = format!("{}    ", indent_at(&text, start));
     let ins = format!(
+        // l10n-ignore: モデルに書くテキスト（文言の辞書ではなく、足すフェーズの定義のひな形）
         "\n{i1}// フェーズ管理：要素やパッケージに @Phase を付けて分類する（パッケージに付けると中の要素が継承）\n\
          {i1}metadata def Phase {{ attribute stage : PhaseKind; }}\n\
          {i1}enum def PhaseKind {{ enum StakeholderNeeds; enum SystemRequirements; enum Architecture; enum Verification; }}\n"

@@ -260,9 +260,7 @@ impl Builder<'_> {
     fn missing_state(&mut self, pos: usize, who: &str) {
         self.problem(
             pos,
-            Message::verbatim(format!(
-                "「遷移」の相手「{who}」が見つかりません（transition）"
-            )),
+            Message::new("model.transition-end-missing").arg("name", who),
             None,
         );
     }

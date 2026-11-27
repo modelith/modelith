@@ -375,11 +375,11 @@ fn broken_layout_comment_is_an_error_at_its_utf16_position() {
     assert_eq!(
         r.errors
             .iter()
-            .map(|e| (e.pos, e.msg.render()))
+            .map(|e| (e.pos, e.msg.clone()))
             .collect::<Vec<_>>(),
         [(
             at.unwrap_or_default(),
-            "@layout コメントを読み込めません".to_owned()
+            Message::new("syntax.layout-comment-unreadable")
         )]
     );
 }
@@ -396,7 +396,9 @@ fn readable_or_missing_layout_comment_is_not_an_error() {
         let r = run(text);
         // Assert
         assert!(
-            r.errors.iter().all(|e| !e.msg.render().contains("@layout")),
+            r.errors
+                .iter()
+                .all(|e| e.msg.code != "syntax.layout-comment-unreadable"),
             "{text}"
         );
     }

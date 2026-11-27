@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use modelith_plugin_protocol::DiagnosticSeverity;
 use serde::Serialize;
 
+use crate::message::Message;
 use crate::model::Problem;
 use crate::project_file::Level;
 use crate::rules::Finding;
@@ -14,13 +15,55 @@ use crate::rules::Finding;
 #[cfg(test)]
 mod tests;
 
+/// 知らせの種類の名前。中身は文の種類のコード（`levels.trace-derive` など）で、JSON にするときに文にする（ADR-0027 §3）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Label(pub &'static str);
+
+impl Label {
+    /// 名前を、文の種類のコードと値にする。
+    ///
+    /// # 戻り値
+    ///
+    /// 値の無いメッセージ。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// Label("levels.unsupported").message() → levels.unsupported{}
+    /// ```
+    pub fn message(self) -> Message {
+        Message::new(self.0)
+    }
+}
+
+impl Serialize for Label {
+    /// 名前を、文にして書き出す。
+    ///
+    /// # 引数
+    ///
+    /// - `serializer`：書き出し先
+    ///
+    /// # 戻り値
+    ///
+    /// 書き出しの結果。
+    ///
+    /// # 例
+    ///
+    /// ```text
+    /// serde_json::to_string(&Label("levels.unsupported")) → "\"まだ扱えない書き方\""   // 文にする関数を入れた入口で
+    /// ```
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.message().serialize(serializer)
+    }
+}
+
 /// 重さを選べる、モデルの知らせの種類 1 つ（チェックルールの結果は、ルールごとに `プラグインの ID/ルールの ID`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Kind {
     /// 設定に書く種類の名前。
     pub code: &'static str,
-    /// 画面に出す名前（画面の言葉の手引きに従う）。
-    pub label: &'static str,
+    /// 画面に出す名前（文にするのは文言の層。JSON には文で出る）。
+    pub label: Label,
     /// 何も選んでいないときの重さ。
     pub default: Level,
 }
@@ -29,22 +72,22 @@ pub struct Kind {
 pub const KINDS: &[Kind] = &[
     Kind {
         code: "trace.derive",
-        label: "トレースの抜け：上位・下位の要求とのつながり（derivation）",
+        label: Label("levels.trace-derive"),
         default: Level::Warning,
     },
     Kind {
         code: "trace.satisfy",
-        label: "トレースの抜け：要求を満たす要素（satisfy）",
+        label: Label("levels.trace-satisfy"),
         default: Level::Warning,
     },
     Kind {
         code: "trace.verify",
-        label: "トレースの抜け：要求を確かめる検証（verify）",
+        label: Label("levels.trace-verify"),
         default: Level::Warning,
     },
     Kind {
         code: "unsupported",
-        label: "まだ扱えない書き方",
+        label: Label("levels.unsupported"),
         default: Level::Info,
     },
 ];

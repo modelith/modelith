@@ -221,26 +221,18 @@ pub type Refusal = Message;
 /// edit("package P { part def A; part def B; }", Rename { key: "A", name: "A" })
 ///   → Ok(edits = [])                                   // 同じ名前
 /// edit("package P { part def A; }", Rename { key: "Gone", name: "X" })
-///   → Err("…Gone…")                                    // 要素が無い
+///   → Err(edit.element-missing{key=Gone})                  // 要素が無い
 /// edit("package P { part def A;", AddNode { … })
-///   → Err(UNBALANCED)                                  // 括弧が閉じていない（#222）
+///   → Err(edit.unbalanced{})                          // 括弧が閉じていない（#222）
 /// ```
 pub fn edit(text: &str, intent: &Intent) -> Result<Outcome, Refusal> {
     edit_in(text, Vec::new(), intent).map_err(|r| r.reason)
 }
 
-/// ほかのファイルの要素を書き換えようとしたときの断り（ADR-0021 §5。画面はファイルの名前を添えて、そのファイルを開く操作を示す）。
-pub const IN_OTHER_FILE: &str =
-    "この要素はほかのファイルにあります。そのファイルを開いて編集してください";
-
-/// 表示中のファイルの要素を、ほかのファイルの作成した図が出しているので削除できないときの断り（#297）。
-/// 図に出している文（`expose`）はほかのファイルにあり、図からは書き換えられない（ADR-0021 §5）。画面はファイルの名前を添えて、そのファイルを開く操作を示す。
-pub const SHOWN_IN_OTHER_FILE: &str = "この要素は、ほかのファイルの図に出しているので削除できません。先にそのファイルを開いて、図から外してください";
-
 /// 操作できなかった理由と、書き換えようとした要素のあるファイル。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Refused {
-    /// 画面にそのまま出す文（ADR-0014）。
+    /// 操作できなかった理由（種類のコードと値。文にするのは文言の層。ADR-0027 §3）。
     pub reason: Message,
     /// ほかのファイルの要素を書き換えようとしたなら、そのファイルの番号（`merge` に渡した順で 1 から）。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -271,16 +263,16 @@ pub struct Refused {
 /// // others = [parse_file("package Fleet { part def Car; }")]
 /// edit_in("package App { part c : Fleet::Car; }", others, Rename { key: "c", name: "d" }) → Ok(…)
 /// edit_in("package App { part c : Fleet::Car; }", others, Rename { key: "Car", name: "Bus" })
-///   → Err(Refused { reason: IN_OTHER_FILE, file: Some(1), shown_in: None })
+///   → Err(Refused { reason: edit.in-other-file{}, file: Some(1), shown_in: None })
 /// // others = [parse_file("package V { view v { expose A::X; } }")]
 /// edit_in("package A { part def X; }", others, Delete { keys: ["X"] })
-///   → Err(Refused { reason: SHOWN_IN_OTHER_FILE, file: None, shown_in: Some(1) })
+///   → Err(Refused { reason: edit.shown-in-other-file{}, file: None, shown_in: Some(1) })
 /// ```
 pub fn edit_in(text: &str, others: Vec<ParseResult>, intent: &Intent) -> Result<Outcome, Refused> {
     // 括弧が合っていないと、書く場所を取り違えて、ほかの要素を package の外へ出してしまう（#222）
     if !balanced(text) {
         return Err(Refused {
-            reason: Message::verbatim(UNBALANCED),
+            reason: Message::new("edit.unbalanced"),
             file: None,
             shown_in: None,
         });
@@ -289,14 +281,14 @@ pub fn edit_in(text: &str, others: Vec<ParseResult>, intent: &Intent) -> Result<
     let result = ops::run(&doc, intent);
     if let Some(file) = doc.touched.get() {
         return Err(Refused {
-            reason: Message::verbatim(IN_OTHER_FILE),
+            reason: Message::new("edit.in-other-file"),
             file: Some(file),
             shown_in: None,
         });
     }
     if let Some(file) = doc.shown_in.get() {
         return Err(Refused {
-            reason: Message::verbatim(SHOWN_IN_OTHER_FILE),
+            reason: Message::new("edit.shown-in-other-file"),
             file: None,
             shown_in: Some(file),
         });
@@ -346,9 +338,6 @@ pub fn rename_elsewhere(
     let target = doc.p.entries.iter().position(|e| e.start == at)?;
     ops::rename_elsewhere(&doc, target, name.trim())
 }
-
-/// テキストの括弧が閉じていないときに、図からの操作を断る理由の文（画面にそのまま出す。ADR-0014）。
-pub const UNBALANCED: &str = "テキストに閉じていない括弧（{ }）やコメントがあるため、図から変更できません。テキストを直してから、もう一度操作してください";
 
 /// テキストの `{` と `}` が対になっているか。コメント・引用名・文字列の中の括弧は数えない。
 /// 閉じていないコメントや文字列は末尾までを飲み込むので、その後ろの `}` が数えられず、対にならない。
@@ -473,7 +462,7 @@ impl<'a> Doc<'a> {
         self.utf16.byte(pos)
     }
 
-    /// 消そうとした要素を、ほかのファイルの作成した図が出していることを控える（その削除は `SHOWN_IN_OTHER_FILE` で断る）。
+    /// 消そうとした要素を、ほかのファイルの作成した図が出していることを控える（その削除は `edit.shown-in-other-file` で断る）。
     /// 2 つ以上のファイルが出しているときは、最初に控えたファイルを残す。
     ///
     /// # 引数

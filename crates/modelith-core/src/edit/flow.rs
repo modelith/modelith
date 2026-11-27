@@ -51,13 +51,15 @@ pub(super) fn flow_of<'d>(d: &'d Doc<'_>, c: usize) -> Option<&'d ActionFlow> {
 /// // d.text = "package P { action def A { first start; then action a; } }" のとき
 /// entry_of(d, A の番号, "a:a")     → Ok(Some(a の番号))
 /// entry_of(d, A の番号, "a:x")     → Ok(None)
-/// entry_of(d, A の番号, "a:start") → Err("開始と終了の記号は、順序の線から決まります。…")
+/// entry_of(d, A の番号, "a:start") → Err(edit.succession-marker-fixed{})
 /// ```
 pub(super) fn entry_of(d: &Doc<'_>, c: usize, key: &str) -> Result<Option<usize>, Refusal> {
     let Some(n) = flow_of(d, c).and_then(|f| f.nodes.iter().find(|n| n.key == key)) else {
         return Ok(None);
     };
-    n.entry.map(Some).ok_or_else(|| Message::verbatim("開始と終了の記号は、順序の線から決まります。記号を消すときは、つながる線を削除してください"))
+    n.entry
+        .map(Some)
+        .ok_or_else(|| Message::new("edit.succession-marker-fixed"))
 }
 
 /// アクションの流れの図の線（継起・順序付きの流れ）の ID と、消す範囲。
@@ -115,12 +117,12 @@ pub(super) fn edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
 /// ```text
 /// // d.text = "package P {\n    action def A {\n        action a;\n        action b;\n    }\n}\n" のとき
 /// add_succession(d, "a:a", "a:b", Some("A")) → Ok(text に "        action b;\n        first a then b;\n    }")
-/// add_succession(d, "a:b", "a:start", Some("A")) → Err("開始の記号へ向かう順序の線は引けません")
+/// add_succession(d, "a:b", "a:start", Some("A")) → Err(edit.succession-into-start{})
 /// // 足した後のテキストにもう一度
-/// add_succession(d, "a:a", "a:b", Some("A")) → Err("同じ順序の線が既にあります")
+/// add_succession(d, "a:a", "a:b", Some("A")) → Err(edit.succession-exists{})
 /// // a の中に入れ子の本体（要素 a:a.x・a:a.y）があるとき
 /// add_succession(d, "a:a.x", "a:a.y", Some("A")) → Ok(a の本体に "first x then y;")
-/// add_succession(d, "a:a.x", "a:b", Some("A"))   → Err("順序の線は、同じアクションの中の要素どうしにだけ引けます")
+/// add_succession(d, "a:a.x", "a:b", Some("A"))   → Err(edit.succession-across-actions{})
 /// ```
 pub(super) fn add_succession(
     d: &Doc<'_>,
@@ -138,19 +140,15 @@ pub(super) fn add_succession(
     };
     // 開始・終了の記号（入れ子の本体のものも、暗黙の要素は宣言を持たない）
     if node(to)?.kind == "start" && node(to)?.entry.is_none() {
-        return Err(Message::verbatim("開始の記号へ向かう順序の線は引けません"));
+        return Err(Message::new("edit.succession-into-start"));
     }
     if node(from)?.kind == "done" && node(from)?.entry.is_none() {
-        return Err(Message::verbatim(
-            "終了の記号から始まる順序の線は引けません",
-        ));
+        return Err(Message::new("edit.succession-from-done"));
     }
     // 順序は同じ本体の中の要素どうしにだけ引き、その本体（入れ子なら、本体を持つアクション）に書く
     let container = node(from)?.container.clone();
     if node(to)?.container != container {
-        return Err(Message::verbatim(
-            "順序の線は、同じアクションの中の要素どうしにだけ引けます",
-        ));
+        return Err(Message::new("edit.succession-across-actions"));
     }
     let host = match &container {
         Some(k) => node(k)?.entry.ok_or_else(|| missing(k))?,
@@ -159,9 +157,7 @@ pub(super) fn add_succession(
     let name_of = |key: &str| -> Result<String, Refusal> {
         let n = node(key)?;
         if n.name.is_empty() {
-            return Err(Message::verbatim(
-                "名前の無い要素は、図から順序の線でつなげません。テキストで名前を付けてから線を引いてください",
-            ));
+            return Err(Message::new("edit.succession-unnamed"));
         }
         Ok(sysml_name(&n.name))
     };
@@ -171,7 +167,7 @@ pub(super) fn add_succession(
         .iter()
         .any(|e| e.kind == "succession" && e.from == from && e.to == to && e.label.is_empty())
     {
-        return Err(Message::verbatim("同じ順序の線が既にあります"));
+        return Err(Message::new("edit.succession-exists"));
     }
     let snippet = format!("first {} then {};", name_of(from)?, name_of(to)?);
     let (text, a, b) = insert_into(d.text, d.target(host), &snippet);

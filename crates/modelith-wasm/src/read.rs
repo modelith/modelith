@@ -11,6 +11,7 @@ use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
 use crate::messages::install_renderer;
+use crate::unreadable;
 
 /// 受け取るファイル 1 つ。
 #[derive(Deserialize)]
@@ -112,16 +113,15 @@ pub fn read_problems(files: &str, project_file: Option<String>, plugin_files: &s
 /// ```
 fn read_problems_json(files: &str, project_file: Option<&str>, plugin_files: &str) -> String {
     install_renderer();
-    let plugin_files: BTreeMap<String, BTreeMap<String, String>> = match serde_json::from_str(
-        plugin_files,
-    ) {
-        Ok(p) => p,
-        Err(e) => {
-            return to_json(&serde_json::json!({
-                "error": Message::verbatim(format!("プラグインのファイルを読み込めませんでした（{e}）"))
-            }));
-        }
-    };
+    let plugin_files: BTreeMap<String, BTreeMap<String, String>> =
+        match serde_json::from_str(plugin_files) {
+            Ok(p) => p,
+            Err(e) => {
+                return to_json(&serde_json::json!({
+                    "error": unreadable("wasm.plugin-files-unreadable", &e)
+                }));
+            }
+        };
     with_files(files, |sources| {
         to_json(&read::check(&Project {
             files: sources,
@@ -204,7 +204,7 @@ fn with_files(files: &str, f: impl FnOnce(&[SourceFile<'_>]) -> String) -> Strin
             f(&sources)
         }
         Err(e) => to_json(&serde_json::json!({
-            "error": Message::verbatim(format!("ファイルの一覧を読み込めませんでした（{e}）"))
+            "error": unreadable("wasm.files-unreadable", &e)
         })),
     }
 }
@@ -217,7 +217,7 @@ fn with_files(files: &str, f: impl FnOnce(&[SourceFile<'_>]) -> String) -> Strin
 ///
 /// # 戻り値
 ///
-/// JSON の文字列。
+/// JSON の文字列。JSON にできないときは `{"error":"結果を JSON にできませんでした"}`（文は `wasm.json-failed`）。
 ///
 /// # 例
 ///
@@ -226,8 +226,11 @@ fn with_files(files: &str, f: impl FnOnce(&[SourceFile<'_>]) -> String) -> Strin
 /// to_json(&None::<u8>)   → "null"
 /// ```
 pub(crate) fn to_json(value: &impl serde::Serialize) -> String {
-    serde_json::to_string(value)
-        .unwrap_or_else(|_| r#"{"error":"結果を JSON にできませんでした"}"#.to_owned())
+    serde_json::to_string(value).unwrap_or_else(|_| {
+        // 文言の層を直接呼ぶ（文にする関数を入れる前に呼ばれても、辞書の文にする）
+        let reason = modelith_messages::render(&Message::new("wasm.json-failed"));
+        serde_json::json!({ "error": reason }).to_string()
+    })
 }
 
 #[cfg(test)]

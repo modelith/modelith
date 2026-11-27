@@ -333,10 +333,10 @@ impl Builder<'_> {
     /// - `found`：元・先が図の要素に見つかったか
     /// - `body`：線を書いた本体の宣言の番号（名前を探し始める場所）
     fn missing_ends(&mut self, pos: usize, line: &Line<'_>, found: [bool; 2], body: usize) {
-        let (what, rel) = if line.kind == "succession" {
-            ("「順序」", "succession")
+        let code = if line.kind == "succession" {
+            "model.succession-end-missing"
         } else {
-            ("「順序付きの流れ」", "succession flow")
+            "model.succession-flow-end-missing"
         };
         for (end, found) in [&line.a, &line.b].into_iter().zip(found) {
             let head = ref_segs(end.reference)[0];
@@ -347,14 +347,7 @@ impl Builder<'_> {
             {
                 continue;
             }
-            self.problem(
-                pos,
-                Message::verbatim(format!(
-                    "{what}の相手「{}」が見つかりません（{rel}）",
-                    end.reference
-                )),
-                None,
-            );
+            self.problem(pos, Message::new(code).arg("name", end.reference), None);
         }
     }
 }

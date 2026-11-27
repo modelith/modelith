@@ -5,13 +5,13 @@
 
 use std::collections::BTreeMap;
 
-use modelith_core::Message;
 use modelith_core::write::{self, EditRequest, VersionedFile, Workspace};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
 use crate::messages::install_renderer;
 use crate::read::to_json;
+use crate::unreadable;
 
 /// 受け取るファイル 1 つ。
 #[derive(Deserialize)]
@@ -82,16 +82,16 @@ fn propose_edit_json(
     install_renderer();
     let inputs = match serde_json::from_str::<Vec<FileInput>>(files) {
         Ok(i) => i,
-        Err(e) => return error_json("ファイルの一覧", &e),
+        Err(e) => return error_json("wasm.files-unreadable", &e),
     };
     let plugin_files =
         match serde_json::from_str::<BTreeMap<String, BTreeMap<String, String>>>(plugin_files) {
             Ok(p) => p,
-            Err(e) => return error_json("プラグインのファイル", &e),
+            Err(e) => return error_json("wasm.plugin-files-unreadable", &e),
         };
     let request = match serde_json::from_str::<EditRequest>(request) {
         Ok(r) => r,
-        Err(e) => return error_json("編集の意図", &e),
+        Err(e) => return error_json("wasm.request-unreadable", &e),
     };
     let versioned: Vec<VersionedFile<'_>> = inputs
         .iter()
@@ -116,22 +116,20 @@ fn propose_edit_json(
 ///
 /// # 引数
 ///
-/// - `what`：読めなかったもの（文の先頭に入れる）
+/// - `code`：読めなかったものごとの、文のコード（`wasm.files-unreadable`・`wasm.plugin-files-unreadable`・`wasm.request-unreadable`）
 /// - `e`：JSON の読み取りのエラー
 ///
 /// # 戻り値
 ///
-/// `{ "error": "<what>を読み込めませんでした（理由）" }`。
+/// `{ "error": "<読めなかったもの>を読み込めませんでした（理由）" }`。
 ///
 /// # 例
 ///
 /// ```text
-/// error_json("編集の意図", &e) → r#"{"error":"編集の意図を読み込めませんでした（expected value at line 1 column 1）"}"#
+/// error_json("wasm.request-unreadable", &e) → r#"{"error":"編集の意図を読み込めませんでした（expected value at line 1 column 1）"}"#
 /// ```
-fn error_json(what: &str, e: &serde_json::Error) -> String {
-    to_json(
-        &serde_json::json!({ "error": Message::verbatim(format!("{what}を読み込めませんでした（{e}）")) }),
-    )
+fn error_json(code: &'static str, e: &serde_json::Error) -> String {
+    to_json(&serde_json::json!({ "error": unreadable(code, e) }))
 }
 
 #[cfg(test)]

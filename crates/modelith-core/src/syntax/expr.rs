@@ -309,7 +309,7 @@ impl<'t> Checker<'_, 't> {
         Stop::Fault(Fault {
             at: before,
             after: true,
-            message: Message::verbatim(format!("「{text}」の後に値がありません")),
+            message: Message::new("syntax.value-missing-after").arg("text", text),
         })
     }
 
@@ -333,10 +333,9 @@ impl<'t> Checker<'_, 't> {
         matches!(t.kind, IDENT | QUOTED_NAME | NUMBER | STRING).then(|| Fault {
             at: self.i,
             after: false,
-            message: Message::verbatim(format!(
-                "「{}」と「{}」の間に演算子がありません",
-                before.text, t.text
-            )),
+            message: Message::new("syntax.operator-missing-between")
+                .arg("before", before.text)
+                .arg("after", t.text),
         })
     }
 
@@ -445,7 +444,7 @@ impl<'t> Checker<'_, 't> {
         Stop::Fault(Fault {
             at: self.i.saturating_sub(1),
             after: true,
-            message: Message::verbatim(format!("「if」の式に「{part}」がありません")),
+            message: Message::new("syntax.if-part-missing").arg("part", part),
         })
     }
 
@@ -590,7 +589,7 @@ impl<'t> Checker<'_, 't> {
                 }
                 OP if t.text == "->" => {
                     self.i += 1;
-                    self.name_after(at, "関数の名前")?;
+                    self.name_after(at, "syntax.function-name-missing-after")?;
                     self.qualified_name();
                     if self.at(L_BRACE) {
                         self.body()?;
@@ -641,7 +640,7 @@ impl<'t> Checker<'_, 't> {
             self.i += 1;
             return Ok(());
         }
-        self.name_after(dot, "名前")?;
+        self.name_after(dot, "syntax.name-missing-after")?;
         self.qualified_name();
         Ok(())
     }
@@ -651,7 +650,7 @@ impl<'t> Checker<'_, 't> {
     /// # 引数
     ///
     /// - `before`：名前の前のトークンの番号（`.`・`->`・`istype` など）
-    /// - `what`：無いときに知らせる、名前の呼び方（「名前」「関数の名前」「型の名前」）
+    /// - `code`：無いときに知らせる文のコード（`syntax.name-missing-after`・`syntax.function-name-missing-after`・`syntax.type-name-missing-after`）
     ///
     /// # 戻り値
     ///
@@ -661,9 +660,10 @@ impl<'t> Checker<'_, 't> {
     ///
     /// ```text
     /// // "a. + 1" の位置 2、before = 1
-    /// name_after(1, "名前") → Err(Fault({ at: 1, after: true, message: "「.」の後に名前がありません" }))
+    /// name_after(1, "syntax.name-missing-after")
+    ///   → Err(Fault({ at: 1, after: true, message: syntax.name-missing-after{text=.} }))   // 「.」の後に名前がありません
     /// ```
-    fn name_after(&self, before: usize, what: &str) -> Step {
+    fn name_after(&self, before: usize, code: &'static str) -> Step {
         if self.at_name() {
             return Ok(());
         }
@@ -674,7 +674,7 @@ impl<'t> Checker<'_, 't> {
         Err(Stop::Fault(Fault {
             at: before,
             after: true,
-            message: Message::verbatim(format!("「{text}」の後に{what}がありません")),
+            message: Message::new(code).arg("text", text),
         }))
     }
 
@@ -695,7 +695,7 @@ impl<'t> Checker<'_, 't> {
     /// type_name(")")     → Err(Fault「as」の後に型の名前がありません)
     /// ```
     fn type_name(&mut self, before: usize) -> Step {
-        self.name_after(before, "型の名前")?;
+        self.name_after(before, "syntax.type-name-missing-after")?;
         self.qualified_name();
         Ok(())
     }
@@ -863,8 +863,8 @@ mod tests {
     use super::*;
     use crate::syntax::lexer::tokenize;
 
-    /// 式のテキストを確かめ、壊れているところの（トークンの番号・後ろを指すか・文）を返す。
-    fn fault(text: &str) -> Option<(usize, bool, String)> {
+    /// 式のテキストを確かめ、壊れているところの（トークンの番号・後ろを指すか・文のコードと値）を返す。
+    fn fault(text: &str) -> Option<(usize, bool, Message)> {
         let mut offset = 0;
         let mut toks: Vec<Tok<'_>> = Vec::new();
         for t in tokenize(text).0 {
@@ -876,7 +876,7 @@ mod tests {
             }
             offset += t.len;
         }
-        check(&toks).map(|f| (f.at, f.after, f.message.render()))
+        check(&toks).map(|f| (f.at, f.after, f.message))
     }
 
     /// 壊れていない（か、確かめきれない）式であることを確かめる。
@@ -1013,13 +1013,39 @@ mod tests {
         assert_eq!(
             got,
             [
-                Some((1, true, "「+」の後に値がありません".to_owned())),
-                Some((2, true, "「*」の後に値がありません".to_owned())),
+                Some((
+                    1,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", "+")
+                )),
+                Some((
+                    2,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", "*")
+                )),
                 // `*` は、値の位置では「無限」の値（LiteralInfinity）。その後ろに演算子が無い
-                Some((3, false, "「*」と「b」の間に演算子がありません".to_owned())),
-                Some((0, true, "「not」の後に値がありません".to_owned())),
-                Some((1, true, "「and」の後に値がありません".to_owned())),
-                Some((3, true, "「/」の後に値がありません".to_owned())),
+                Some((
+                    3,
+                    false,
+                    Message::new("syntax.operator-missing-between")
+                        .arg("before", "*")
+                        .arg("after", "b")
+                )),
+                Some((
+                    0,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", "not")
+                )),
+                Some((
+                    1,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", "and")
+                )),
+                Some((
+                    3,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", "/")
+                )),
             ]
         );
     }
@@ -1038,15 +1064,41 @@ mod tests {
         assert_eq!(
             got,
             [
-                Some((1, false, "「1」と「2」の間に演算子がありません".to_owned())),
-                Some((1, false, "「a」と「b」の間に演算子がありません".to_owned())),
-                Some((2, false, "「a」と「b」の間に演算子がありません".to_owned())),
+                Some((
+                    1,
+                    false,
+                    Message::new("syntax.operator-missing-between")
+                        .arg("before", "1")
+                        .arg("after", "2")
+                )),
+                Some((
+                    1,
+                    false,
+                    Message::new("syntax.operator-missing-between")
+                        .arg("before", "a")
+                        .arg("after", "b")
+                )),
+                Some((
+                    2,
+                    false,
+                    Message::new("syntax.operator-missing-between")
+                        .arg("before", "a")
+                        .arg("after", "b")
+                )),
                 Some((
                     3,
                     false,
-                    "「a」と「\"s\"」の間に演算子がありません".to_owned()
+                    Message::new("syntax.operator-missing-between")
+                        .arg("before", "a")
+                        .arg("after", "\"s\"")
                 )),
-                Some((3, false, "「kg」と「m」の間に演算子がありません".to_owned())),
+                Some((
+                    3,
+                    false,
+                    Message::new("syntax.operator-missing-between")
+                        .arg("before", "kg")
+                        .arg("after", "m")
+                )),
             ]
         );
     }
@@ -1066,12 +1118,36 @@ mod tests {
         assert_eq!(
             got,
             [
-                Some((1, true, "「(」の後に値がありません".to_owned())),
-                Some((3, true, "「,」の後に値がありません".to_owned())),
-                Some((3, true, "「,」の後に値がありません".to_owned())),
-                Some((0, true, "「(」の後に値がありません".to_owned())),
-                Some((1, true, "「[」の後に値がありません".to_owned())),
-                Some((3, true, "「=」の後に値がありません".to_owned())),
+                Some((
+                    1,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", "(")
+                )),
+                Some((
+                    3,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", ",")
+                )),
+                Some((
+                    3,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", ",")
+                )),
+                Some((
+                    0,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", "(")
+                )),
+                Some((
+                    1,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", "[")
+                )),
+                Some((
+                    3,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", "=")
+                )),
             ]
         );
     }
@@ -1090,11 +1166,31 @@ mod tests {
         assert_eq!(
             got,
             [
-                Some((0, true, "「if」の後に値がありません".to_owned())),
-                Some((1, true, "「if」の式に「?」がありません".to_owned())),
-                Some((3, true, "「if」の式に「else」がありません".to_owned())),
-                Some((4, true, "「else」の後に値がありません".to_owned())),
-                Some((2, true, "「?」の後に値がありません".to_owned())),
+                Some((
+                    0,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", "if")
+                )),
+                Some((
+                    1,
+                    true,
+                    Message::new("syntax.if-part-missing").arg("part", "?")
+                )),
+                Some((
+                    3,
+                    true,
+                    Message::new("syntax.if-part-missing").arg("part", "else")
+                )),
+                Some((
+                    4,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", "else")
+                )),
+                Some((
+                    2,
+                    true,
+                    Message::new("syntax.value-missing-after").arg("text", "?")
+                )),
             ]
         );
     }
@@ -1114,12 +1210,36 @@ mod tests {
         assert_eq!(
             got,
             [
-                Some((1, true, "「.」の後に名前がありません".to_owned())),
-                Some((1, true, "「.」の後に名前がありません".to_owned())),
-                Some((1, true, "「->」の後に関数の名前がありません".to_owned())),
-                Some((1, true, "「as」の後に型の名前がありません".to_owned())),
-                Some((1, true, "「istype」の後に型の名前がありません".to_owned())),
-                Some((0, true, "「new」の後に型の名前がありません".to_owned())),
+                Some((
+                    1,
+                    true,
+                    Message::new("syntax.name-missing-after").arg("text", ".")
+                )),
+                Some((
+                    1,
+                    true,
+                    Message::new("syntax.name-missing-after").arg("text", ".")
+                )),
+                Some((
+                    1,
+                    true,
+                    Message::new("syntax.function-name-missing-after").arg("text", "->")
+                )),
+                Some((
+                    1,
+                    true,
+                    Message::new("syntax.type-name-missing-after").arg("text", "as")
+                )),
+                Some((
+                    1,
+                    true,
+                    Message::new("syntax.type-name-missing-after").arg("text", "istype")
+                )),
+                Some((
+                    0,
+                    true,
+                    Message::new("syntax.type-name-missing-after").arg("text", "new")
+                )),
             ]
         );
     }

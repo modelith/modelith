@@ -37,7 +37,7 @@ pub struct LexError {
 /// ```text
 /// tokenize("part a;")              → ([KEYWORD 4, WHITESPACE 1, IDENT 1, SEMI 1], [])
 /// tokenize("part a; /* never closed")
-///   → (末尾は REGULAR_COMMENT, [{ offset: 8, message: "コメント（/* … */）が閉じていません" }])
+///   → (末尾は REGULAR_COMMENT, [{ offset: 8, message: syntax.comment-unclosed }])   // コメント（/* … */）が閉じていません
 /// tokenize("")                     → ([], [])
 /// ```
 pub fn tokenize(text: &str) -> (Vec<Token>, Vec<LexError>) {
@@ -47,10 +47,10 @@ pub fn tokenize(text: &str) -> (Vec<Token>, Vec<LexError>) {
     while offset < text.len() {
         let rest = &text[offset..];
         let (kind, len, error) = next_token(rest);
-        if let Some(message) = error {
+        if let Some(code) = error {
             errors.push(LexError {
                 offset,
-                message: Message::verbatim(message.to_owned()),
+                message: Message::new(code),
             });
         }
         tokens.push(Token { kind, len });
@@ -59,7 +59,7 @@ pub fn tokenize(text: &str) -> (Vec<Token>, Vec<LexError>) {
     (tokens, errors)
 }
 
-/// 先頭のトークン 1 つの種類と長さ。閉じていない注記などはエラーの文言も返す。
+/// 先頭のトークン 1 つの種類と長さ。閉じていない注記などはエラーの文のコードも返す。
 ///
 /// 英字・`_` で始まる語は、キーワード（`is_keyword`）なら `KEYWORD`、そうでなければ `IDENT` にする。
 ///
@@ -69,7 +69,7 @@ pub fn tokenize(text: &str) -> (Vec<Token>, Vec<LexError>) {
 ///
 /// # 戻り値
 ///
-/// `(種類, 長さ（バイト）, エラーの文言)`。`s` が空なら `(ERROR_TOKEN, 0, None)`。
+/// `(種類, 長さ（バイト）, エラーの文のコード)`。`s` が空なら `(ERROR_TOKEN, 0, None)`。
 ///
 /// # 例
 ///
@@ -78,7 +78,7 @@ pub fn tokenize(text: &str) -> (Vec<Token>, Vec<LexError>) {
 /// next_token("  \nx")   → (WHITESPACE, 3, None)
 /// next_token("// a\nb") → (LINE_NOTE, 4, None)
 /// next_token("1..*")    → (NUMBER, 1, None)
-/// next_token("部品")    → (ERROR_TOKEN, 3, Some("使えない文字があります"))
+/// next_token("部品")    → (ERROR_TOKEN, 3, Some("syntax.invalid-character"))   // 使えない文字があります
 /// ```
 fn next_token(s: &str) -> (SyntaxKind, usize, Option<&'static str>) {
     use SyntaxKind::*;
@@ -97,8 +97,8 @@ fn next_token(s: &str) -> (SyntaxKind, usize, Option<&'static str>) {
         b'/' if at(1) == Some(b'/') && at(2) == Some(b'*') => block_end(s, 3, BLOCK_NOTE),
         b'/' if at(1) == Some(b'/') => (LINE_NOTE, s.find('\n').unwrap_or(s.len()), None),
         b'/' if at(1) == Some(b'*') => block_end(s, 2, REGULAR_COMMENT),
-        b'\'' => quoted(s, b'\'', QUOTED_NAME, "引用名（'…'）が閉じていません"),
-        b'"' => quoted(s, b'"', STRING, "文字列（\"…\"）が閉じていません"),
+        b'\'' => quoted(s, b'\'', QUOTED_NAME, "syntax.quoted-name-unclosed"),
+        b'"' => quoted(s, b'"', STRING, "syntax.string-unclosed"),
         b'0'..=b'9' => (NUMBER, number_len(bytes), None),
         b'.' if at(1).is_some_and(|b| b.is_ascii_digit()) => (NUMBER, number_len(bytes), None),
         b'A'..=b'Z' | b'a'..=b'z' | b'_' => {
@@ -130,20 +130,20 @@ fn next_token(s: &str) -> (SyntaxKind, usize, Option<&'static str>) {
 ///
 /// # 戻り値
 ///
-/// `(kind, 長さ, エラーの文言)`。長さは閉じの `*/` まで含む。閉じが無ければテキストの末尾までとし、
-/// 「コメント（/* … */）が閉じていません」を返す。
+/// `(kind, 長さ, エラーの文のコード)`。長さは閉じの `*/` まで含む。閉じが無ければテキストの末尾までとし、
+/// `syntax.comment-unclosed`（「コメント（/* … */）が閉じていません」）を返す。
 ///
 /// # 例
 ///
 /// ```text
 /// block_end("/* c */ x", 2, REGULAR_COMMENT) → (REGULAR_COMMENT, 7, None)
 /// block_end("//* b */", 3, BLOCK_NOTE)       → (BLOCK_NOTE, 8, None)
-/// block_end("/* never", 2, REGULAR_COMMENT)  → (REGULAR_COMMENT, 8, Some("コメント（/* … */）が閉じていません"))
+/// block_end("/* never", 2, REGULAR_COMMENT)  → (REGULAR_COMMENT, 8, Some("syntax.comment-unclosed"))
 /// ```
 fn block_end(s: &str, open: usize, kind: SyntaxKind) -> (SyntaxKind, usize, Option<&'static str>) {
     match s[open..].find("*/") {
         Some(i) => (kind, open + i + 2, None),
-        None => (kind, s.len(), Some("コメント（/* … */）が閉じていません")),
+        None => (kind, s.len(), Some("syntax.comment-unclosed")),
     }
 }
 
@@ -156,11 +156,11 @@ fn block_end(s: &str, open: usize, kind: SyntaxKind) -> (SyntaxKind, usize, Opti
 /// - `s`：開きの引用符で始まる残りのテキスト
 /// - `quote`：引用符のバイト（`b'\''` か `b'"'`）
 /// - `kind`：返すトークンの種類（`QUOTED_NAME` か `STRING`）
-/// - `unclosed`：閉じていないときに返すエラーの文言
+/// - `unclosed`：閉じていないときに返すエラーの文のコード（`syntax.quoted-name-unclosed`・`syntax.string-unclosed`）
 ///
 /// # 戻り値
 ///
-/// `(kind, 長さ（バイト）, エラーの文言)`。閉じていれば閉じの引用符まで含めた長さと `None`。
+/// `(kind, 長さ（バイト）, エラーの文のコード)`。閉じていれば閉じの引用符まで含めた長さと `None`。
 /// 閉じていなければ改行の手前（改行が無ければテキストの末尾）までの長さと `Some(unclosed)`。
 ///
 /// # 例
@@ -238,8 +238,8 @@ fn number_len(bytes: &[u8]) -> usize {
 ///
 /// # 戻り値
 ///
-/// `(種類, 長さ（バイト）, エラーの文言)`。表に無い文字なら、その 1 文字を `ERROR_TOKEN` にし、
-/// 「使えない文字があります」を返す。
+/// `(種類, 長さ（バイト）, エラーの文のコード)`。表に無い文字なら、その 1 文字を `ERROR_TOKEN` にし、
+/// `syntax.invalid-character`（「使えない文字があります」）を返す。
 ///
 /// # 例
 ///
@@ -247,7 +247,7 @@ fn number_len(bytes: &[u8]) -> usize {
 /// punct(":>> b") → (COLON_GT2, 3, None)
 /// punct(":: b")  → (COLON2, 2, None)
 /// punct("* ")    → (STAR, 1, None)
-/// punct("部品")  → (ERROR_TOKEN, 3, Some("使えない文字があります"))
+/// punct("部品")  → (ERROR_TOKEN, 3, Some("syntax.invalid-character"))   // 使えない文字があります
 /// ```
 fn punct(s: &str) -> (SyntaxKind, usize, Option<&'static str>) {
     use SyntaxKind::*;
@@ -303,7 +303,7 @@ fn punct(s: &str) -> (SyntaxKind, usize, Option<&'static str>) {
         }
     }
     let len = s.chars().next().map_or(1, char::len_utf8);
-    (ERROR_TOKEN, len, Some("使えない文字があります"))
+    (ERROR_TOKEN, len, Some("syntax.invalid-character"))
 }
 
 #[cfg(test)]
@@ -441,6 +441,31 @@ mod tests {
         // Assert
         assert!(tokens.iter().any(|t| t.kind == ERROR_TOKEN));
         assert!(!errors.is_empty());
+    }
+
+    #[test]
+    fn each_kind_of_lexical_error_has_its_own_code() {
+        // Arrange（同値分割：閉じていないコメント・引用名・文字列、使えない文字）
+        let texts = ["/* c", "//* n", "'a", "\"s", "部"];
+        // Act
+        let got: Vec<Vec<(usize, Message)>> = texts
+            .iter()
+            .map(|text| {
+                let (_, errors) = tokenize(text);
+                errors.into_iter().map(|e| (e.offset, e.message)).collect()
+            })
+            .collect();
+        // Assert（文ではなく、コードで確かめる。ADR-0027 §3）
+        assert_eq!(
+            got,
+            [
+                [(0, Message::new("syntax.comment-unclosed"))],
+                [(0, Message::new("syntax.comment-unclosed"))],
+                [(0, Message::new("syntax.quoted-name-unclosed"))],
+                [(0, Message::new("syntax.string-unclosed"))],
+                [(0, Message::new("syntax.invalid-character"))],
+            ]
+        );
     }
 
     #[test]

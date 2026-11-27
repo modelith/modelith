@@ -169,12 +169,7 @@ fn resolve_edits_refuses_overlapping_edits() {
     // Act
     let got = resolve_edits("abc", &edits);
     // Assert
-    assert_eq!(
-        got,
-        Err(Message::verbatim(
-            "変更案の範囲が重なっているため、適用しませんでした"
-        ))
-    );
+    assert_eq!(got, Err(Message::new("plugin.edits-overlap")));
 }
 
 #[test]
@@ -184,7 +179,7 @@ fn resolve_edits_refuses_two_edits_at_the_same_start() {
     // Act
     let got = resolve_edits("abc", &edits);
     // Assert
-    assert!(got.is_err());
+    assert_eq!(got, Err(Message::new("plugin.edits-overlap")));
 }
 
 #[test]
@@ -194,12 +189,7 @@ fn resolve_edits_refuses_a_range_past_the_text() {
     // Act
     let got = resolve_edits("abc", &edits);
     // Assert
-    assert_eq!(
-        got,
-        Err(Message::verbatim(
-            "変更案の範囲がテキストの外を指しているため、適用しませんでした"
-        ))
-    );
+    assert_eq!(got, Err(Message::new("plugin.edit-outside")));
 }
 
 #[test]
@@ -296,9 +286,9 @@ fn check_message_refuses_edits_without_the_permission() {
     // Assert
     assert_eq!(
         got,
-        Err(Message::verbatim(
-            "宣言していない権限（edits:propose）が要るメッセージ（proposeEdits）のため、使いませんでした"
-        ))
+        Err(Message::new("plugin.permission-missing")
+            .arg("permission", "edits:propose")
+            .arg("type", "proposeEdits"))
     );
 }
 
@@ -326,7 +316,12 @@ fn check_message_refuses_diagnostics_without_model_read() {
     // Act
     let got = check_message("abc", json, &[Permission::EditsPropose]);
     // Assert
-    assert!(got.is_err());
+    assert_eq!(
+        got,
+        Err(Message::new("plugin.permission-missing")
+            .arg("permission", "model:read")
+            .arg("type", "diagnostics"))
+    );
 }
 
 #[test]
@@ -339,12 +334,12 @@ fn check_message_refuses_malformed_messages() {
         "[]",
     ];
     // Act
-    let got: Vec<bool> = bad
+    let got: Vec<Option<&str>> = bad
         .iter()
-        .map(|j| check_message("", j, &[]).is_err())
+        .map(|j| check_message("", j, &[]).err().map(|m| m.code))
         .collect();
-    // Assert
-    assert_eq!(got, [true, true, true, true]);
+    // Assert（理由の文は serde_json のもの。コードだけを確かめる）
+    assert_eq!(got, [Some("plugin.message-malformed"); 4]);
 }
 
 #[test]
@@ -354,12 +349,7 @@ fn check_message_refuses_edits_outside_the_text() {
     // Act
     let got = check_message("abc", &json, &[Permission::EditsPropose]);
     // Assert
-    assert_eq!(
-        got,
-        Err(Message::verbatim(
-            "変更案の範囲がテキストの外を指しているため、適用しませんでした"
-        ))
-    );
+    assert_eq!(got, Err(Message::new("plugin.edit-outside")));
 }
 
 #[test]

@@ -98,18 +98,14 @@ pub fn check_message(
     json: &str,
     permissions: &[Permission],
 ) -> Result<CheckedMessage, Message> {
-    let message: PluginMessage = serde_json::from_str(json).map_err(|e| {
-        Message::verbatim(format!(
-            "形が正しくないメッセージのため、使いませんでした（{e}）"
-        ))
-    })?;
+    // 理由は serde_json の文（外から届く文）なので、そのまま値にする
+    let message: PluginMessage = serde_json::from_str(json)
+        .map_err(|e| Message::new("plugin.message-malformed").arg("reason", e.to_string()))?;
     let missing = required_permission(&message).filter(|need| !permissions.contains(need));
     if let Some(need) = missing {
-        return Err(Message::verbatim(format!(
-            "宣言していない権限（{}）が要るメッセージ（{}）のため、使いませんでした",
-            permission_name(need),
-            message_type(&message)
-        )));
+        return Err(Message::new("plugin.permission-missing")
+            .arg("permission", permission_name(need))
+            .arg("type", message_type(&message)));
     }
     let edits = match &message {
         PluginMessage::ProposeEdits { edits, .. } => Some(resolve_edits(text, edits)?),
@@ -155,14 +151,10 @@ pub fn resolve_edits(text: &str, edits: &[TextEdit]) -> Result<Vec<PlacedEdit>, 
             positions.offset(e.range.end),
         );
         let (Some(start), Some(end)) = (start, end) else {
-            return Err(Message::verbatim(
-                "変更案の範囲がテキストの外を指しているため、適用しませんでした",
-            ));
+            return Err(Message::new("plugin.edit-outside"));
         };
         if start > end {
-            return Err(Message::verbatim(
-                "変更案の範囲の始まりが終わりより後ろにあるため、適用しませんでした",
-            ));
+            return Err(Message::new("plugin.edit-reversed"));
         }
         placed.push(PlacedEdit {
             start,
@@ -175,9 +167,7 @@ pub fn resolve_edits(text: &str, edits: &[TextEdit]) -> Result<Vec<PlacedEdit>, 
         .windows(2)
         .any(|w| w[1].start < w[0].end || w[1].start == w[0].start)
     {
-        return Err(Message::verbatim(
-            "変更案の範囲が重なっているため、適用しませんでした",
-        ));
+        return Err(Message::new("plugin.edits-overlap"));
     }
     Ok(placed)
 }
@@ -219,9 +209,7 @@ pub fn place_diagnostics(
                     message: d.message.clone(),
                     code: d.code.clone(),
                 }),
-                _ => Err(Message::verbatim(
-                    "診断の範囲がテキストの外を指しているため、使いませんでした",
-                )),
+                _ => Err(Message::new("plugin.diagnostic-outside")),
             }
         })
         .collect()

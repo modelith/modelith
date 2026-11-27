@@ -22,7 +22,7 @@ pub(crate) fn source_file(p: &mut Parser<'_>) {
     while !p.at_eof() {
         if p.at(R_BRACE) {
             let e = p.start();
-            p.error(Message::verbatim("対応する「{」がない「}」があります"));
+            p.error(Message::new("syntax.stray-closing-brace"));
             p.bump();
             e.complete(p, ERROR);
         } else {
@@ -44,9 +44,7 @@ pub(crate) const MAX_DEPTH: usize = 256;
 /// - `p`：深さが `MAX_DEPTH` に達したブロックの開き `{` にいるパーサ
 fn too_deep(p: &mut Parser<'_>) {
     let m = p.start();
-    p.error(Message::verbatim(format!(
-        "入れ子が深すぎるため、この {{ … }} の中は読み取りません（{MAX_DEPTH} 段まで）"
-    )));
+    p.error(Message::new("syntax.too-deep").arg("max", MAX_DEPTH.to_string()));
     let mut depth = 0usize;
     while !p.at_eof() {
         match p.current() {
@@ -85,11 +83,11 @@ fn body(p: &mut Parser<'_>, owner: usize, label: &str) {
     p.depth -= 1;
     if !p.eat(R_BRACE) {
         let message = if label.is_empty() {
-            "「{」に対応する「}」がありません".to_owned()
+            Message::new("syntax.block-unclosed")
         } else {
-            format!("「{label}」のブロックが閉じていません")
+            Message::new("syntax.named-block-unclosed").arg("name", label)
         };
-        p.error_at(ErrorAt::Start(owner), Message::verbatim(message));
+        p.error_at(ErrorAt::Start(owner), message);
     }
     m.complete(p, BODY);
 }
@@ -106,7 +104,7 @@ fn member_or_skip(p: &mut Parser<'_>) {
     member(p);
     if p.position() == before {
         let e = p.start();
-        p.error(Message::verbatim("読めない記号があります"));
+        p.error(Message::new("syntax.unreadable-symbol"));
         p.bump();
         e.complete(p, ERROR);
     }
@@ -433,7 +431,7 @@ fn member(p: &mut Parser<'_>) {
     }
     if p.at(L_BRACE) || p.at(SEMI) {
         // 頭の無い `{ … }`・`;`
-        p.error(Message::verbatim("要素の種類や名前がありません"));
+        p.error(Message::new("syntax.element-head-missing"));
         end(p, owner, "", true);
         m.complete(p, ERROR);
         return;
@@ -441,10 +439,7 @@ fn member(p: &mut Parser<'_>) {
     // `prt engine : Engine;` のように、名前が 2 つ続く書き出しは式にならない。種類の語の書き誤りとして知らせる
     let unknown_kind = p.at(IDENT) && p.nth_at_name(1);
     if unknown_kind {
-        p.error(Message::verbatim(format!(
-            "「{}」という種類の要素はありません",
-            p.nth_text(0)
-        )));
+        p.error(Message::new("syntax.unknown-kind").arg("word", p.nth_text(0)));
     }
     let from = p.position();
     if expression(p, false) {
@@ -455,7 +450,7 @@ fn member(p: &mut Parser<'_>) {
             if p.at(L_BRACE) {
                 body(p, owner, "");
             } else {
-                p.error_after_previous(Message::verbatim("「;」がありません"));
+                p.error_after_previous(Message::new("syntax.token-missing").arg("token", ";"));
             }
         }
         m.complete(p, EXPRESSION_MEMBER);
@@ -626,7 +621,7 @@ fn keyword_member(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
             p.bump();
             p.eat_kw("library");
             if !p.eat_kw("package") {
-                p.error(Message::verbatim("「package」がありません"));
+                p.error(Message::new("syntax.token-missing").arg("token", "package"));
             }
             declaration(p, owner, true, false);
             LIBRARY_PACKAGE
@@ -907,14 +902,14 @@ fn action_node(p: &mut Parser<'_>, owner: usize) -> Option<SyntaxKind> {
             if p.at_name() {
                 reference(p);
             } else {
-                p.error(Message::verbatim("関係の相手の名前がありません"));
+                p.error(Message::new("syntax.relationship-target-missing"));
             }
             m.complete(p, NODE_PARAMETER);
             if p.eat(COLON_EQ) {
                 required_parameter(p, &[]);
             } else {
                 // `:=` を書き忘れても、続く値は読む（「;」が無いとは言わない）
-                p.error_after_previous(Message::verbatim("「:=」がありません"));
+                p.error_after_previous(Message::new("syntax.token-missing").arg("token", ":="));
                 node_parameter(p, &[]);
             }
         }
@@ -923,22 +918,22 @@ fn action_node(p: &mut Parser<'_>, owner: usize) -> Option<SyntaxKind> {
         }
         "if" => {
             if !checked_expression_until(p, &["action"]) {
-                p.error(Message::verbatim("条件の式がありません"));
+                p.error(Message::new("syntax.condition-missing"));
             }
             if_tail(p, owner);
             return Some(kind);
         }
         "while" | "loop" => {
             if kw == "while" && !checked_expression_until(p, &["action"]) {
-                p.error(Message::verbatim("条件の式がありません"));
+                p.error(Message::new("syntax.condition-missing"));
             }
             body_parameter(p, owner);
             if p.eat_kw("until") {
                 if !checked_expression_until(p, &[]) {
-                    p.error(Message::verbatim("条件の式がありません"));
+                    p.error(Message::new("syntax.condition-missing"));
                 }
                 if !p.eat(SEMI) {
-                    p.error_after_previous(Message::verbatim("「;」がありません"));
+                    p.error_after_previous(Message::new("syntax.token-missing").arg("token", ";"));
                 }
             }
             return Some(kind);
@@ -946,10 +941,10 @@ fn action_node(p: &mut Parser<'_>, owner: usize) -> Option<SyntaxKind> {
         "for" => {
             for_variable(p);
             if !p.eat_kw("in") {
-                p.error(Message::verbatim("「in」がありません"));
+                p.error(Message::new("syntax.token-missing").arg("token", "in"));
             }
             if !checked_expression_until(p, &["action"]) {
-                p.error(Message::verbatim("値の式がありません"));
+                p.error(Message::new("syntax.value-expression-missing"));
             }
             body_parameter(p, owner);
             return Some(kind);
@@ -987,7 +982,7 @@ fn if_tail(p: &mut Parser<'_>, owner: usize) {
         let m = p.start();
         p.bump();
         if !checked_expression_until(p, &["action"]) {
-            p.error(Message::verbatim("条件の式がありません"));
+            p.error(Message::new("syntax.condition-missing"));
         }
         if_tail(p, owner);
         m.complete(p, IF_NODE);
@@ -1019,7 +1014,7 @@ fn body_parameter(p: &mut Parser<'_>, owner: usize) {
     if p.at(L_BRACE) {
         body(p, owner, "");
     } else {
-        p.error(Message::verbatim("「{」がありません"));
+        p.error(Message::new("syntax.token-missing").arg("token", "{"));
         p.eat(SEMI);
     }
 }
@@ -1039,7 +1034,7 @@ fn body_parameter(p: &mut Parser<'_>, owner: usize) {
 /// ```
 fn for_variable(p: &mut Parser<'_>) {
     if !p.at_name() {
-        p.error(Message::verbatim("名前がありません"));
+        p.error(Message::new("syntax.name-missing"));
         return;
     }
     let m = p.start();
@@ -1095,7 +1090,7 @@ fn node_parameter(p: &mut Parser<'_>, stops: &[&str]) -> bool {
 /// ```
 fn required_parameter(p: &mut Parser<'_>, stops: &[&str]) {
     if !node_parameter(p, stops) {
-        p.error(Message::verbatim("値の式がありません"));
+        p.error(Message::new("syntax.value-expression-missing"));
     }
 }
 
@@ -1120,7 +1115,7 @@ fn required_parameter(p: &mut Parser<'_>, stops: &[&str]) {
 /// ```
 fn payload_parameter(p: &mut Parser<'_>, stops: &[&str]) {
     if !payload_feature(p, stops, &["when", "at", "after"], NODE_PARAMETER) {
-        p.error(Message::verbatim("受けるものがありません"));
+        p.error(Message::new("syntax.accept-payload-missing"));
     }
 }
 
@@ -1142,7 +1137,7 @@ fn payload_parameter(p: &mut Parser<'_>, stops: &[&str]) {
 fn flow_payload(p: &mut Parser<'_>) {
     p.bump();
     if !payload_feature(p, &[], &[], FLOW_PAYLOAD_FEATURE) {
-        p.error(Message::verbatim("流れるものがありません"));
+        p.error(Message::new("syntax.flow-payload-missing"));
     }
 }
 
@@ -1197,7 +1192,7 @@ fn payload_feature(
             KEYWORD if triggers.iter().any(|k| p.at_kw(k)) => {
                 p.bump();
                 if !expression_until(p, stops) {
-                    p.error(Message::verbatim("値の式がありません"));
+                    p.error(Message::new("syntax.value-expression-missing"));
                 }
             }
             _ => break,
@@ -1241,7 +1236,7 @@ fn dependency_tail(p: &mut Parser<'_>, owner: usize) {
     if p.eat_kw("to") {
         reference_list(p);
     } else {
-        p.error(Message::verbatim("「to」がありません"));
+        p.error(Message::new("syntax.token-missing").arg("token", "to"));
     }
     end(p, owner, "", true);
 }
@@ -1263,7 +1258,7 @@ fn reference_list(p: &mut Parser<'_>) {
         if p.at_name() {
             reference(p);
         } else {
-            p.error(Message::verbatim("関係の相手の名前がありません"));
+            p.error(Message::new("syntax.relationship-target-missing"));
             break;
         }
         if !p.eat(COMMA) {
@@ -1343,7 +1338,7 @@ fn metadata_usage_tail(p: &mut Parser<'_>, owner: usize) {
             if p.at_name() {
                 reference(p);
             } else {
-                p.error(Message::verbatim("関係の相手の名前がありません"));
+                p.error(Message::new("syntax.relationship-target-missing"));
                 break;
             }
             if !p.eat(COMMA) {
@@ -1514,9 +1509,7 @@ fn declaration_tail(p: &mut Parser<'_>, named: bool, is_def: bool, keep: Option<
                         || p.nth_at(1, COLON_GT2)) =>
             {
                 let word = p.nth_text(0).to_owned();
-                p.error(Message::verbatim(format!(
-                    "「{word}」はテキストの書き方で使う言葉なので、名前に使えません（名前にするなら '{word}' と引用符で囲んでください）"
-                )));
+                p.error(Message::new("syntax.keyword-as-name").arg("word", word));
                 p.bump();
             }
             KEYWORD => match p.nth_text(0) {
@@ -1648,7 +1641,7 @@ fn connector_ends_part(p: &mut Parser<'_>) {
             }
         }
         if !p.eat(R_PAREN) {
-            p.error_after_previous(Message::verbatim("「)」がありません"));
+            p.error_after_previous(Message::new("syntax.token-missing").arg("token", ")"));
         }
         return;
     }
@@ -1656,7 +1649,7 @@ fn connector_ends_part(p: &mut Parser<'_>) {
     if p.eat_kw("to") {
         connector_end(p);
     } else {
-        p.error_after_previous(Message::verbatim("「to」がありません"));
+        p.error_after_previous(Message::new("syntax.token-missing").arg("token", "to"));
     }
 }
 
@@ -1680,7 +1673,7 @@ fn binding_part(p: &mut Parser<'_>) {
     if p.eat(EQ) {
         connector_end(p);
     } else {
-        p.error_after_previous(Message::verbatim("「=」がありません"));
+        p.error_after_previous(Message::new("syntax.token-missing").arg("token", "="));
     }
 }
 
@@ -1706,7 +1699,7 @@ fn succession_declaration(p: &mut Parser<'_>, owner: usize) {
     if p.at_kw("first") {
         succession_ends(p);
     } else {
-        p.error(Message::verbatim("「first」がありません"));
+        p.error(Message::new("syntax.token-missing").arg("token", "first"));
     }
     end(p, owner, &label, true);
 }
@@ -1825,7 +1818,7 @@ fn transition_rest(p: &mut Parser<'_>, owner: usize) {
     if p.eat_kw("then") {
         connector_end(p);
     } else {
-        p.error_after_previous(Message::verbatim("「then」がありません"));
+        p.error_after_previous(Message::new("syntax.token-missing").arg("token", "then"));
     }
 }
 
@@ -1879,7 +1872,7 @@ fn guard(p: &mut Parser<'_>, stops: &[&str]) {
     let g = p.start();
     p.bump();
     if !checked_expression_until(p, stops) {
-        p.error(Message::verbatim("条件の式がありません"));
+        p.error(Message::new("syntax.condition-missing"));
     }
     g.complete(p, GUARD_EXPRESSION);
 }
@@ -1915,14 +1908,14 @@ fn guarded_target(p: &mut Parser<'_>, owner: usize) -> SyntaxKind {
         // `if g { … }`（IfNode、8.2.2.17）
         g.abandon();
         if !any {
-            p.error(Message::verbatim("条件の式がありません"));
+            p.error(Message::new("syntax.condition-missing"));
         }
         if_tail(p, owner);
         return IF_NODE;
     }
     if p.at_kw("then") || p.at_kw("do") {
         if !any {
-            p.error(Message::verbatim("条件の式がありません"));
+            p.error(Message::new("syntax.condition-missing"));
         }
         g.complete(p, GUARD_EXPRESSION);
         transition_rest(p, owner);
@@ -1967,7 +1960,7 @@ fn connector_end(p: &mut Parser<'_>) {
         reference(p);
         any = true;
     } else {
-        p.error(Message::verbatim("関係の相手の名前がありません"));
+        p.error(Message::new("syntax.relationship-target-missing"));
     }
     if any {
         m.complete(p, CONNECTOR_END);
@@ -1994,7 +1987,7 @@ fn end(p: &mut Parser<'_>, owner: usize, label: &str, allow_body: bool) {
         body(p, owner, label);
         return;
     }
-    p.error_after_previous(Message::verbatim("「;」がありません"));
+    p.error_after_previous(Message::new("syntax.token-missing").arg("token", ";"));
 }
 
 /// `doc`・`comment` の後ろ（Identification、`about`、`locale`、本文の REGULAR_COMMENT）。
@@ -2021,7 +2014,7 @@ fn comment_tail(p: &mut Parser<'_>, about: bool) {
         p.eat(STRING);
     }
     if !p.eat(REGULAR_COMMENT) {
-        p.error(Message::verbatim("本文（/* … */）がありません"));
+        p.error(Message::new("syntax.body-text-missing"));
     }
 }
 
@@ -2058,16 +2051,16 @@ fn textual_representation(p: &mut Parser<'_>) {
         identification(p);
     }
     let missing = if !p.eat_kw("language") {
-        Some("「language」がありません")
+        Some(Message::new("syntax.token-missing").arg("token", "language"))
     } else if !p.eat(STRING) {
-        Some("言語の名前（\"…\"）がありません")
+        Some(Message::new("syntax.language-name-missing"))
     } else if !p.eat(REGULAR_COMMENT) {
-        Some("本文（/* … */）がありません")
+        Some(Message::new("syntax.body-text-missing"))
     } else {
         None
     };
     if let Some(message) = missing {
-        p.error(Message::verbatim(message));
+        p.error(message);
         p.eat(SEMI);
     }
 }
@@ -2093,7 +2086,7 @@ fn import_target(p: &mut Parser<'_>) {
         }
         m.complete(p, QUALIFIED_NAME);
     } else {
-        p.error(Message::verbatim("対象の名前がありません"));
+        p.error(Message::new("syntax.import-target-missing"));
     }
     // 絞り込みは続けて書ける（FilterPackage = ImportDeclaration ( '[' OwnedExpression ']' )+、8.2.2.5）
     while p.at(L_BRACK) {
@@ -2120,7 +2113,7 @@ fn relationship(p: &mut Parser<'_>, ops: usize, kind: SyntaxKind) {
         if p.at_name() {
             reference(p);
         } else {
-            p.error(Message::verbatim("関係の相手の名前がありません"));
+            p.error(Message::new("syntax.relationship-target-missing"));
             break;
         }
         if !p.eat(COMMA) {
@@ -2150,7 +2143,7 @@ fn feature_value(p: &mut Parser<'_>) {
     if expression(p, false) {
         check_expression(p, from);
     } else {
-        p.error(Message::verbatim("値の式がありません"));
+        p.error(Message::new("syntax.value-expression-missing"));
     }
     m.complete(p, FEATURE_VALUE);
 }
@@ -2260,7 +2253,7 @@ fn bracketed(p: &mut Parser<'_>, kind: SyntaxKind) {
         p.bump();
     }
     if depth > 0 {
-        p.error_after_previous(Message::verbatim("「]」がありません"));
+        p.error_after_previous(Message::new("syntax.token-missing").arg("token", "]"));
     }
     m.complete(p, kind);
 }
@@ -2394,7 +2387,7 @@ fn expression_with(p: &mut Parser<'_>, stop: impl Fn(&Parser<'_>, bool) -> bool)
         any = true;
     }
     if depth > 0 {
-        p.error_after_previous(Message::verbatim("括弧が閉じていません"));
+        p.error_after_previous(Message::new("syntax.paren-unclosed"));
     }
     if any {
         m.complete(p, EXPRESSION);
@@ -2461,7 +2454,7 @@ fn expression_body(p: &mut Parser<'_>) {
             return;
         }
     }
-    p.error_after_previous(Message::verbatim("「{」に対応する「}」がありません"));
+    p.error_after_previous(Message::new("syntax.block-unclosed"));
 }
 
 /// 対応する開きの無い `)`・`]` を、エラーとして読み飛ばす。
@@ -2473,7 +2466,7 @@ fn expression_body(p: &mut Parser<'_>) {
 /// - `p`：読み飛ばすトークンにいるパーサ
 fn stray(p: &mut Parser<'_>) {
     let e = p.start();
-    p.error(Message::verbatim("対応する括弧がありません"));
+    p.error(Message::new("syntax.stray-closing-bracket"));
     p.bump();
     e.complete(p, ERROR);
 }

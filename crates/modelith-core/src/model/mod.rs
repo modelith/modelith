@@ -17,6 +17,7 @@ mod states;
 mod types;
 mod views;
 
+use chains::MissingStep;
 pub(crate) use chains::refers_to_feature;
 pub(crate) use names::resolve_refs;
 pub use types::*;
@@ -1271,10 +1272,9 @@ impl<'a> Builder<'a> {
                 let who = if u.name.is_empty() { &u.kind } else { &u.name };
                 self.problem(
                     u.start,
-                    Message::verbatim(format!(
-                        "型「{}」が見つかりません（{who}）",
-                        shown_path(path)
-                    )),
+                    Message::new("model.type-missing")
+                        .arg("name", shown_path(path))
+                        .arg("who", who),
                     None,
                 );
             }
@@ -1328,9 +1328,7 @@ impl<'a> Builder<'a> {
                     if let Some(who) = missing {
                         self.problem(
                             r.start,
-                            Message::verbatim(format!(
-                                "「満たす」関係の相手「{who}」が見つかりません（satisfy）"
-                            )),
+                            Message::new("model.satisfy-end-missing").arg("name", who),
                             None,
                         );
                         continue;
@@ -1354,9 +1352,7 @@ impl<'a> Builder<'a> {
                     if er.is_none() {
                         self.problem(
                             r.start,
-                            Message::verbatim(format!(
-                                "「検証する」関係の相手「{req}」が見つかりません（verify）"
-                            )),
+                            Message::new("model.verify-end-missing").arg("name", req),
                             None,
                         );
                         continue;
@@ -1384,9 +1380,7 @@ impl<'a> Builder<'a> {
                             let shown = if path.is_empty() { ty } else { path };
                             self.problem(
                                 r.start,
-                                Message::verbatim(format!(
-                                    "扱う関心事「{shown}」が見つかりません（frame）"
-                                )),
+                                Message::new("model.frame-concern-missing").arg("name", shown),
                                 None,
                             );
                         }
@@ -1397,14 +1391,17 @@ impl<'a> Builder<'a> {
                     if let Some(who) = self.missing_end(ends, pe) {
                         self.problem(
                             r.start,
-                            Message::verbatim(format!(
-                                "線の接続先「{who}」が見つかりません（connect）"
-                            )),
+                            Message::new("model.line-end-missing")
+                                .arg("name", who)
+                                .arg("rel", "connect"),
                             None,
                         );
                     } else if let Some(miss) = self.missing_chain(ends, pe) {
-                        let msg = format!("線の接続先{miss}が見つかりません（connect）");
-                        self.problem(r.start, Message::verbatim(msg), None);
+                        let msg = Message::new("model.line-end-step-missing")
+                            .arg("chain", miss.chain)
+                            .arg("step", miss.step)
+                            .arg("rel", "connect");
+                        self.problem(r.start, msg, None);
                     }
                 }
                 RelKind::Flow {
@@ -1429,9 +1426,9 @@ impl<'a> Builder<'a> {
                         let who = if ea.is_none() { ra } else { rb };
                         self.problem(
                             r.start,
-                            Message::verbatim(format!(
-                                "線の接続先「{who}」が見つかりません（{rel}）"
-                            )),
+                            Message::new("model.line-end-missing")
+                                .arg("name", who)
+                                .arg("rel", rel),
                             None,
                         );
                         continue;
@@ -1462,8 +1459,11 @@ impl<'a> Builder<'a> {
                     };
                     for (head, x) in [(ea, ra), (eb, rb)] {
                         if let Some(miss) = self.chain_miss(head, x, checked) {
-                            let msg = format!("線の接続先{miss}が見つかりません（{rel}）");
-                            self.problem(r.start, Message::verbatim(msg), None);
+                            let msg = Message::new("model.line-end-step-missing")
+                                .arg("chain", miss.chain)
+                                .arg("step", miss.step)
+                                .arg("rel", rel);
+                            self.problem(r.start, msg, None);
                         }
                     }
                 }
@@ -1478,9 +1478,7 @@ impl<'a> Builder<'a> {
                             let who = if a.is_none() { ra } else { rb };
                             self.problem(
                                 r.start,
-                                Message::verbatim(format!(
-                                    "「導出」関係の相手「{who}」が見つかりません（derivation）"
-                                )),
+                                Message::new("model.derive-end-missing").arg("name", who),
                                 None,
                             );
                         }
@@ -1492,11 +1490,16 @@ impl<'a> Builder<'a> {
                         let head = pe.and_then(|pe| self.child_named(pe, seg));
                         if head.is_none() {
                             let owner = pe.map_or("", |pe| self.e(pe).name.as_str());
-                            self.problem(r.start, Message::verbatim(format!("メッセージの相手「{seg}」が「{owner}」の中にありません（message）")), None);
+                            let msg = Message::new("model.message-end-not-inside")
+                                .arg("name", seg)
+                                .arg("owner", owner);
+                            self.problem(r.start, msg, None);
                         } else if let Some(miss) = self.chain_miss(head, x, 0) {
                             // 2 段目から先（`a.sub.e` のイベント）も、部品の中をたどって確かめる
-                            let msg = format!("メッセージの相手{miss}が見つかりません（message）");
-                            self.problem(r.start, Message::verbatim(msg), None);
+                            let msg = Message::new("model.message-end-step-missing")
+                                .arg("chain", miss.chain)
+                                .arg("step", miss.step);
+                            self.problem(r.start, msg, None);
                         }
                     }
                 }
@@ -1506,14 +1509,14 @@ impl<'a> Builder<'a> {
                     if let Some(who) = self.missing_end(&ends, pe) {
                         self.problem(
                             r.start,
-                            Message::verbatim(format!(
-                                "「結び付け」の相手「{who}」が見つかりません（bind）"
-                            )),
+                            Message::new("model.bind-end-missing").arg("name", who),
                             None,
                         );
                     } else if let Some(miss) = self.missing_chain(&ends, pe) {
-                        let msg = format!("「結び付け」の相手{miss}が見つかりません（bind）");
-                        self.problem(r.start, Message::verbatim(msg), None);
+                        let msg = Message::new("model.bind-end-step-missing")
+                            .arg("chain", miss.chain)
+                            .arg("step", miss.step);
+                        self.problem(r.start, msg, None);
                     }
                 }
                 RelKind::Allocate {
@@ -1526,9 +1529,7 @@ impl<'a> Builder<'a> {
                         let who = if ea.is_none() { ra } else { rb };
                         self.problem(
                             r.start,
-                            Message::verbatim(format!(
-                                "「割り当て」関係の相手「{who}」が見つかりません（allocate）"
-                            )),
+                            Message::new("model.allocate-end-missing").arg("name", who),
                             None,
                         );
                         continue;
@@ -1570,9 +1571,7 @@ impl<'a> Builder<'a> {
                         let who = if ea.is_none() { ra } else { rb };
                         self.problem(
                             r.start,
-                            Message::verbatim(format!(
-                                "「依存」関係の相手「{who}」が見つかりません（dependency）"
-                            )),
+                            Message::new("model.dependency-end-missing").arg("name", who),
                             None,
                         );
                         continue;
@@ -1658,16 +1657,16 @@ impl<'a> Builder<'a> {
     ///
     /// # 戻り値
     ///
-    /// 見つからない段のある端の `「連鎖」の「段」`。すべて見つかるか、確かめられなければ None。
+    /// 見つからない段のある端の、連鎖と段の名前（`MissingStep`）。すべて見つかるか、確かめられなければ None。
     ///
     /// # 例
     ///
     /// ```text
     /// // "part def B { part c; } part def H { part a : B; part b; bind a.c = b; bind a.x = b; }" の H の中で
     /// missing_chain(["a.c", "b"], Some(H の番号)) → None
-    /// missing_chain(["a.x", "b"], Some(H の番号)) → Some("「a.x」の「x」")
+    /// missing_chain(["a.x", "b"], Some(H の番号)) → Some(MissingStep { chain: "a.x", step: "x" })
     /// ```
-    fn missing_chain(&self, ends: &[String], pe: Option<usize>) -> Option<String> {
+    fn missing_chain(&self, ends: &[String], pe: Option<usize>) -> Option<MissingStep> {
         ends.iter().find_map(|x| {
             let head = ref_segs(x)[0];
             self.chain_miss(self.resolve(head, pe), x, 0)
@@ -1701,8 +1700,10 @@ impl<'a> Builder<'a> {
                 .is_none()
         {
             // 要素自身の中身にも、その型の定義の中身（`part x : AB;` の AB のポート。#345）にも無い
-            let msg = format!("ポート「{seg}」が {} にありません", node.name);
-            self.problem(pos, Message::verbatim(msg), None);
+            let msg = Message::new("model.port-missing")
+                .arg("port", seg)
+                .arg("owner", node.name.as_str());
+            self.problem(pos, msg, None);
         }
     }
 
@@ -1767,20 +1768,14 @@ impl<'a> Builder<'a> {
         for m in &p.missing_about {
             self.problem(
                 m.pos,
-                Message::verbatim(format!(
-                    "メタデータを付ける相手「{}」が見つかりません（metadata about）",
-                    m.name
-                )),
+                Message::new("model.metadata-about-missing").arg("name", m.name.as_str()),
                 None,
             );
         }
         for m in &p.missing_comment_about {
             self.problem(
                 m.pos,
-                Message::verbatim(format!(
-                    "メモを付ける相手「{}」が見つかりません（comment about）",
-                    m.name
-                )),
+                Message::new("model.comment-about-missing").arg("name", m.name.as_str()),
                 None,
             );
         }
@@ -1789,9 +1784,7 @@ impl<'a> Builder<'a> {
             let head = truncate_utf16(&u.head, 40);
             self.problem(
                 u.start,
-                Message::verbatim(format!(
-                    "「{head}」は Modelith ではまだ扱えないため、図とツリーに出ません"
-                )),
+                Message::new("model.unsupported-syntax").arg("head", head),
                 Some("unsupported"),
             );
         }
@@ -1893,41 +1886,34 @@ impl<'a> Builder<'a> {
                 format!("<'{}'> {}", n.short, n.name)
             };
             let pos = self.e(n.entry).start;
-            let mut gap =
-                |code: &'static str, msg: &str| gaps.push((pos, code, format!("{label}：{msg}")));
+            let mut gap = |code: &'static str, msg: &'static str| {
+                gaps.push((
+                    pos,
+                    code,
+                    Message::new(msg).arg("requirement", label.as_str()),
+                ));
+            };
             let edges = &self.model.edges;
             if i == 0 {
                 if !has(edges, "derive", false, &n.key) {
-                    gap(
-                        "trace.derive",
-                        "どの下位の要求にも展開されていません（derivation）",
-                    );
+                    gap("trace.derive", "model.trace-not-expanded");
                 }
             } else {
                 if !has(edges, "derive", true, &n.key) {
-                    gap(
-                        "trace.derive",
-                        "導出元の上位の要求がありません（derivation）",
-                    );
+                    gap("trace.derive", "model.trace-no-source");
                 }
                 if !has(edges, "satisfy", false, &n.key) {
-                    gap(
-                        "trace.satisfy",
-                        "この要求を満たす要素がありません（satisfy）",
-                    );
+                    gap("trace.satisfy", "model.trace-not-satisfied");
                 }
                 if !has(edges, "verify", false, &n.key) {
-                    gap(
-                        "trace.verify",
-                        "この要求を確かめる検証がありません（verify）",
-                    );
+                    gap("trace.verify", "model.trace-not-verified");
                 }
             }
         }
         for (pos, code, msg) in gaps {
             self.model.problems.push(Problem {
                 pos,
-                msg: Message::verbatim(msg),
+                msg,
                 kind: Some("gap"),
                 code: Some(code),
                 level: None,

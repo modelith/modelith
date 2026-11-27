@@ -19,6 +19,15 @@ pub(crate) enum ChainEnd {
     Unknown,
 }
 
+/// 連鎖の、見つからない段（問題の文の値にする。文は辞書にある）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MissingStep {
+    /// 書いた連鎖（`a.b.x`）。
+    pub(crate) chain: String,
+    /// 見つからない段の名前（`x`）。
+    pub(crate) step: String,
+}
+
 impl Builder<'_> {
     /// 宣言 `from` から、連鎖の残りの段 `rest` を順にたどる。
     ///
@@ -54,7 +63,8 @@ impl Builder<'_> {
     }
 
     /// 連鎖 `chain` の、最初の段を `head` としたとき、2 段目から先で見つからない段（`skip` 段目より後ろのもの）を、
-    /// 問題の文の頭（`「a.b.x」の「x」`）にする。最初の段は呼び出し側が確かめる。
+    /// 連鎖と段の名前の組（`MissingStep`）で返す。問題の文（「…「a.b.x」の「x」が見つかりません」）にするのは呼び出し側と辞書。
+    /// 最初の段は呼び出し側が確かめる。
     ///
     /// # 引数
     ///
@@ -64,14 +74,14 @@ impl Builder<'_> {
     ///
     /// # 戻り値
     ///
-    /// 見つからない段があれば `「連鎖」の「段の名前」`。すべて見つかるか、確かめられなければ None。
+    /// 見つからない段があれば、連鎖と段の名前。すべて見つかるか、確かめられなければ None。
     ///
     /// # 例
     ///
     /// ```text
     /// // "part def C { part d; } part def A { part c : C; }" の A の中で
     /// chain_miss(Some(c の番号), "c.d", 0)   → None
-    /// chain_miss(Some(c の番号), "c.x", 0)   → Some("「c.x」の「x」")
+    /// chain_miss(Some(c の番号), "c.x", 0)   → Some(MissingStep { chain: "c.x", step: "x" })
     /// chain_miss(Some(c の番号), "c.x", 1)   → None            // 2 段目はほかの検査が確かめる
     /// chain_miss(Some(c の番号), "c.d.y", 1) → None            // d は型も本体も無いので確かめられない
     /// chain_miss(None, "z.q", 0)             → None
@@ -81,10 +91,13 @@ impl Builder<'_> {
         head: Option<usize>,
         chain: &str,
         skip: usize,
-    ) -> Option<String> {
+    ) -> Option<MissingStep> {
         let rest: Vec<&str> = ref_segs(chain).into_iter().skip(1).collect();
         match self.follow_chain(head?, &rest) {
-            ChainEnd::Missing(i) if i >= skip => Some(format!("「{chain}」の「{}」", rest[i])),
+            ChainEnd::Missing(i) if i >= skip => Some(MissingStep {
+                chain: chain.to_owned(),
+                step: rest[i].to_owned(),
+            }),
             _ => None,
         }
     }

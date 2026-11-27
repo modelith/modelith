@@ -12,7 +12,18 @@ use modelith_core::message::{Arg, Message, VERBATIM, fallback_text};
 use unic_langid::LanguageIdentifier;
 
 /// 日本語の辞書（場所の名前と、Fluent のテキスト）。キーは場所の名前で始める。
-const JA: &[(&str, &str)] = &[("read-error", include_str!("../locales/ja/read-error.ftl"))];
+const JA: &[(&str, &str)] = &[
+    ("read-error", include_str!("../locales/ja/read-error.ftl")),
+    ("syntax", include_str!("../locales/ja/syntax.ftl")),
+    ("edit", include_str!("../locales/ja/edit.ftl")),
+    ("model", include_str!("../locales/ja/model.ftl")),
+    ("rules", include_str!("../locales/ja/rules.ftl")),
+    ("project", include_str!("../locales/ja/project.ftl")),
+    ("plugin", include_str!("../locales/ja/plugin.ftl")),
+    ("wasm", include_str!("../locales/ja/wasm.ftl")),
+    ("cli", include_str!("../locales/ja/cli.ftl")),
+    ("levels", include_str!("../locales/ja/levels.ftl")),
+];
 
 thread_local! {
     /// 日本語の辞書を読んだもの。`FluentBundle` はスレッドをまたげないので、スレッドごとに、初めて使うときに作る。
@@ -28,15 +39,15 @@ thread_local! {
 ///
 /// # 戻り値
 ///
-/// 文にする部品と、読むときに見つけた誤り（書き方の誤り・同じキーの重なり。「場所：内容」の形）。
+/// 文にする部品と、読むときに見つけた誤り（書き方の誤り・同じキーの重なり。「場所: 内容」の形）。
 /// 誤りのある文だけを除き、読めた文は使える。値の前後に見えない記号（U+2068・U+2069）は入れない。
 ///
 /// # 例
 ///
 /// ```text
 /// bundle("ja", &[("a", "a-x = 文")])                 → (a-x を持つ部品, [])
-/// bundle("ja", &[("a", "a-x = 文\na-x = 別の文")])   → (初めの a-x を持つ部品, ["a：…"])   // 同じキー
-/// bundle("ja", &[("a", "= 文")])                     → (空の部品, ["a：…"])               // 書き方の誤り
+/// bundle("ja", &[("a", "a-x = 文\na-x = 別の文")])   → (初めの a-x を持つ部品, ["a: …"])   // 同じキー
+/// bundle("ja", &[("a", "= 文")])                     → (空の部品, ["a: …"])               // 書き方の誤り
 /// ```
 fn bundle(language: &str, sources: &[(&str, &str)]) -> (FluentBundle<FluentResource>, Vec<String>) {
     let languages: Vec<LanguageIdentifier> = language.parse().ok().into_iter().collect();
@@ -47,12 +58,12 @@ fn bundle(language: &str, sources: &[(&str, &str)]) -> (FluentBundle<FluentResou
         let resource = match FluentResource::try_new((*text).to_owned()) {
             Ok(resource) => resource,
             Err((resource, errors)) => {
-                problems.extend(errors.iter().map(|e| format!("{area}：{e}")));
+                problems.extend(errors.iter().map(|e| format!("{area}: {e}")));
                 resource
             }
         };
         if let Err(errors) = bundle.add_resource(resource) {
-            problems.extend(errors.iter().map(|e| format!("{area}：{e}")));
+            problems.extend(errors.iter().map(|e| format!("{area}: {e}")));
         }
     }
     (bundle, problems)
@@ -241,6 +252,7 @@ mod tests {
         // Act
         let failed: Vec<&str> = keys()
             .into_iter()
+            .filter(|(area, _)| *area == "read-error")
             .map(|(_, key)| key)
             .filter(|key| BUNDLE.with(|b| format(b, key, &[])).is_none())
             .collect();

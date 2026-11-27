@@ -136,10 +136,7 @@ fn enabled_by_default() -> bool {
 pub fn parse(text: &str) -> Parsed {
     let locator = Locator::new(text);
     if text.trim().is_empty() {
-        return failed(error(
-            locator.of_offset(0),
-            Message::verbatim("中身が空です。少なくとも { } と書いてください"),
-        ));
+        return failed(error(locator.of_offset(0), Message::new("project.empty")));
     }
     let mut value: Value = match serde_json::from_str(text) {
         Ok(v) => v,
@@ -171,9 +168,7 @@ pub fn parse(text: &str) -> Parsed {
         problem(
             Severity::Warning,
             locator.of_key(&["levels", kind]),
-            Message::verbatim(format!(
-                "知らせ「{kind}」の重さは、この版の知らない値です。この版では既定の重さにし、削除せずに残します"
-            )),
+            Message::new("project.level-value-unknown").arg("kind", kind.as_str()),
         )
     }));
     problems.sort_by_key(|p| (p.line, p.column));
@@ -245,21 +240,15 @@ pub enum PluginChange {
 ///   → Ok("{\n  \"plugins\": {\n    \"jp.x\": {\n      \"version\": \"0.1.0\",\n      \"enabled\": true\n    }\n  }\n}\n")
 /// update_plugin(r#"{"plugins":{"jp.x":{}}}"#, "jp.x", SetEnabled { enabled: false }) → Ok(… "enabled": false …)
 /// update_plugin("{}", "jp.x", Remove) → Err("プロジェクトの設定（modelith.json）に、プラグイン「jp.x」がありません")
-/// update_plugin("{", "jp.x", Remove)  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 2 文字目：…")
+/// update_plugin("{", "jp.x", Remove)  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 1 文字目：…")
 /// ```
 pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<String, Message> {
     let mut project = parsed_for_change(text)?;
-    let missing = || {
-        Message::verbatim(format!(
-            "プロジェクトの設定（modelith.json）に、プラグイン「{id}」がありません"
-        ))
-    };
+    let missing = || Message::new("project.plugin-missing").arg("id", id);
     match change {
         PluginChange::Add { version } => {
             if id.parse::<modelith_plugin_protocol::PluginId>().is_err() {
-                return Err(Message::verbatim(format!(
-                    "プラグインの ID「{id}」の形が正しくありません"
-                )));
+                return Err(Message::new("project.plugin-id-invalid").arg("id", id));
             }
             let entry = project.plugins.entry(id.to_owned()).or_insert(PluginUse {
                 version: None,
@@ -297,7 +286,7 @@ pub fn update_plugin(text: &str, id: &str, change: &PluginChange) -> Result<Stri
 /// ```text
 /// update_level("{}", "trace.verify", Some(Level::Error)) → Ok("{\n  \"plugins\": {},\n  \"levels\": {\n    \"trace.verify\": \"error\"\n  }\n}\n")
 /// update_level(r#"{"levels":{"unsupported":"off"}}"#, "unsupported", None) → Ok("{\n  \"plugins\": {}\n}\n")
-/// update_level("{", "unsupported", None) → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 2 文字目：…")
+/// update_level("{", "unsupported", None) → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 1 文字目：…")
 /// ```
 pub fn update_level(text: &str, kind: &str, level: Option<Level>) -> Result<String, Message> {
     let mut project = parsed_for_change(text)?;
@@ -320,26 +309,28 @@ pub fn update_level(text: &str, kind: &str, level: Option<Level>) -> Result<Stri
 ///
 /// # 戻り値
 ///
-/// 読み取れた設定。誤りがあれば `Err`（最初の誤りの行と文を添える）。
+/// 読み取れた設定。誤りがあれば `Err`（`project.cannot-change-at`。最初の誤りの行・列と文を添える）。
 ///
 /// # 例
 ///
 /// ```text
 /// parsed_for_change("{}") → Ok(ProjectFile::default())
-/// parsed_for_change("{")  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 2 文字目：…")
+/// parsed_for_change("{")  → Err("プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。1 行目 1 文字目：…")
 /// ```
 fn parsed_for_change(text: &str) -> Result<ProjectFile, Message> {
     let parsed = parse(text);
     parsed.project.ok_or_else(|| {
-        let reason = parsed
+        match parsed
             .problems
-            .iter()
+            .into_iter()
             .find(|p| p.severity == Severity::Error)
-            .map(|p| format!("{} 行目 {} 文字目：{}", p.line, p.column, p.message))
-            .unwrap_or_default();
-        Message::verbatim(format!(
-            "プロジェクトの設定（modelith.json）にエラーがあるため、変更できません。{reason}"
-        ))
+        {
+            Some(p) => Message::new("project.cannot-change-at")
+                .arg("line", p.line.to_string())
+                .arg("column", p.column.to_string())
+                .arg_message("reason", p.message),
+            None => Message::new("project.cannot-change"),
+        }
     })
 }
 
@@ -555,7 +546,7 @@ fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
     let Some(root) = value.as_object() else {
         return vec![error(
             locator.of_offset(0),
-            Message::verbatim("一番外側を { } で囲んでください（JSON のオブジェクト）"),
+            Message::new("project.not-object"),
         )];
     };
     let mut problems = Vec::new();
@@ -565,7 +556,7 @@ fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
     {
         problems.push(error(
             locator.of_key(&["name"]),
-            Message::verbatim("プロジェクト名（name）は、文字列を \" \" で囲んで書いてください"),
+            Message::new("project.name-not-string"),
         ));
     }
     match root.get("plugins") {
@@ -577,7 +568,7 @@ fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
         }
         Some(_) => problems.push(error(
             locator.of_key(&["plugins"]),
-            Message::verbatim("プラグインの一覧（plugins）は { } で囲んで書いてください"),
+            Message::new("project.plugins-not-object"),
         )),
     }
     match root.get("levels") {
@@ -587,14 +578,14 @@ fn type_problems(value: &Value, locator: &Locator) -> Vec<Problem> {
                 if !matches!(level.as_str(), Some("error" | "warning" | "info" | "off")) {
                     problems.push(error(
                         locator.of_key(&["levels", kind]),
-                        Message::verbatim(format!("知らせ「{kind}」の重さは、\"error\"・\"warning\"・\"info\"・\"off\" のどれかで書いてください")),
+                        Message::new("project.level-invalid").arg("kind", kind.as_str()),
                     ));
                 }
             }
         }
         Some(_) => problems.push(error(
             locator.of_key(&["levels"]),
-            Message::verbatim("知らせの重さ（levels）は { } で囲んで書いてください"),
+            Message::new("project.levels-not-object"),
         )),
     }
     problems
@@ -623,9 +614,7 @@ fn plugin_type_problems(id: &str, plugin: &Value, locator: &Locator) -> Vec<Prob
     let Some(fields) = plugin.as_object() else {
         return vec![error(
             locator.of_key(&["plugins", id]),
-            Message::verbatim(format!(
-                "プラグイン「{id}」の設定は {{ }} で囲んで書いてください"
-            )),
+            Message::new("project.plugin-not-object").arg("id", id),
         )];
     };
     let mut problems = Vec::new();
@@ -635,17 +624,13 @@ fn plugin_type_problems(id: &str, plugin: &Value, locator: &Locator) -> Vec<Prob
     {
         problems.push(error(
             locator.of_key(&["plugins", id, "version"]),
-            Message::verbatim(format!(
-                "プラグイン「{id}」のバージョン（version）は、文字列を \" \" で囲んで書いてください（例：\"0.2.0\"）"
-            )),
+            Message::new("project.plugin-version-not-string").arg("id", id),
         ));
     }
     if fields.get("enabled").is_some_and(|v| !v.is_boolean()) {
         problems.push(error(
             locator.of_key(&["plugins", id, "enabled"]),
-            Message::verbatim(format!(
-                "プラグイン「{id}」の有効・無効（enabled）は true か false で書いてください"
-            )),
+            Message::new("project.plugin-enabled-not-boolean").arg("id", id),
         ));
     }
     problems
@@ -673,7 +658,7 @@ fn unknown_key_problems(project: &ProjectFile, locator: &Locator) -> Vec<Problem
         problem(
             Severity::Warning,
             locator.of_key(&[key]),
-            Message::verbatim(format!("不明な項目「{key}」があります。削除せずに残します")),
+            Message::new("project.key-unknown").arg("key", key.as_str()),
         )
     });
     let in_plugins = project.plugins.iter().flat_map(|(id, plugin)| {
@@ -681,9 +666,9 @@ fn unknown_key_problems(project: &ProjectFile, locator: &Locator) -> Vec<Problem
             problem(
                 Severity::Warning,
                 locator.of_key(&["plugins", id, key]),
-                Message::verbatim(format!(
-                    "プラグイン「{id}」の設定に、不明な項目「{key}」があります。削除せずに残します"
-                )),
+                Message::new("project.plugin-key-unknown")
+                    .arg("id", id.as_str())
+                    .arg("key", key.as_str()),
             )
         })
     });
@@ -695,9 +680,7 @@ fn unknown_key_problems(project: &ProjectFile, locator: &Locator) -> Vec<Problem
             problem(
                 Severity::Warning,
                 locator.of_key(&["levels", kind]),
-                Message::verbatim(format!(
-                    "知らせの重さ（levels）に、不明な種類「{kind}」があります。削除せずに残します"
-                )),
+                Message::new("project.level-kind-unknown").arg("kind", kind.as_str()),
             )
         });
     top.chain(in_plugins).chain(in_levels).collect()

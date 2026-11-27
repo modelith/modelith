@@ -119,14 +119,12 @@ fn unsupported_statement_head_is_shortened_to_40_utf16_units() {
         .iter()
         .find(|p| p.kind == Some("unsupported"))
         .expect("まだ扱えない構文");
-    assert!(info.msg.render().contains('…'), "{}", info.msg);
-    assert!(!info.msg.render().contains(&name), "{}", info.msg);
-    let text = info.msg.render();
-    let shown = text
-        .split('「')
-        .nth(1)
-        .and_then(|m| m.split('」').next())
-        .unwrap_or_default();
+    assert_eq!(info.msg.code, "model.unsupported-syntax");
+    let [("head", crate::message::Arg::Text(shown))] = info.msg.args.as_slice() else {
+        panic!("値は head の 1 つ：{:?}", info.msg.args);
+    };
+    assert!(shown.ends_with('…'), "{shown}");
+    assert!(!shown.contains(&name), "{shown}");
     assert_eq!(shown.encode_utf16().count(), 41, "{shown}"); // 40 単位と「…」
 }
 
@@ -163,11 +161,11 @@ fn gap_model(decl: &str) -> String {
     )
 }
 
-/// トレースの抜けの文（種類 `gap` の問題）のうち、`word` を含むもの。
-fn gap_msgs(m: &Model, word: &str) -> Vec<String> {
+/// トレースの抜けの文（種類 `gap` の問題）のうち、コードが `code` のもの。
+fn gap_msgs(m: &Model, code: &str) -> Vec<String> {
     m.problems
         .iter()
-        .filter(|p| p.kind == Some("gap") && p.msg.render().contains(word))
+        .filter(|p| p.kind == Some("gap") && p.msg.code == code)
         .map(|p| p.msg.render())
         .collect()
 }
@@ -180,8 +178,8 @@ fn trace_gap_names_a_requirement_without_a_short_name_once() {
     let (_, m) = run(&text);
     // Assert
     assert_eq!(
-        gap_msgs(&m, "検証"),
-        ["FlowReq：この要求を確かめる検証がありません（verify）"]
+        gap_msgs(&m, "model.trace-not-verified"),
+        ["model.trace-not-verified{requirement=FlowReq}"]
     );
 }
 
@@ -193,8 +191,8 @@ fn trace_gap_names_a_requirement_with_a_short_name_by_both() {
     let (_, m) = run(&text);
     // Assert
     assert_eq!(
-        gap_msgs(&m, "検証"),
-        ["<'K3'> FlowReq：この要求を確かめる検証がありません（verify）"]
+        gap_msgs(&m, "model.trace-not-verified"),
+        ["model.trace-not-verified{requirement=<'K3'> FlowReq}"]
     );
 }
 
@@ -241,9 +239,7 @@ fn view_filter_with_a_value_comparison_is_reported_and_not_used() {
     let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
     assert_eq!(
         msgs,
-        [
-            "図「v」の絞り込み「@Safety and level > 1」はまだ扱えないため、絞り込まずに描きます（filter）"
-        ]
+        ["model.view-filter-unsupported{view=v, filter=@Safety and level > 1}"]
     );
 }
 
@@ -287,8 +283,8 @@ fn view_render_that_reaches_no_standard_rendering_is_reported() {
     assert_eq!(
         msgs,
         [
-            "図「a」の表し方（r）はまだ扱えないため、図として描きます（render）",
-            "図「b」の表し方（x）はまだ扱えないため、図として描きます（render）",
+            "model.view-render-unsupported{view=a, render=r}",
+            "model.view-render-unsupported{view=b, render=x}",
         ]
     );
     assert!(m.views.iter().all(|v| v.kind == "general"));
@@ -356,17 +352,31 @@ fn standard_view_names_and_labels() {
     assert!(views::is_standard_view("InterconnectionView"));
     assert!(views::is_standard_view("iv"));
     assert!(!views::is_standard_view("MyView"));
-    assert_eq!(views::std_view_label(Some("SequenceView")), "シーケンス図");
+    // 画面での名前は、文ではなくコードで返る（文は辞書にある。ADR-0027 §3）。型の無い図は一般ビュー、表に無い名前はそのまま
+    assert_eq!(
+        views::std_view_label(Some("SequenceView")),
+        Message::new("model.view-label-sequence")
+    );
     assert_eq!(
         views::std_view_label(Some("ActionFlowView")),
-        "アクティビティ図"
+        Message::new("model.view-label-action-flow")
     );
     assert_eq!(
         views::std_view_label(Some("GeometryView")),
-        "ジオメトリビュー"
+        Message::new("model.view-label-geometry")
     );
-    assert_eq!(views::std_view_label(Some("MyView")), "MyView");
-    assert_eq!(views::std_view_label(None), "一般ビュー");
+    assert_eq!(
+        views::std_view_label(Some("GeneralView")),
+        Message::new("model.view-label-general")
+    );
+    assert_eq!(
+        views::std_view_label(Some("MyView")),
+        Message::new("model.view-label-other").arg("name", "MyView")
+    );
+    assert_eq!(
+        views::std_view_label(None),
+        Message::new("model.view-label-general")
+    );
 }
 
 #[test]
@@ -646,9 +656,9 @@ fn qualified_type_with_a_missing_segment_is_not_found() {
     assert_eq!(
         errors(&m),
         [
-            "型「Nope::A」が見つかりません（b）",
-            "型「X::Z」が見つかりません（c）",
-            "型「Q::A」が見つかりません（d）",
+            "model.type-missing{name=Nope::A, who=b}",
+            "model.type-missing{name=X::Z, who=c}",
+            "model.type-missing{name=Q::A, who=d}",
         ]
     );
     assert!(m.edges.is_empty());
@@ -672,10 +682,7 @@ fn qualified_relation_end_resolves_by_path() {
     let (_, m) = run(text);
     // Assert
     assert_eq!(edge_ids(&m), ["satisfy|A|R|«satisfy»#1"]);
-    assert_eq!(
-        errors(&m),
-        ["「満たす」関係の相手「Nope::R」が見つかりません（satisfy）"]
-    );
+    assert_eq!(errors(&m), ["model.satisfy-end-missing{name=Nope::R}"]);
 }
 
 #[test]
@@ -703,10 +710,10 @@ fn alias_cycle_or_missing_target_is_not_found() {
     assert_eq!(
         errors(&m),
         [
-            "型「L」が見つかりません（l）",
-            "型「M」が見つかりません（m）",
-            "別名「L」の指す先「L」が見つかりません（alias）",
-            "別名「M」の指す先「Nope」が見つかりません（alias）"
+            "model.type-missing{name=L, who=l}",
+            "model.type-missing{name=M, who=m}",
+            "model.alias-target-missing{alias=L, name=L}",
+            "model.alias-target-missing{alias=M, name=Nope}"
         ]
     );
 }
@@ -744,10 +751,7 @@ fn verify_of_a_missing_requirement_is_still_reported() {
     // Act
     let (_, m) = run(text);
     // Assert
-    assert_eq!(
-        errors(&m),
-        ["「検証する」関係の相手「Nope」が見つかりません（verify）"]
-    );
+    assert_eq!(errors(&m), ["model.verify-end-missing{name=Nope}"]);
 }
 
 #[test]
@@ -810,10 +814,7 @@ fn satisfy_without_by_reports_only_a_missing_requirement() {
     // Act
     let (_, m) = run(text);
     // Assert
-    assert_eq!(
-        errors(&m),
-        ["「満たす」関係の相手「Nope」が見つかりません（satisfy）"]
-    );
+    assert_eq!(errors(&m), ["model.satisfy-end-missing{name=Nope}"]);
 }
 
 #[test]
@@ -835,7 +836,7 @@ fn assert_satisfy_draws_a_line_and_not_satisfy_does_not_count_as_satisfying() {
     let gaps: Vec<String> = m
         .problems
         .iter()
-        .filter(|p| p.kind == Some("gap") && p.msg.render().contains("満たす"))
+        .filter(|p| p.kind == Some("gap") && p.msg.code == "model.trace-not-satisfied")
         .map(|p| p.msg.render())
         .collect();
     assert_eq!(gaps.len(), 1, "{gaps:?}");
@@ -857,8 +858,8 @@ fn value_suffix_types_warn_unless_a_quantity_package_is_imported() {
     assert_eq!(
         errors(&a),
         [
-            "型「MassValue」が見つかりません（m）",
-            "型「MyTypoValue」が見つかりません（t）"
+            "model.type-missing{name=MassValue, who=m}",
+            "model.type-missing{name=MyTypoValue, who=t}"
         ]
     );
     assert!(errors(&b).is_empty(), "{:?}", b.problems);
@@ -884,10 +885,7 @@ fn metadata_about_a_missing_element_is_reported() {
     // Act
     let (_, m) = run(text);
     // Assert
-    assert_eq!(
-        errors(&m),
-        ["メタデータを付ける相手「Nope」が見つかりません（metadata about）"]
-    );
+    assert_eq!(errors(&m), ["model.metadata-about-missing{name=Nope}"]);
 }
 
 #[test]
@@ -898,10 +896,7 @@ fn qualified_frame_type_resolves_by_path() {
     let (_, m) = run(text);
     // Assert
     assert_eq!(edge_ids(&m), ["frame|R|C|«frame»#1"]);
-    assert_eq!(
-        errors(&m),
-        ["扱う関心事「Nope::C」が見つかりません（frame）"]
-    );
+    assert_eq!(errors(&m), ["model.frame-concern-missing{name=Nope::C}"]);
 }
 
 #[test]
@@ -913,10 +908,7 @@ fn expose_with_a_qualified_name_looks_outward_from_the_view() {
     // Assert
     let v = &m.views[0];
     assert_eq!(v.node_keys, ["D"]);
-    assert_eq!(
-        errors(&m),
-        ["図「v」に出す要素「Q::Z」が見つかりません（expose）"]
-    );
+    assert_eq!(errors(&m), ["model.view-expose-missing{view=v, name=Q::Z}"]);
 }
 
 /// 線を「種類|元|先」の文字列にする（書いた順）。
@@ -965,7 +957,7 @@ fn specialization_of_an_undrawn_or_missing_definition_draws_no_line() {
     let (_, m) = run(text);
     // Assert（線は出さない。見つからない相手だけを問題にする。#267）
     assert!(m.edges.is_empty(), "{:?}", m.edges);
-    assert_eq!(errors(&m), ["引き継ぐ定義「Nope」が見つかりません（B）"]);
+    assert_eq!(errors(&m), ["model.general-missing{name=Nope, who=B}"]);
 }
 
 #[test]
@@ -1050,7 +1042,7 @@ fn keyword_less_feature_with_a_missing_type_is_reported() {
     let (_, m) = run(text);
     // Assert
     let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
-    assert_eq!(msgs, ["型「Nope」が見つかりません（x）"]);
+    assert_eq!(msgs, ["model.type-missing{name=Nope, who=x}"]);
 }
 
 #[test]
@@ -1075,8 +1067,8 @@ fn missing_feature_of_an_untyped_part_end_is_reported() {
     assert_eq!(
         msgs,
         [
-            "線の接続先「t.x」の「x」が見つかりません（flow）",
-            "線の接続先「nope」が見つかりません（connect）"
+            "model.line-end-step-missing{chain=t.x, step=x, rel=flow}",
+            "model.line-end-missing{name=nope, rel=connect}"
         ]
     );
 }
@@ -1115,8 +1107,8 @@ fn declaring_satisfy_with_a_missing_type_or_subject_is_reported() {
     assert_eq!(
         msgs,
         [
-            "「満たす」関係の相手「Nope」が見つかりません（satisfy）",
-            "「満たす」関係の相手「gone」が見つかりません（satisfy）"
+            "model.satisfy-end-missing{name=Nope}",
+            "model.satisfy-end-missing{name=gone}"
         ]
     );
 }
@@ -1175,10 +1167,7 @@ fn dependency_with_a_missing_end_is_a_problem_but_undrawn_ends_are_not() {
     let (_, m) = run(text);
     // Assert
     let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
-    assert_eq!(
-        msgs,
-        ["「依存」関係の相手「Nope」が見つかりません（dependency）"]
-    );
+    assert_eq!(msgs, ["model.dependency-end-missing{name=Nope}"]);
     assert!(m.edges.is_empty(), "{:?}", m.edges);
 }
 
@@ -1217,10 +1206,7 @@ fn allocation_with_a_missing_end_is_a_problem_but_undrawn_ends_are_not() {
     let (_, m) = run(text);
     // Assert
     let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
-    assert_eq!(
-        msgs,
-        ["「割り当て」関係の相手「Nope」が見つかりません（allocate）"]
-    );
+    assert_eq!(msgs, ["model.allocate-end-missing{name=Nope}"]);
     assert!(m.edges.iter().all(|e| e.kind != "allocate"));
 }
 
@@ -1266,8 +1252,8 @@ fn nary_connection_and_binding_report_a_missing_end() {
     assert_eq!(
         msgs,
         [
-            "線の接続先「nope.p」が見つかりません（connect）",
-            "「結び付け」の相手「gone」が見つかりません（bind）"
+            "model.line-end-missing{name=nope.p, rel=connect}",
+            "model.bind-end-missing{name=gone}"
         ]
     );
 }
@@ -1306,10 +1292,10 @@ fn missing_segment_of_a_chain_is_reported_with_its_name() {
     assert_eq!(
         msgs,
         [
-            "線の接続先「e.cyl.nope」の「nope」が見つかりません（connect）",
-            "線の接続先「e.cyl.p.zz」の「zz」が見つかりません（flow）",
-            "「結び付け」の相手「w.nope」の「nope」が見つかりません（bind）",
-            "線の接続先「t.bad」の「bad」が見つかりません（connect）",
+            "model.line-end-step-missing{chain=e.cyl.nope, step=nope, rel=connect}",
+            "model.line-end-step-missing{chain=e.cyl.p.zz, step=zz, rel=flow}",
+            "model.bind-end-step-missing{chain=w.nope, step=nope}",
+            "model.line-end-step-missing{chain=t.bad, step=bad, rel=connect}",
         ]
     );
 }
@@ -1321,7 +1307,7 @@ fn chain_through_an_element_without_type_or_body_is_not_reported() {
     // Act
     let msgs = chain_problems(body);
     // Assert（Lib が見つからないことだけを知らせる）
-    assert_eq!(msgs, ["型「Lib」が見つかりません（l）"]);
+    assert_eq!(msgs, ["model.type-missing{name=Lib, who=l}"]);
 }
 
 #[test]
@@ -1331,7 +1317,7 @@ fn second_segment_of_a_flow_end_is_checked_once_as_a_port() {
     // Act
     let msgs = chain_problems(body);
     // Assert
-    assert_eq!(msgs, ["ポート「nope」が Eng にありません"]);
+    assert_eq!(msgs, ["model.port-missing{port=nope, owner=Eng}"]);
 }
 
 #[test]
@@ -1346,8 +1332,8 @@ fn message_end_event_of_a_nested_part_is_checked() {
     assert_eq!(
         msgs,
         [
-            "メッセージの相手「a.sub.x」の「x」が見つかりません（message）",
-            "メッセージの相手「a.x」の「x」が見つかりません（message）",
+            "model.message-end-step-missing{chain=a.sub.x, step=x}",
+            "model.message-end-step-missing{chain=a.x, step=x}",
         ]
     );
 }
@@ -1493,9 +1479,9 @@ fn missing_succession_end_and_cyclic_order_are_reported() {
     assert_eq!(
         msgs,
         [
-            "「順序」の相手「nope」が見つかりません（succession）",
-            "「順序」の相手「a.gone」が見つかりません（succession）",
-            "シナリオ「S」の順序が循環しています（succession）",
+            "model.succession-end-missing{name=nope}",
+            "model.succession-end-missing{name=a.gone}",
+            "model.scenario-order-cyclic{name=S}",
         ]
     );
     // 循環していても、すべてを書いた位置の順に置く（イベント e、m1、m2）
@@ -1574,13 +1560,7 @@ fn comment_about_missing_target_is_a_problem() {
         .map(String::as_str)
         .zip(m.problems.iter().map(|p| p.kind))
         .collect();
-    assert_eq!(
-        msgs,
-        [(
-            "メモを付ける相手「Nope」が見つかりません（comment about）",
-            None
-        )]
-    );
+    assert_eq!(msgs, [("model.comment-about-missing{name=Nope}", None)]);
     assert_eq!(m.notes.len(), 1);
 }
 
@@ -1674,7 +1654,7 @@ fn action_flow_reports_a_flow_end_that_is_not_found() {
     // Assert
     assert!(flow(&m, "A").edges.is_empty());
     let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
-    assert_eq!(msgs, ["線の接続先「nope」が見つかりません（flow）"]);
+    assert_eq!(msgs, ["model.line-end-missing{name=nope, rel=flow}"]);
 }
 
 #[test]
@@ -1866,7 +1846,7 @@ fn flow_without_from_to_a_missing_end_is_reported() {
     let (_, m) = run(text);
     // Assert
     let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
-    assert_eq!(msgs, ["線の接続先「gone」が見つかりません（flow）"]);
+    assert_eq!(msgs, ["model.line-end-missing{name=gone, rel=flow}"]);
 }
 
 #[test]
@@ -1931,7 +1911,7 @@ fn frame_reference_to_a_missing_concern_is_reported() {
     let (_, m) = run(text);
     // Assert
     let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
-    assert_eq!(msgs, ["扱う関心事「nope」が見つかりません（frame）"]);
+    assert_eq!(msgs, ["model.frame-concern-missing{name=nope}"]);
 }
 
 #[test]
@@ -1975,8 +1955,8 @@ fn succession_to_a_missing_action_is_a_problem() {
     assert_eq!(
         msgs,
         [
-            "「順序」の相手「nope」が見つかりません（succession）",
-            "「順序」の相手「x」が見つかりません（succession）"
+            "model.succession-end-missing{name=nope}",
+            "model.succession-end-missing{name=x}"
         ]
     );
     assert!(flow(&m, "A").edges.is_empty());
@@ -2119,8 +2099,8 @@ fn transition_to_a_missing_state_is_a_problem() {
     assert_eq!(
         msgs,
         [
-            "「遷移」の相手「nope」が見つかりません（transition）",
-            "「遷移」の相手「gone」が見つかりません（transition）"
+            "model.transition-end-missing{name=nope}",
+            "model.transition-end-missing{name=gone}"
         ]
     );
     assert!(machine(&m, "S").edges.is_empty());
@@ -2186,7 +2166,7 @@ fn name_in_another_file_is_not_found_without_import() {
     // Act
     let m = run_files(focus, &[VEHICLES]);
     // Assert
-    assert_eq!(errors(&m), ["型「Car」が見つかりません（c）"]);
+    assert_eq!(errors(&m), ["model.type-missing{name=Car, who=c}"]);
 }
 
 #[test]
@@ -2216,7 +2196,7 @@ fn import_by_name_brings_only_that_element() {
     // Act
     let m = run_files(focus, &["package Parts { part def Wheel; part def Tire; }"]);
     // Assert
-    assert_eq!(errors(&m), ["型「Tire」が見つかりません（t）"]);
+    assert_eq!(errors(&m), ["model.type-missing{name=Tire, who=t}"]);
 }
 
 #[test]
@@ -2237,7 +2217,7 @@ fn private_element_is_not_imported() {
     // Act
     let m = run_files(focus, &[VEHICLES]);
     // Assert
-    assert_eq!(errors(&m), ["型「Secret」が見つかりません（s）"]);
+    assert_eq!(errors(&m), ["model.type-missing{name=Secret, who=s}"]);
 }
 
 #[test]
@@ -2249,7 +2229,7 @@ fn public_import_is_passed_on_but_private_import_is_not() {
     // Act
     let m = run_files(focus, &[fleet, VEHICLES, tools]);
     // Assert
-    assert_eq!(errors(&m), ["型「Jack」が見つかりません（j）"]);
+    assert_eq!(errors(&m), ["model.type-missing{name=Jack, who=j}"]);
 }
 
 #[test]
@@ -2389,9 +2369,9 @@ fn missing_specialization_alias_and_import_targets_are_problems() {
     assert_eq!(
         errors(&m),
         [
-            "引き継ぐ定義「Nope」が見つかりません（A）",
-            "別名「T」の指す先「Nope」が見つかりません（alias）",
-            "インポートする相手「Nowhere」が見つかりません（import）"
+            "model.general-missing{name=Nope, who=A}",
+            "model.alias-target-missing{alias=T, name=Nope}",
+            "model.import-missing{name=Nowhere}"
         ]
     );
 }
@@ -2454,10 +2434,7 @@ fn missing_names_in_other_files_are_left_out_and_unimported_names_are_missing() 
         ],
     );
     // Assert
-    assert_eq!(
-        errors(&m),
-        ["引き継ぐ定義「Car」が見つかりません（Sports）"]
-    );
+    assert_eq!(errors(&m), ["model.general-missing{name=Car, who=Sports}"]);
 }
 
 // ---- 標準ライブラリを `::*` で import していても、見つからない相手を型と同じ基準で知らせる（#297 B-4） ----
@@ -2475,9 +2452,9 @@ fn wildcard_library_import_does_not_hide_missing_specializations_and_aliases() {
         assert_eq!(
             errors(&m),
             [
-                "型「Missing」が見つかりません（x）",
-                "引き継ぐ定義「Nope」が見つかりません（A）",
-                "別名「T」の指す先「Nope2」が見つかりません（alias）"
+                "model.type-missing{name=Missing, who=x}",
+                "model.general-missing{name=Nope, who=A}",
+                "model.alias-target-missing{alias=T, name=Nope2}"
             ],
             "{import}"
         );
@@ -2523,14 +2500,8 @@ fn elements_with_an_empty_quoted_name_are_reported() {
     assert_eq!(
         notices,
         [
-            (
-                "「part def ''」は Modelith ではまだ扱えないため、図とツリーに出ません",
-                16
-            ),
-            (
-                "「part '' : A」は Modelith ではまだ扱えないため、図とツリーに出ません",
-                54
-            )
+            ("model.unsupported-syntax{head=part def ''}", 16),
+            ("model.unsupported-syntax{head=part '' : A}", 54)
         ]
     );
     assert_eq!(
@@ -2596,7 +2567,7 @@ fn a_missing_second_type_is_reported_and_library_types_are_not() {
     let (_, m) = run(text);
     // Assert
     let msgs: Vec<String> = m.problems.iter().map(|p| p.msg.render()).collect();
-    assert_eq!(msgs, ["型「Nope」が見つかりません（x）"]);
+    assert_eq!(msgs, ["model.type-missing{name=Nope, who=x}"]);
 }
 
 // ---- 絞り込み付きの import と、package の直下の filter（FilterPackage・ElementFilterMember、8.2.2.5・7.5.4） ----
@@ -2611,7 +2582,7 @@ fn a_filtered_import_brings_only_the_members_that_pass_the_filter() {
     // Act
     let m = run_files(focus, &[MARKED]);
     // Assert
-    assert_eq!(errors(&m), ["型「Seat」が見つかりません（s）"]);
+    assert_eq!(errors(&m), ["model.type-missing{name=Seat, who=s}"]);
 }
 
 #[test]
@@ -2622,7 +2593,7 @@ fn every_bracket_of_a_filtered_import_must_pass() {
     // Act
     let m = run_files(focus, &[MARKED]);
     // Assert
-    assert_eq!(errors(&m), ["型「Prototype」が見つかりません（p）"]);
+    assert_eq!(errors(&m), ["model.type-missing{name=Prototype, who=p}"]);
 }
 
 #[test]
@@ -2632,7 +2603,7 @@ fn a_recursive_filtered_import_looks_inside_members_that_do_not_pass() {
     // Act
     let m = run_files(focus, &[MARKED]);
     // Assert
-    assert_eq!(errors(&m), ["型「Cup」が見つかりません（c）"]);
+    assert_eq!(errors(&m), ["model.type-missing{name=Cup, who=c}"]);
 }
 
 #[test]
@@ -2642,7 +2613,7 @@ fn a_filter_of_a_package_narrows_the_imports_of_that_package() {
     // Act
     let m = run_files(focus, &[MARKED]);
     // Assert
-    assert_eq!(errors(&m), ["型「Seat」が見つかりません（s）"]);
+    assert_eq!(errors(&m), ["model.type-missing{name=Seat, who=s}"]);
 }
 
 #[test]
@@ -2677,15 +2648,13 @@ fn a_filter_that_cannot_be_read_is_reported_and_not_applied() {
     let msgs = |m: &Model| -> Vec<String> { m.problems.iter().map(|p| p.msg.render()).collect() };
     assert_eq!(
         msgs(&m),
-        [
-            "インポート「Lib」の絞り込み「level > 1」はまだ扱えないため、絞り込まずに取り込みます（import の [ ]・filter）"
-        ]
+        ["model.import-filter-unsupported{path=Lib, filter=level > 1}"]
     );
     assert_eq!(
         msgs(&one),
         [
-            "インポート「Lib」の絞り込み「level > 1」はまだ扱えないため、絞り込まずに取り込みます（import の [ ]・filter）",
-            "インポート「Lib」の絞り込み「x == 2」はまだ扱えないため、絞り込まずに取り込みます（import の [ ]・filter）"
+            "model.import-filter-unsupported{path=Lib, filter=level > 1}",
+            "model.import-filter-unsupported{path=Lib, filter=x == 2}"
         ]
     );
     assert!(m.problems.iter().all(|p| p.kind == Some("unsupported")));
@@ -2730,10 +2699,10 @@ fn missing_quoted_name_with_colons_is_reported_as_one_name() {
     assert_eq!(
         messages,
         [
-            "型「no::such」が見つかりません（y）",
-            "引き継ぐ定義「no::such」が見つかりません（Z）",
-            "別名「T」の指す先「no::such」が見つかりません（alias）",
-            "インポートする相手「no::such」が見つかりません（import）",
+            "model.type-missing{name=no::such, who=y}",
+            "model.general-missing{name=no::such, who=Z}",
+            "model.alias-target-missing{alias=T, name=no::such}",
+            "model.import-missing{name=no::such}",
         ]
     );
 }
@@ -2767,7 +2736,7 @@ fn missing_relation_target_with_colons_is_shown_without_quotes_in_views() {
     // Assert
     assert_eq!(
         messages,
-        ["図「v」に出す要素「no::such」が見つかりません（expose）"]
+        ["model.view-expose-missing{view=v, name=no::such}"]
     );
 }
 
@@ -2791,7 +2760,10 @@ fn flow_end_may_be_a_port_of_the_type_of_a_usage() {
     // Assert
     assert_eq!(messages(typed), Vec::<String>::new());
     assert_eq!(messages(own), Vec::<String>::new());
-    assert_eq!(messages(missing), ["ポート「nope」が x にありません"]);
+    assert_eq!(
+        messages(missing),
+        ["model.port-missing{port=nope, owner=x}"]
+    );
     assert_eq!(
         run(typed)
             .1
@@ -2809,7 +2781,7 @@ fn flow_end_may_be_a_port_of_the_type_of_a_usage() {
 fn duplicate_msgs(m: &Model) -> Vec<String> {
     m.problems
         .iter()
-        .filter(|p| p.msg.render().contains("既に使われています"))
+        .filter(|p| p.msg.code.starts_with("model.name-duplicate"))
         .map(|p| p.msg.render())
         .collect()
 }
@@ -2824,12 +2796,14 @@ fn second_element_with_the_same_name_in_the_same_owner_is_reported() {
     let found: Vec<_> = m
         .problems
         .iter()
-        .filter(|p| p.msg.render().contains("既に使われています"))
+        .filter(|p| p.msg.code.starts_with("model.name-duplicate"))
         .collect();
     assert_eq!(found.len(), 1);
     assert_eq!(
         found[0].msg,
-        "「A」という名前は、「P」の中で既に使われています。どちらかの名前を変えてください"
+        Message::new("model.name-duplicate-in")
+            .arg("name", "A")
+            .arg("place", "P")
     );
     assert_eq!(found[0].pos, text.rfind("part def A").expect("2 つめ"));
     assert_eq!(found[0].kind, None);
@@ -2847,11 +2821,11 @@ fn every_element_after_the_first_with_the_same_name_is_reported() {
     assert_eq!(duplicate_msgs(&run(def_and_usage).1).len(), 1);
     assert_eq!(
         duplicate_msgs(&run(features).1),
-        ["「m」という名前は、「B」の中で既に使われています。どちらかの名前を変えてください"]
+        ["model.name-duplicate-in{name=m, place=B}"]
     );
     assert_eq!(
         duplicate_msgs(&run(top).1),
-        ["「P」という名前は、同じ場所で既に使われています。どちらかの名前を変えてください"]
+        ["model.name-duplicate{name=P}"]
     );
 }
 
@@ -2881,4 +2855,158 @@ fn same_name_in_another_file_is_not_reported() {
     let m = run_files(focus, &[other]);
     // Assert（ほかのファイルの中の重なりは、そのファイルを表示したときに知らせる）
     assert!(duplicate_msgs(&m).is_empty(), "{:?}", m.problems);
+}
+
+// ---- 問題の文のコードと値（ADR-0027 §3。文は文言の層の辞書にあり、`modelith-messages` のテストが確かめる） ----
+
+/// 問題の文を、辞書を使わない決まった形（`コード{名前=値}`）で並べる。
+fn problem_codes(text: &str) -> Vec<String> {
+    let (_, m) = run(text);
+    m.problems.iter().map(|p| p.msg.render()).collect()
+}
+
+#[test]
+fn every_trace_gap_has_its_own_code_and_notice_kind() {
+    // Arrange（最上位の R1 は展開先が無い。その下の R2 は導出元・満たす要素・検証が無い）
+    let text = "package P { enum def Stage { enum concept; enum detail; } \
+                metadata def Phase { attribute stage : Stage; } \
+                requirement def R1 { @Phase { stage = concept; } } \
+                requirement def R2 { @Phase { stage = detail; } } }";
+    // Act
+    let (_, m) = run(text);
+    // Assert（文のコードは抜けごと。知らせの種類（重さを選ぶ単位）は、導出の 2 つが同じ）
+    let gaps: Vec<(String, Option<&str>)> = m
+        .problems
+        .iter()
+        .filter(|p| p.kind == Some("gap"))
+        .map(|p| (p.msg.render(), p.code))
+        .collect();
+    assert_eq!(
+        gaps,
+        [
+            (
+                "model.trace-not-expanded{requirement=R1}".to_owned(),
+                Some("trace.derive")
+            ),
+            (
+                "model.trace-no-source{requirement=R2}".to_owned(),
+                Some("trace.derive")
+            ),
+            (
+                "model.trace-not-satisfied{requirement=R2}".to_owned(),
+                Some("trace.satisfy")
+            ),
+            (
+                "model.trace-not-verified{requirement=R2}".to_owned(),
+                Some("trace.verify")
+            ),
+        ]
+    );
+}
+
+#[test]
+fn derivation_with_a_missing_end_names_the_missing_one() {
+    // Arrange（異常系：終わりの端が無い・始まりの端が無い）
+    let to = "package P { requirement def A; #derivation dependency from A to Nope; }";
+    let from = "package P { requirement def A; #derivation dependency from Gone to A; }";
+    // Act
+    let got = [problem_codes(to), problem_codes(from)];
+    // Assert
+    assert_eq!(
+        got,
+        [
+            ["model.derive-end-missing{name=Nope}"],
+            ["model.derive-end-missing{name=Gone}"]
+        ]
+    );
+}
+
+#[test]
+fn succession_flow_to_a_missing_action_has_its_own_code() {
+    // Arrange（異常系：順序付きの流れの相手が無い。「順序」とは別の文になる）
+    let text = "package P { action def A { action a; succession flow a to nope; } }";
+    // Act
+    let got = problem_codes(text);
+    // Assert
+    assert_eq!(got, ["model.succession-flow-end-missing{name=nope}"]);
+}
+
+#[test]
+fn message_end_outside_the_scenario_names_the_end_and_the_owner() {
+    // Arrange（異常系：メッセージの相手が、シナリオの中に無い）
+    let text = "package P { occurrence def S { part a; message m from a to z.r; } }";
+    // Act
+    let got = problem_codes(text);
+    // Assert（連鎖の最初の段と、メッセージを書いた要素の名前）
+    assert_eq!(got, ["model.message-end-not-inside{name=z, owner=S}"]);
+}
+
+#[test]
+fn view_of_a_standard_kind_without_a_drawing_carries_its_label_as_a_message() {
+    // Arrange（専用の描き方が無い標準ビュー定義。名前でも短い名前でも同じ）
+    let grid = "package P { part def A; view v : GridView { expose A; } }";
+    let browser = "package P { part def A; view w : bv { expose A; } }";
+    // Act
+    let (_, m) = run(grid);
+    let short = problem_codes(browser);
+    // Assert（画面での名前は、日本語の文字ではなく、中の文として渡す）
+    assert_eq!(
+        m.problems[0].msg,
+        Message::new("model.view-kind-undrawable")
+            .arg("view", "v")
+            .arg_message("label", Message::new("model.view-label-grid"))
+            .arg("std", "GridView")
+    );
+    assert_eq!(m.problems[0].code, Some("unsupported"));
+    assert_eq!(
+        short,
+        ["model.view-kind-undrawable{view=w, label=model.view-label-browser{}, std=BrowserView}"]
+    );
+}
+
+#[test]
+fn expose_filter_that_cannot_be_read_has_its_own_code() {
+    // Arrange（異常系：expose の [ ] に、値の比較）
+    let text = "package P { part def A; view v { expose P::*[level > 1]; } }";
+    // Act
+    let got = problem_codes(text);
+    // Assert
+    assert_eq!(
+        got,
+        ["model.view-expose-filter-unsupported{view=v, filter=level > 1}"]
+    );
+}
+
+#[test]
+fn every_standard_view_has_a_label_code() {
+    // Arrange（標準ビュー定義のすべて）
+    let names = [
+        "GeneralView",
+        "InterconnectionView",
+        "ActionFlowView",
+        "StateTransitionView",
+        "SequenceView",
+        "GeometryView",
+        "GridView",
+        "BrowserView",
+    ];
+    // Act
+    let got: Vec<String> = names
+        .iter()
+        .map(|n| views::std_view_label(Some(n)).render())
+        .collect();
+    // Assert
+    assert_eq!(
+        got,
+        [
+            "model.view-label-general{}",
+            "model.view-label-interconnection{}",
+            "model.view-label-action-flow{}",
+            "model.view-label-state-transition{}",
+            "model.view-label-sequence{}",
+            "model.view-label-geometry{}",
+            "model.view-label-grid{}",
+            "model.view-label-browser{}",
+        ]
+    );
 }

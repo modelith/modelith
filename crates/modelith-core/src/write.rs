@@ -60,7 +60,7 @@ pub struct Workspace<'a> {
 /// propose(ws, Rename { element: "P::A", name: "B" })
 ///   → Ok({ changes: [{ file: "a.sysml", baseVersion: "v1", edits: [1:13–1:14 を "B" に] }], problems: [] })
 /// propose(ws, Rename { element: "P::Nope", name: "B" })
-///   → Err("操作する要素「P::Nope」が見つかりません。テキストが先に変わった可能性があります")
+///   → Err(edit.element-missing{key=P::Nope})
 /// ```
 pub fn propose(ws: &Workspace<'_>, request: &EditRequest) -> Result<EditProposal, Message> {
     // 変わるファイルの番号と、新しいテキスト
@@ -71,7 +71,7 @@ pub fn propose(ws: &Workspace<'_>, request: &EditRequest) -> Result<EditProposal
                 .files
                 .iter()
                 .position(|f| f.path == file)
-                .ok_or_else(|| Message::verbatim(format!("ファイル「{file}」が見つかりません")))?;
+                .ok_or_else(|| Message::new("edit.file-missing").arg("file", file))?;
             rewritten.insert(at, text.clone());
         }
         _ => {
@@ -632,7 +632,10 @@ mod tests {
             },
         );
         // Assert
-        assert_eq!(got, Err(Message::verbatim("「Tire」は既に使われています")));
+        assert_eq!(
+            got,
+            Err(Message::new("edit.name-taken").arg("name", "Tire"))
+        );
     }
 
     // --- 正常系 ---
@@ -658,7 +661,10 @@ mod tests {
             applied(&got, SHOP),
             "package Shop {\n    requirement def Quick;\n    part def Cart;\n}\n"
         );
-        assert_eq!(messages(&got), ["型「Shop::Nope」が見つかりません（x）"]);
+        assert_eq!(
+            messages(&got),
+            ["model.type-missing{name=Shop::Nope, who=x}"]
+        );
     }
 
     #[test]
@@ -753,7 +759,7 @@ mod tests {
         let b = run(same_text).unwrap();
         // Assert
         assert!(a.changes.is_empty() && b.changes.is_empty());
-        assert_eq!(messages(&a), ["型「Shop::Nope」が見つかりません（x）"]);
+        assert_eq!(messages(&a), ["model.type-missing{name=Shop::Nope, who=x}"]);
     }
 
     #[test]
@@ -795,9 +801,9 @@ mod tests {
         assert_eq!(
             [no_element, no_parent, no_file].map(|r| r.unwrap_err()),
             [
-                "操作する要素「Shop::Gone」が見つかりません。テキストが先に変わった可能性があります",
-                "操作する要素「Nowhere」が見つかりません。テキストが先に変わった可能性があります",
-                "ファイル「nope.sysml」が見つかりません",
+                Message::new("edit.element-missing").arg("key", "Shop::Gone"),
+                Message::new("edit.element-missing").arg("key", "Nowhere"),
+                Message::new("edit.file-missing").arg("file", "nope.sysml"),
             ]
         );
     }
@@ -818,8 +824,8 @@ mod tests {
         assert_eq!(
             [taken, bogus].map(|r| r.unwrap_err()),
             [
-                "「Cart」は既に使われています",
-                "関係の種類「bogus」は扱えません"
+                Message::new("edit.name-taken").arg("name", "Cart"),
+                Message::new("edit.relation-kind-unknown").arg("kind", "bogus")
             ]
         );
     }

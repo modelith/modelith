@@ -26,7 +26,7 @@ use crate::syntax::{SyntaxKind, is_keyword};
 /// ```text
 /// // d.text = SEQ（m1、then m2 の 2 つのメッセージを持つシナリオ S）のとき
 /// message_at(d, S の番号, "msg|1|m2") → Ok((1, [m1 の関係の番号, m2 の関係の番号]))
-/// message_at(d, S の番号, "msg|0|m2") → Err("操作するメッセージが見つかりません。…")   // 順番が合わない
+/// message_at(d, S の番号, "msg|0|m2") → Err(edit.message-missing{})   // 順番が合わない
 /// ```
 fn message_at(d: &Doc<'_>, c: usize, id: &str) -> Result<(usize, Vec<usize>), Refusal> {
     let ms = messages(d, c);
@@ -34,7 +34,7 @@ fn message_at(d: &Doc<'_>, c: usize, id: &str) -> Result<(usize, Vec<usize>), Re
         .iter()
         .enumerate()
         .position(|(i, &ri)| matches!(&d.p.rels[ri].kind, RelKind::Message { name, .. } if format!("msg|{i}|{name}") == id))
-        .ok_or_else(|| Message::verbatim("操作するメッセージが見つかりません。テキストが先に変わった可能性があります"))?;
+        .ok_or_else(|| Message::new("edit.message-missing"))?;
     Ok((i, ms))
 }
 
@@ -100,7 +100,7 @@ fn starts_with_then(s: &str) -> bool {
 /// ```text
 /// add_message(Doc(SEQ), "S", "l:b", "l:a")
 ///   → Ok(text に "then message m2 of Sig from b to a;\n    then message msg3 from b to a;\n}", select = Some("msg3"))
-/// add_message(Doc(SEQ), "Gone", "l:a", "l:b") → Err("操作する要素「Gone」が見つかりません。…")
+/// add_message(Doc(SEQ), "Gone", "l:a", "l:b") → Err(edit.element-missing{key=Gone})
 /// ```
 pub(super) fn add_message(d: &Doc<'_>, ctx: &str, from: &str, to: &str) -> Result<Change, Refusal> {
     let c = d.context(ctx)?;
@@ -155,7 +155,7 @@ pub(super) fn add_message(d: &Doc<'_>, ctx: &str, from: &str, to: &str) -> Resul
 /// update_message(Doc(SEQ), "S", "msg|1|m2", "go", "Cmd") → Ok(text に "then message go of Cmd from b to a;")
 /// update_message(Doc(SEQ), "S", "msg|1|m2", "", "")      → Ok(text に "then message from b to a;")
 /// update_message(Doc(SEQ), "S", "msg|1|m2", "沸かす", "")  → Ok(text に "then message '沸かす' from b to a;")
-/// update_message(Doc(SEQ), "S", "msg|1|m2", "it's", "")  → Err(BAD_RENAME)
+/// update_message(Doc(SEQ), "S", "msg|1|m2", "it's", "")  → Err(edit.name-bad-character{})
 /// ```
 pub(super) fn update_message(
     d: &Doc<'_>,
@@ -172,7 +172,7 @@ pub(super) fn update_message(
     let (i, ms) = message_at(d, c, id)?;
     let ri = ms[i];
     let RelKind::Message { a, b, .. } = &d.p.rels[ri].kind else {
-        return Err(Message::verbatim("メッセージではありません"));
+        return Err(Message::new("edit.not-a-message"));
     };
     let (s, e) = message_span(d, ri);
     let then = if starts_with_then(&d.text[s..e]) {
@@ -218,8 +218,8 @@ pub(super) fn update_message(
 /// ```text
 /// move_message(Doc(SEQ), "S", "msg|1|m2", -1)
 ///   → Ok(text に "    message m2 of Sig from b to a;\n    then message m1 from a to b;\n")
-/// move_message(Doc(SEQ), "S", "msg|0|m1", -1) → Err("これ以上は動かせません")
-/// move_message(Doc(SEQ), "S", "msg|1|m2", 1)  → Err("これ以上は動かせません")
+/// move_message(Doc(SEQ), "S", "msg|0|m1", -1) → Err(edit.message-at-end{})
+/// move_message(Doc(SEQ), "S", "msg|1|m2", 1)  → Err(edit.message-at-end{})
 /// ```
 pub(super) fn move_message(d: &Doc<'_>, ctx: &str, id: &str, dir: i8) -> Result<Change, Refusal> {
     let c = d.context(ctx)?;
@@ -227,7 +227,7 @@ pub(super) fn move_message(d: &Doc<'_>, ctx: &str, id: &str, dir: i8) -> Result<
     let j = i
         .checked_add_signed(dir.into())
         .filter(|&j| j < ms.len())
-        .ok_or_else(|| Message::verbatim("これ以上は動かせません"))?;
+        .ok_or_else(|| Message::new("edit.message-at-end"))?;
     let ((a0, a1), (b0, b1)) = {
         let (x, y) = (message_span(d, ms[i]), message_span(d, ms[j]));
         if x.0 < y.0 { (x, y) } else { (y, x) }
@@ -279,14 +279,14 @@ pub(super) fn move_message(d: &Doc<'_>, ctx: &str, id: &str, dir: i8) -> Result<
 /// set_phase(d, [A], "b")    → Ok(text に "part def A { @Phase { stage = K::b; } }")
 /// set_phase(d, [B], "a")    → Ok(text に "part def B {\n        @Phase { stage = K::a; }\n    }")
 /// set_phase(d, [A], "")     → Ok(text に "part def A { }")
-/// set_phase(d, [C], "")     → Err("パッケージから継承しているため、ここでは外せません")
-/// set_phase(Doc("package P { part def A; }"), [A], "x") → Err("フェーズの定義がありません")
+/// set_phase(d, [C], "")     → Err(edit.phase-inherited-cannot-clear{})
+/// set_phase(Doc("package P { part def A; }"), [A], "x") → Err(edit.phase-undefined{})
 /// ```
 pub(super) fn set_phase(d: &Doc<'_>, found: &[Found], value: &str) -> Result<Change, Refusal> {
     let en =
         d.m.phase_enum
             .as_deref()
-            .ok_or_else(|| Message::verbatim("フェーズの定義がありません"))?;
+            .ok_or_else(|| Message::new("edit.phase-undefined"))?;
     let tok = format!("{en}::{value}");
     let decl = format!("@Phase {{ stage = {tok}; }}");
     if let [one] = found {
@@ -316,12 +316,10 @@ pub(super) fn set_phase(d: &Doc<'_>, found: &[Found], value: &str) -> Result<Cha
             });
         }
         if value.is_empty() {
-            return Err(Message::verbatim(
-                "パッケージから継承しているため、ここでは外せません",
-            ));
+            return Err(Message::new("edit.phase-inherited-cannot-clear"));
         }
         if d.phase_of(one.entry) == Some(value) {
-            return Err(Message::verbatim("すでにパッケージから継承しています"));
+            return Err(Message::new("edit.phase-already-inherited"));
         }
         let (text, s, e) = insert_into(d.text, d.target(one.entry), &decl);
         return Ok(Change {
@@ -331,7 +329,7 @@ pub(super) fn set_phase(d: &Doc<'_>, found: &[Found], value: &str) -> Result<Cha
         });
     }
     if value.is_empty() {
-        return Err(Message::verbatim("フェーズを選んでください"));
+        return Err(Message::new("edit.phase-not-chosen"));
     }
     let splices: Vec<Splice> = found
         .iter()
@@ -398,13 +396,15 @@ fn apply_all(text: &str, mut splices: Vec<Splice>) -> (String, usize) {
 /// ```text
 /// init_phases(Doc("package P {\n    part def A;\n}\n"), None) → Ok(足した後のモデルのフェーズは 4 つ)
 /// init_phases(Doc(""), Some("M"))                         → Ok(text は "package M {\n" で始まる)
-/// init_phases(Doc("package P;"), None)                    → Err("このファイルの書き方では、フェーズを足せません（最初の package が { } で囲まれていません）")
+/// init_phases(Doc("package P;"), None)                    → Err(edit.phase-package-without-body{})
 /// ```
 pub(super) fn init_phases(d: &Doc<'_>, new_package: Option<&str>) -> Result<Change, Refusal> {
     let (text, start, open) = match (d.first_package(), new_package) {
         (Some(p), _) => {
             let e = d.e(p);
-            let open = e.open.ok_or_else(|| Message::verbatim("このファイルの書き方では、フェーズを足せません（最初の package が { } で囲まれていません）"))?;
+            let open = e
+                .open
+                .ok_or_else(|| Message::new("edit.phase-package-without-body"))?;
             (d.text.to_owned(), d.b(e.start), d.b(open))
         }
         (None, Some(name)) => {
@@ -413,13 +413,12 @@ pub(super) fn init_phases(d: &Doc<'_>, new_package: Option<&str>) -> Result<Chan
             (text, t.start, open)
         }
         (None, None) => {
-            return Err(Message::verbatim(
-                "フェーズを書き込むパッケージがありません",
-            ));
+            return Err(Message::new("edit.phase-no-package"));
         }
     };
     let i1 = format!("{}    ", indent_at(&text, start));
     let ins = format!(
+        // l10n-ignore: モデルに書くテキスト（文言の辞書ではなく、足すフェーズの定義のひな形）
         "\n{i1}// フェーズ管理：要素やパッケージに @Phase を付けて分類する（パッケージに付けると中の要素が継承）\n\
          {i1}metadata def Phase {{ attribute stage : PhaseKind; }}\n\
          {i1}enum def PhaseKind {{ enum StakeholderNeeds; enum SystemRequirements; enum Architecture; enum Verification; }}\n"
@@ -483,7 +482,7 @@ impl Doc<'_> {
     /// ```text
     /// // d.text = PORTS（part def E { out port o; }）のとき
     /// port(a, "o") → Ok(E の中の o の番号)
-    /// port(a, "x") → Err("ポート「x」が見つかりません。テキストが先に変わった可能性があります")
+    /// port(a, "x") → Err(edit.port-missing{port=x})
     /// ```
     fn port(&self, f: &Found, port: &str) -> Result<usize, Refusal> {
         let host = self.port_host(f.entry);
@@ -492,11 +491,7 @@ impl Doc<'_> {
             .iter()
             .copied()
             .find(|&c| self.e(c).name == port)
-            .ok_or_else(|| {
-                Message::verbatim(format!(
-                    "ポート「{port}」が見つかりません。テキストが先に変わった可能性があります"
-                ))
-            })
+            .ok_or_else(|| Message::new("edit.port-missing").arg("port", port))
     }
 }
 
@@ -568,8 +563,8 @@ fn after_keyword(stmt: &str, kws: &[&str], name: &str) -> Option<usize> {
 /// ```text
 /// make_port(Doc(PORTS), b, "i", "in", "Sig", [{ id: "flow|u:a|u:b|#1", to: true }], Some("C"))
 ///   → Ok(text に "part def E { out port o; in port i : Sig; }" と "flow from a to b.i;")
-/// make_port(Doc(PORTS), E, "o", "in", "", [], None) → Err("「o」は E の中で既に使われています")
-/// make_port(Doc(PORTS), E, "x", "up", "", [], None) → Err("ポートの向き「up」は扱えません")
+/// make_port(Doc(PORTS), E, "o", "in", "", [], None) → Err(edit.port-name-taken{name=o, owner=E})
+/// make_port(Doc(PORTS), E, "x", "up", "", [], None) → Err(edit.port-direction-unknown{direction=up})
 /// ```
 pub(super) fn make_port(
     d: &Doc<'_>,
@@ -581,24 +576,19 @@ pub(super) fn make_port(
     ctx: Option<&str>,
 ) -> Result<Change, Refusal> {
     if !is_basic_name(name) {
-        return Err(Message::verbatim(
-            "ポート名は英字か _ で始め、英字・数字・_ だけで付けてください",
-        ));
+        return Err(Message::new("edit.port-name-invalid"));
     }
     if let Some(why) = keyword_problem(name) {
         return Err(why);
     }
     if !matches!(dir, "in" | "out" | "inout") {
-        return Err(Message::verbatim(format!(
-            "ポートの向き「{dir}」は扱えません"
-        )));
+        return Err(Message::new("edit.port-direction-unknown").arg("direction", dir));
     }
     let host = d.port_host(f.entry);
     if d.e(host).children.iter().any(|&c| d.e(c).name == name) {
-        return Err(Message::verbatim(format!(
-            "「{name}」は {} の中で既に使われています",
-            d.e(host).name
-        )));
+        return Err(Message::new("edit.port-name-taken")
+            .arg("name", name)
+            .arg("owner", &d.e(host).name));
     }
     let ty = if ty.is_empty() {
         String::new()
@@ -669,7 +659,7 @@ pub(super) fn make_port(
 ///
 /// ```text
 /// set_port_dir(Doc(PORTS), E, "o", "inout") → Ok(text に "part def E { inout port o; }")
-/// set_port_dir(Doc(PORTS), E, "o", "up")    → Err("ポートの向き「up」は扱えません")
+/// set_port_dir(Doc(PORTS), E, "o", "up")    → Err(edit.port-direction-unknown{direction=up})
 /// ```
 pub(super) fn set_port_dir(
     d: &Doc<'_>,
@@ -678,9 +668,7 @@ pub(super) fn set_port_dir(
     dir: &str,
 ) -> Result<Change, Refusal> {
     if !matches!(dir, "in" | "out" | "inout") {
-        return Err(Message::verbatim(format!(
-            "ポートの向き「{dir}」は扱えません"
-        )));
+        return Err(Message::new("edit.port-direction-unknown").arg("direction", dir));
     }
     let e = d.e(d.port(f, port)?);
     let (s, he) = (d.b(e.start), d.b(e.head_end));
@@ -722,7 +710,7 @@ pub(super) fn set_port_dir(
 ///
 /// ```text
 /// delete_port(Doc(PORTS), a, "o") → Ok(text に "part def E { }")
-/// delete_port(Doc(PORTS), a, "x") → Err("ポート「x」が見つかりません。…")
+/// delete_port(Doc(PORTS), a, "x") → Err(edit.port-missing{port=x})
 /// ```
 pub(super) fn delete_port(d: &Doc<'_>, f: &Found, port: &str) -> Result<Change, Refusal> {
     let e = d.e(d.port(f, port)?);
@@ -965,7 +953,7 @@ impl Doc<'_> {
     /// ```text
     /// // d.text = "package P { view v { } }" のとき
     /// view_named("v")    → Ok(v の番号)
-    /// view_named("gone") → Err("図「gone」が見つかりません。テキストが先に変わった可能性があります")
+    /// view_named("gone") → Err(edit.view-missing{name=gone})
     /// ```
     fn view_named(&self, name: &str) -> Result<usize, Refusal> {
         self.m
@@ -973,11 +961,7 @@ impl Doc<'_> {
             .iter()
             .find(|v| v.name == name)
             .map(|v| v.entry)
-            .ok_or_else(|| {
-                Message::verbatim(format!(
-                    "図「{name}」が見つかりません。テキストが先に変わった可能性があります"
-                ))
-            })
+            .ok_or_else(|| Message::new("edit.view-missing").arg("name", name))
     }
 }
 
@@ -1066,12 +1050,12 @@ fn view_declaration(d: &Doc<'_>, name: &str, std: &str, targets: &[usize], inden
 /// save_view(Doc("package P {\n    part def A;\n    part def '電気 ケトル';\n}\n"), "全体", "general", [A, 電気 ケトル])
 ///   → Ok(text に "    view '全体' : GeneralView {\n        expose P::A;\n        expose P::'電気 ケトル';\n    }\n}")
 /// save_view(Doc("package P { part def A; }"), "w", "general", [])         → Ok(text に "view w : GeneralView {\n    }")
-/// save_view(Doc("package P { part def A; view v; }"), "v", "general", [A]) → Err("「v」という図は既にあります。別の名前にしてください")
-/// save_view(Doc("package P { part def A; }"), "w", "actionFlow", [])      → Err("図の対象を選んでください")
-/// save_view(Doc("part def A;"), "w", "general", [])                       → Err("図を置くパッケージがありません。先にパッケージを作ってください")
-/// save_view(Doc("package P { part def A; view v; }"), "A", "general", [A]) → Err("「A」という名前の要素が既にあります。…")
-/// save_view(Doc("package P { part def A; }"), "P", "general", [A])         → Err("「P」はパッケージの名前なので、…")
-/// save_view(Doc("package P { part def A; }"), "it's", "general", [])       → Err(BAD_RENAME)
+/// save_view(Doc("package P { part def A; view v; }"), "v", "general", [A]) → Err(edit.view-exists{name=v})
+/// save_view(Doc("package P { part def A; }"), "w", "actionFlow", [])      → Err(edit.view-target-empty{})
+/// save_view(Doc("part def A;"), "w", "general", [])                       → Err(edit.view-no-package{})
+/// save_view(Doc("package P { part def A; view v; }"), "A", "general", [A]) → Err(edit.view-name-is-element{name=A})
+/// save_view(Doc("package P { part def A; }"), "P", "general", [A])         → Err(edit.view-name-is-package{name=P})
+/// save_view(Doc("package P { part def A; }"), "it's", "general", [])       → Err(edit.name-bad-character{})
 /// ```
 pub(super) fn save_view(
     d: &Doc<'_>,
@@ -1081,36 +1065,30 @@ pub(super) fn save_view(
 ) -> Result<Change, Refusal> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(Message::verbatim("図の名前を入力してください"));
+        return Err(Message::new("edit.view-name-empty"));
     }
     // 要素の名前と同じ規則にする（`'` などを含む名前は、名前の変更では付けられないため。#267）
     if let Some(why) = super::ops::bad_name_reason(name) {
         return Err(why);
     }
     if d.m.views.iter().any(|v| v.name == name) {
-        return Err(Message::verbatim(format!(
-            "「{name}」という図は既にあります。別の名前にしてください"
-        )));
+        return Err(Message::new("edit.view-exists").arg("name", name));
     }
     let std = std_view_for(kind)
-        .ok_or_else(|| Message::verbatim(format!("図の描き方「{kind}」は扱えません")))?;
+        .ok_or_else(|| Message::new("edit.view-kind-unknown").arg("kind", kind))?;
     if targets.is_empty() && kind != "general" {
-        return Err(Message::verbatim("図の対象を選んでください"));
+        return Err(Message::new("edit.view-target-empty"));
     }
-    let pkg = d.first_package().ok_or_else(|| {
-        Message::verbatim("図を置くパッケージがありません。先にパッケージを作ってください")
-    })?;
+    let pkg = d
+        .first_package()
+        .ok_or_else(|| Message::new("edit.view-no-package"))?;
     // 図は package の直下に置くので、同じ package の直下の要素と同じ名前にしない（同じ名前が 2 つになり、参照が曖昧になる。#240）
     if d.e(pkg).children.iter().any(|&c| d.e(c).name == name) {
-        return Err(Message::verbatim(format!(
-            "「{name}」という名前の要素が既にあります。図には別の名前を付けてください"
-        )));
+        return Err(Message::new("edit.view-name-is-element").arg("name", name));
     }
     // パッケージと同じ名前の図は、`P::A` の `P` が図の中を探すようになり、ほかの図の expose が見つからなくなる（#266）
     if (0..d.p.entries.len()).any(|i| d.e(i).kind == "package" && d.e(i).name == name) {
-        return Err(Message::verbatim(format!(
-            "「{name}」はパッケージの名前なので、図には別の名前を付けてください"
-        )));
+        return Err(Message::new("edit.view-name-is-package").arg("name", name));
     }
     let indent = format!("{}    ", indent_at(d.text, d.b(d.e(pkg).start)));
     let ts: Vec<usize> = targets.iter().map(|f| f.entry).collect();
@@ -1143,8 +1121,8 @@ pub(super) fn save_view(
 /// ```text
 /// // d.text = "package P {\n    part def A;\n    part def B;\n    view v {\n        expose P::A;\n    }\n}\n" のとき
 /// add_to_view(d, "v", B)    → Ok(text に "        expose P::A;\n        expose P::B;\n    }")
-/// add_to_view(d, "v", A)    → Err("「A」は既にこの図にあります")
-/// add_to_view(d, "gone", B) → Err("図「gone」が見つかりません。…")
+/// add_to_view(d, "v", A)    → Err(edit.view-already-shows{name=A})
+/// add_to_view(d, "gone", B) → Err(edit.view-missing{name=gone})
 /// ```
 pub(super) fn add_to_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Change, Refusal> {
     let v = d.view_named(view)?;
@@ -1155,10 +1133,7 @@ pub(super) fn add_to_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Change, 
                 .iter()
                 .any(|k| d.m.nodes.iter().any(|n| &n.key == k && n.entry == f.entry))
     }) {
-        return Err(Message::verbatim(format!(
-            "「{}」は既にこの図にあります",
-            e.name
-        )));
+        return Err(Message::new("edit.view-already-shows").arg("name", &e.name));
     }
     let (text, s, end) = insert_into(
         d.text,
@@ -1189,7 +1164,7 @@ pub(super) fn add_to_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Change, 
 /// ```text
 /// // d.text = "package P {\n    part def A;\n    part def B;\n    view v {\n        expose P::A;\n    }\n}\n" のとき
 /// remove_from_view(d, "v", A) → Ok(text に "    view v {\n    }")
-/// remove_from_view(d, "v", B) → Err("「B」は、ほかの要素とまとめてこの図に入っているため、…")
+/// remove_from_view(d, "v", B) → Err(edit.view-shown-together{name=B})
 /// ```
 pub(super) fn remove_from_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Change, Refusal> {
     let v = d.view_named(view)?;
@@ -1199,10 +1174,7 @@ pub(super) fn remove_from_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Cha
         .map(|x| (d.b(x.start), d.b(x.end + 1)))
         .collect();
     if xs.is_empty() {
-        return Err(Message::verbatim(format!(
-            "「{}」は、ほかの要素とまとめてこの図に入っているため、1 つだけ外すことはできません（テキストの expose で直せます）",
-            d.e(f.entry).name
-        )));
+        return Err(Message::new("edit.view-shown-together").arg("name", &d.e(f.entry).name));
     }
     xs.sort_unstable();
     let mut text = d.text.to_owned();
@@ -1234,15 +1206,15 @@ pub(super) fn remove_from_view(d: &Doc<'_>, view: &str, f: &Found) -> Result<Cha
 ///
 /// ```text
 /// rename_view(Doc("package P { view v : GeneralView { } }"), "v", "全体") → Ok(text = "package P { view '全体' : GeneralView { } }")
-/// rename_view(Doc("package P { view v; view w; }"), "v", "w")             → Err("「w」という図は既にあります。別の名前にしてください")
-/// rename_view(Doc("package P { view v; }"), "v", " ")                     → Err("図の名前を入力してください")
-/// rename_view(Doc("package P { view v; }"), "v", "it's")                  → Err(BAD_RENAME)
+/// rename_view(Doc("package P { view v; view w; }"), "v", "w")             → Err(edit.view-exists{name=w})
+/// rename_view(Doc("package P { view v; }"), "v", " ")                     → Err(edit.view-name-empty{})
+/// rename_view(Doc("package P { view v; }"), "v", "it's")                  → Err(edit.name-bad-character{})
 /// ```
 pub(super) fn rename_view(d: &Doc<'_>, view: &str, name: &str) -> Result<Change, Refusal> {
     let v = d.view_named(view)?;
     let name = name.trim();
     if name.is_empty() {
-        return Err(Message::verbatim("図の名前を入力してください"));
+        return Err(Message::new("edit.view-name-empty"));
     }
     if let Some(why) = super::ops::bad_name_reason(name) {
         return Err(why);
@@ -1256,9 +1228,7 @@ pub(super) fn rename_view(d: &Doc<'_>, view: &str, name: &str) -> Result<Change,
         });
     }
     if d.m.views.iter().any(|x| x.name == name) {
-        return Err(Message::verbatim(format!(
-            "「{name}」という図は既にあります。別の名前にしてください"
-        )));
+        return Err(Message::new("edit.view-exists").arg("name", name));
     }
     let (hs, he) = (d.b(e.start), d.b(e.head_end));
     let unquote = |t: &str| t.trim_matches('\'').replace("\\'", "'");
@@ -1271,7 +1241,7 @@ pub(super) fn rename_view(d: &Doc<'_>, view: &str, name: &str) -> Result<Change,
                 || (t.0 == SyntaxKind::QUOTED_NAME && unquote(t.2) == view)
         })
         .map(|t| (t.1, t.2.len()))
-        .ok_or_else(|| Message::verbatim(format!("図「{view}」の名前が見つかりません")))?;
+        .ok_or_else(|| Message::new("edit.view-name-not-found").arg("name", view))?;
     let nn = sysml_name(name);
     let mut text = d.text.to_owned();
     text.replace_range(at.0..at.0 + at.1, &nn);
@@ -1299,7 +1269,7 @@ pub(super) fn rename_view(d: &Doc<'_>, view: &str, name: &str) -> Result<Change,
 /// ```text
 /// delete_view(Doc("package P {\n    part def A;\n    view v {\n        expose P::A;\n    }\n}\n"), "v")
 ///   → Ok(text = "package P {\n    part def A;\n}\n")
-/// delete_view(Doc("package P { }"), "gone") → Err("図「gone」が見つかりません。…")
+/// delete_view(Doc("package P { }"), "gone") → Err(edit.view-missing{name=gone})
 /// ```
 pub(super) fn delete_view(d: &Doc<'_>, view: &str) -> Result<Change, Refusal> {
     let e = d.e(d.view_named(view)?);
@@ -1573,7 +1543,7 @@ fn keep_parts(e: &crate::project::Entry) -> Keep {
 /// set_attribute(Doc("package P { part def A { attribute m : Real := 1; } }"), A, Some("m"), "m", "Real", "2")
 ///   → Ok(text = "package P { part def A { attribute m : Real := 2; } }")
 /// set_attribute(Doc("package P { part def A { attribute m; attribute n; } }"), A, Some("m"), "n", "", "")
-///   → Err("「n」という属性は既にあります")
+///   → Err(edit.attribute-exists{name=n})
 /// ```
 pub(super) fn set_attribute(
     d: &Doc<'_>,
@@ -1585,15 +1555,13 @@ pub(super) fn set_attribute(
 ) -> Result<Change, Refusal> {
     let (name, ty, value) = (name.trim(), ty.trim(), value.trim());
     if name.is_empty() {
-        return Err(Message::verbatim("属性の名前を入力してください"));
+        return Err(Message::new("edit.attribute-name-empty"));
     }
     if let Some(why) = super::ops::bad_name_reason(name) {
         return Err(why);
     }
     if ty.contains(ATTR_STOP) || value.contains(ATTR_STOP) || ty.contains('=') {
-        return Err(Message::verbatim(
-            "型と値には「;」「{」「}」や改行は書けません（型には「=」も書けません）",
-        ));
+        return Err(Message::new("edit.attribute-text-invalid"));
     }
     let owner = d.e(f.entry);
     let attrs: Vec<usize> = owner
@@ -1608,11 +1576,7 @@ pub(super) fn set_attribute(
                 .iter()
                 .copied()
                 .find(|&c| d.e(c).name == a)
-                .ok_or_else(|| {
-                    Message::verbatim(format!(
-                        "属性「{a}」が見つかりません。テキストが先に変わった可能性があります"
-                    ))
-                })?,
+                .ok_or_else(|| Message::new("edit.attribute-missing").arg("name", a))?,
         ),
         None => None,
     };
@@ -1620,17 +1584,13 @@ pub(super) fn set_attribute(
         .iter()
         .any(|&c| Some(c) != current && d.e(c).name == name)
     {
-        return Err(Message::verbatim(format!(
-            "「{name}」という属性は既にあります"
-        )));
+        return Err(Message::new("edit.attribute-exists").arg("name", name));
     }
     match current {
         Some(c) => {
             let e = d.e(c);
             if e.close.is_some() {
-                return Err(Message::verbatim(
-                    "この属性には中身があるため、テキストで直してください",
-                ));
+                return Err(Message::new("edit.attribute-has-body"));
             }
             if e.name != name {
                 // 名前を変えるときは、式や `:>` などの参照もまとめて変えてから、型と値を書き換える（F-EDIT-3。#231）
@@ -1689,7 +1649,7 @@ pub(super) fn set_attribute(
 /// ```text
 /// remove_attribute(Doc("package P {\n    part def A {\n        attribute m;\n    }\n}"), A, "m")
 ///   → Ok(text = "package P {\n    part def A {\n    }\n}")
-/// remove_attribute(Doc("package P { part def A; }"), A, "m") → Err("属性「m」が見つかりません。…")
+/// remove_attribute(Doc("package P { part def A; }"), A, "m") → Err(edit.attribute-missing{name=m})
 /// ```
 pub(super) fn remove_attribute(d: &Doc<'_>, f: &Found, attr: &str) -> Result<Change, Refusal> {
     let c = d
@@ -1698,11 +1658,7 @@ pub(super) fn remove_attribute(d: &Doc<'_>, f: &Found, attr: &str) -> Result<Cha
         .iter()
         .copied()
         .find(|&c| d.e(c).kind == "attribute" && d.e(c).name == attr)
-        .ok_or_else(|| {
-            Message::verbatim(format!(
-                "属性「{attr}」が見つかりません。テキストが先に変わった可能性があります"
-            ))
-        })?;
+        .ok_or_else(|| Message::new("edit.attribute-missing").arg("name", attr))?;
     let e = d.e(c);
     let (text, at) = remove_range(d.text, d.b(e.start), d.b(e.end));
     Ok(Change {

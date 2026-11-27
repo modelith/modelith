@@ -49,17 +49,15 @@ pub(crate) fn host_ver(s: &str) -> Ver {
 ///
 /// # 戻り値
 ///
-/// 利用者に見せる文
+/// 利用者に見せる文（`rules.engines-range-invalid`）
 ///
 /// # 例
 ///
 /// ```text
-/// bad_range("latest") → "動く Modelith の版の範囲（engines.modelith「latest」）の書き方が正しくありません。…"
+/// bad_range("latest") → rules.engines-range-invalid{range=latest}   // 動く Modelith の版の範囲（engines.modelith「latest」）の書き方が正しくありません。…
 /// ```
 fn bad_range(range: &str) -> Message {
-    Message::verbatim(format!(
-        "動く Modelith の版の範囲（engines.modelith「{range}」）の書き方が正しくありません。「>=0.1.0, <0.3.0」のように、比べる記号と版をカンマで区切って書いてください"
-    ))
+    Message::new("rules.engines-range-invalid").arg("range", range)
 }
 
 /// 比べる記号と版を 1 組だけ読み、その組が許す版の下限（含む）と上限（含まない。無ければ None）にする。

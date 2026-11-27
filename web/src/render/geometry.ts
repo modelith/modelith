@@ -937,6 +937,56 @@ export function chooseSide(b: Box, o: Box): Side {
   return dx > 0 ? "r" : "l";
 }
 
+/** 接続点の決まっていない線の端を、固定の接続点（ポートなど）から離す幅と、角から離す幅。 */
+const PIN_CLEAR = 16, CORNER_CLEAR = 8;
+
+/**
+ * 辺の上で、固定の接続点から離れた、線の端を置ける位置を求める。望む位置が空いていればそのまま、
+ * 空いていなければ、いちばん近い空いた位置にする。
+ *
+ * @param len 辺の長さ
+ * @param fixed 固定の接続点の位置（辺の始まりからの長さ）
+ * @param want 望む位置（辺の始まりからの長さ）
+ * @returns 置ける位置。角からも接続点からも離せる位置が辺に無ければ null
+ * @example
+ * clearSpot(100, [], 50)   // → 50（接続点が無い）
+ * clearSpot(100, [50], 52) // → 66（接続点から 16 離す）
+ * clearSpot(44, [22], 22)  // → null（上にも下にも、離して置ける所が無い）
+ */
+export function clearSpot(len: number, fixed: number[], want: number): number | null {
+  const lo = CORNER_CLEAR, hi = len - CORNER_CLEAR;
+  const free = (pos: number): boolean => pos >= lo && pos <= hi && fixed.every((f) => Math.abs(f - pos) >= PIN_CLEAR);
+  const clamped = Math.max(lo, Math.min(hi, want));
+  if (free(clamped)) return clamped;
+  const spots = [lo, hi, ...fixed.flatMap((f) => [f - PIN_CLEAR, f + PIN_CLEAR])].filter(free);
+  if (!spots.length) return null;
+  return spots.reduce((best, pos) => (Math.abs(pos - want) < Math.abs(best - want) ? pos : best));
+}
+
+/**
+ * 相手の位置から、線を出す辺を選ぶ。chooseSide の辺に、固定の接続点（ポートなど）から離して線を置ける所が無ければ、
+ * 相手の側のもう一方の向きの辺にする（左右の辺がポートでふさがっていれば、上か下の辺）。そこにも無ければ、chooseSide の辺のまま。
+ *
+ * @param b 線を出すブロックの矩形と接続点
+ * @param o 相手の矩形（点なら幅・高さ 0）
+ * @returns 辺（t・b・l・r）
+ * @example
+ * // 高さ 44 のブロックの右の辺の中央にポートがあり、相手は右上にある
+ * chooseFreeSide(b, o) // → "t"（右の辺には、ポートから離して置ける所が無い）
+ * // 同じブロックにポートが無い
+ * chooseFreeSide(b, o) // → "r"
+ */
+export function chooseFreeSide(b: NodeBox, o: Box): Side {
+  const side = chooseSide(b, o);
+  const room = (s: Side): boolean => {
+    const len = s === "t" || s === "b" ? b.w : b.h;
+    return clearSpot(len, b.pins.filter((p) => p.side === s).map((p) => p.t * len), len / 2) !== null;
+  };
+  if (room(side)) return side;
+  const other: Side = side === "l" || side === "r" ? (o.y + o.h / 2 > b.y + b.h / 2 ? "b" : "t") : o.x + o.w / 2 > b.x + b.w / 2 ? "r" : "l";
+  return room(other) ? other : side;
+}
+
 /**
  * 水平・垂直の線分が矩形の内側を横切るか。縁に沿うだけなら横切らない。斜めの線分は常に false。
  *
@@ -1141,8 +1191,8 @@ export function computeRoutes(box: Map<string, NodeBox>, edges: ModelEdge[], L: 
     const toward = (p: Pt | undefined, q: BorderPoint | null, ob: Box): Box => (p ? { x: p[0], y: p[1], w: 0, h: 0 } : q ? pointBox(q) : ob);
     const rec: RouteRec = {
       e, A, B, fp, tp,
-      fs: fp ? fp.side : fa ? fa[0] : chooseSide(A, toward(first, qb, B)),
-      ts: tp ? tp.side : ta ? ta[0] : chooseSide(B, toward(last, qa, A)),
+      fs: fp ? fp.side : fa ? fa[0] : chooseFreeSide(A, toward(first, qb, B)),
+      ts: tp ? tp.side : ta ? ta[0] : chooseFreeSide(B, toward(last, qa, A)),
       ft: fa ? fa[1] : 0.5, tt: ta ? ta[1] : 0.5,
     };
     const other = (q: BorderPoint | null, ob: Box): Pt => (q ? [q.x, q.y] : [ob.x + ob.w / 2, ob.y + ob.h / 2]);
@@ -1168,13 +1218,9 @@ export function computeRoutes(box: Map<string, NodeBox>, edges: ModelEdge[], L: 
         else it.rec.tt = 0.5;
         return;
       }
-      let pos = (len * (i + 1)) / (list.length + 1);
-      for (let g = 0; g < 3; g++) {
-        const hit = fixed.find((f) => Math.abs(f - pos) < 16);
-        if (hit == null) break;
-        pos = hit + (pos >= hit ? 16 : -16);
-      }
-      pos = Math.max(8, Math.min(len - 8, pos));
+      const want = (len * (i + 1)) / (list.length + 1);
+      // 離して置ける所が無い辺（chooseFreeSide がほかの辺を選べなかったとき）は、角から離すだけにする
+      const pos = clearSpot(len, fixed, want) ?? Math.max(CORNER_CLEAR, Math.min(len - CORNER_CLEAR, want));
       if (it.end === "f") it.rec.ft = pos / len;
       else it.rec.tt = pos / len;
     });

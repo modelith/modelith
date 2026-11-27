@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Entry, ModelEdge, ModelLane, ModelNode } from "../core";
 import { build, parse } from "../core/rust";
 import { contentOf, viewDef, type ViewTarget } from "./view-content";
-import { assertWord, autoPlace, BOUNDARY, boundaryBoxes, boxesOf, LANE_HEAD, LANE_PAD, laneRects, placeInLanes, compartment, DOT, downward, endLabelPos, enumLines, featureText, freeSpot, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, spreadLabels, computeRoutes, placeJunctions, placeNested, placeNotes, placeView, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type NodeBox, type RouteEnd } from "./geometry";
+import { assertWord, autoPlace, BOUNDARY, boundaryBoxes, boxesOf, chooseFreeSide, clearSpot, pinsOf, LANE_HEAD, LANE_PAD, laneRects, placeInLanes, compartment, DOT, downward, endLabelPos, enumLines, featureText, freeSpot, keywordOf, nodeH, noteLines, NEST_PAD, NEST_TOP, packageRects, spreadLabels, computeRoutes, placeJunctions, placeNested, placeNotes, placeView, PKG_PAD, PKG_TAB, stackedHeight, stackedWidth, W, type Box, type NodeBox, type RouteEnd } from "./geometry";
 
 const boxes: Record<string, Box> = {
   A: { x: 0, y: 0, w: 100, h: 50 },
@@ -667,5 +667,77 @@ describe("spreadLabels：重なる線のラベル（F-VIEW-3・#325）", () => {
     expect(labs).toHaveLength(2);
     expect(labs[0]?.x).toBe(labs[1]?.x);
     expect(Math.abs((labs[0]?.y ?? 0) - (labs[1]?.y ?? 0))).toBe(13);
+  });
+});
+
+describe("線の端をポートから離す（F-VIEW-3）", () => {
+  it.each([
+    ["接続点が無ければ、望む位置のまま", 100, [], 50, 50],
+    ["接続点の近くなら、16 離れた近い側へ動かす", 100, [50], 52, 66],
+    ["接続点からちょうど 16 離れていれば、そのまま（境界）", 100, [50], 66, 66],
+    ["接続点から 15 なら、動かす（境界）", 100, [50], 65, 66],
+    ["角に近すぎる望みは、角から 8 の位置にする", 100, [], 2, 8],
+    ["動かした先が別の接続点に近ければ、どれからも離れた位置にする", 100, [40, 56], 50, 72],
+  ])("clearSpot：%s", (_title, len, fixed, want, expected) => {
+    // Act
+    const pos = clearSpot(len, fixed, want);
+    // Assert
+    expect(pos).toBe(expected);
+  });
+
+  it("clearSpot：角からも接続点からも離せる所が無い辺は null（異常系）", () => {
+    // Act（長さ 44 の辺の中央に接続点。置けるのは 8〜36 で、どこも接続点から 16 未満）
+    const pos = clearSpot(44, [22], 22);
+    // Assert
+    expect(pos).toBeNull();
+  });
+
+  /** 位置 (0, 0)・幅 224・高さ h の要素の矩形を、右の辺の中央のポートの有無を指定して作る。 */
+  const boxWith = (h: number, pins: NodeBox["pins"]): NodeBox => ({ x: 0, y: 0, w: 224, h, n: build(parse("part def A;")).nodes[0] as NodeBox["n"], pins });
+  const port = { name: "o", dir: "out" } as NonNullable<NodeBox["pins"][number]["port"]>;
+  const upperRight: Box = { x: 450, y: -160, w: 224, h: 44 };
+
+  it("chooseFreeSide：ポートが無ければ、相手の向きの辺のまま", () => {
+    // Act
+    const side = chooseFreeSide(boxWith(44, []), upperRight);
+    // Assert
+    expect(side).toBe("r");
+  });
+
+  it("chooseFreeSide：相手の向きの辺がポートでふさがっていれば、相手の側のほかの辺にする", () => {
+    // Act（高さ 44 の右の辺の中央にポート。相手は右上）
+    const side = chooseFreeSide(boxWith(44, [{ id: "port:o", side: "r", t: 0.5, port }]), upperRight);
+    // Assert
+    expect(side).toBe("t");
+  });
+
+  it("chooseFreeSide：辺が長く、ポートから離して置ければ、相手の向きの辺のまま", () => {
+    // Act（高さ 71 の右の辺の中央にポート。下に 16 離して置ける）
+    const side = chooseFreeSide(boxWith(71, [{ id: "port:o", side: "r", t: 0.5, port }]), upperRight);
+    // Assert
+    expect(side).toBe("r");
+  });
+
+  it("chooseFreeSide：ほかの辺もふさがっていれば、相手の向きの辺のまま（異常系）", () => {
+    // Arrange（右の辺の中央と、上の辺に 16 おきに接続点を並べる）
+    const top = Array.from({ length: 15 }, (_, i) => ({ id: `a${i}`, side: "t" as const, t: (i * 16) / 224 }));
+    // Act
+    const side = chooseFreeSide(boxWith(44, [{ id: "port:o", side: "r", t: 0.5, port }, ...top]), upperRight);
+    // Assert
+    expect(side).toBe("r");
+  });
+
+  it("部品として持つ線は、ポートのある短い辺を避けて、要素の上の辺に着く", () => {
+    // Arrange（持ち主 K の左下に、右の辺にポートのある C を置く）
+    const M = build(parse("package P { port def Pt; part def K { part c : C; } part def C { out port o : Pt; } }"));
+    const pos: Record<string, [number, number]> = { K: [450, 0], C: [0, 180] };
+    const rects = boxesOf(M.nodes, pos);
+    const box = new Map<string, NodeBox>(M.nodes.filter((n) => n.key in pos).map((n) => [n.key, { ...(rects.get(n.key) as NodeBox), n, pins: pinsOf(n, undefined, "structure") }]));
+    const edges = M.edges.filter((e) => e.kind === "comp" && box.has(e.from) && box.has(e.to));
+    // Act
+    const [route] = [...computeRoutes(box, edges, undefined, "ortho").values()];
+    // Assert
+    expect(box.get("C")?.pins.map((p) => p.side)).toEqual(["r"]);
+    expect(route?.to.side).toBe("t");
   });
 });

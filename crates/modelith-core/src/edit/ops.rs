@@ -9,10 +9,7 @@ use crate::Message;
 use crate::project::{RelKind, Span, text::is_basic_name};
 use crate::syntax::{SyntaxKind, is_keyword, tokenize};
 
-/// 名前を変えるときに使えない文字を含む名前を断る文。
-pub(super) const BAD_RENAME: &str = "名前に「'」「\\」や改行は使えません";
-
-/// 名前に、名前を変えるときに使えない文字（`'`・`\`・改行などの制御文字）があるか（`bad_name_reason` が `BAD_RENAME` で断る）。
+/// 名前に、名前を変えるときに使えない文字（`'`・`\`・改行などの制御文字）があるか（`bad_name_reason` が `edit.name-bad-character` で断る）。
 ///
 /// # 引数
 ///
@@ -34,11 +31,6 @@ fn has_bad_name_char(name: &str) -> bool {
         .any(|c| c == '\'' || c == '\\' || c.is_control())
 }
 
-/// 「::」を含む名前を断る文。引用名（`'a::b'`）としては書けるが、名前の解決が修飾名の区切りと区別できず、
-/// その要素を指す線が消えるので付けさせない（#297）。
-pub(super) const BAD_NAME_SEPARATOR: &str =
-    "名前に「::」は使えません（「::」は、パッケージの中の要素を指すときの区切りです）";
-
 /// 付けようとする名前が使えないなら、断る理由の文を返す。使えない文字（`has_bad_name_char`）と、名前の区切りの「::」を確かめる。
 ///
 /// # 引数
@@ -47,22 +39,22 @@ pub(super) const BAD_NAME_SEPARATOR: &str =
 ///
 /// # 戻り値
 ///
-/// 使えなければ理由の文（`BAD_RENAME`・`BAD_NAME_SEPARATOR`）、使えれば None。
+/// 使えなければ理由の文（`edit.name-bad-character`・`edit.name-has-separator`）、使えれば None。
 ///
 /// # 例
 ///
 /// ```text
-/// bad_name_reason("it's")      → Some(BAD_RENAME)
-/// bad_name_reason("Sub::Part") → Some(BAD_NAME_SEPARATOR)
+/// bad_name_reason("it's")      → Some(edit.name-bad-character{})
+/// bad_name_reason("Sub::Part") → Some(edit.name-has-separator{})
 /// bad_name_reason("a:b")       → None   // 「:」1 つは区切りではない
 /// bad_name_reason("電気 ケトル") → None
 /// ```
 pub(super) fn bad_name_reason(name: &str) -> Option<Message> {
     if has_bad_name_char(name) {
-        return Some(Message::verbatim(BAD_RENAME));
+        return Some(Message::new("edit.name-bad-character"));
     }
     name.contains("::")
-        .then(|| Message::verbatim(BAD_NAME_SEPARATOR))
+        .then(|| Message::new("edit.name-has-separator"))
 }
 
 /// 名前が、テキストの書き方で使う言葉（SysML v2 の予約語）なら、断る理由の文を返す（予約語の名前はテキストを壊すため。#266）。
@@ -78,16 +70,12 @@ pub(super) fn bad_name_reason(name: &str) -> Option<Message> {
 /// # 例
 ///
 /// ```text
-/// keyword_problem("def")   → Some("「def」はテキストの書き方で使う言葉なので、名前に使えません")
+/// keyword_problem("def")   → Some(edit.name-is-keyword{name=def})
 /// keyword_problem("Lamp")  → None
 /// keyword_problem("Part")  → None   // 大文字の違う語は予約語でない
 /// ```
 pub(super) fn keyword_problem(name: &str) -> Option<Message> {
-    is_keyword(name).then(|| {
-        Message::verbatim(format!(
-            "「{name}」はテキストの書き方で使う言葉なので、名前に使えません"
-        ))
-    })
+    is_keyword(name).then(|| Message::new("edit.name-is-keyword").arg("name", name))
 }
 
 /// 追加する定義の名前（種類ごと）。
@@ -159,7 +147,7 @@ fn lookup(table: &[(&str, &'static str)], k: &str) -> Option<&'static str> {
 /// ```text
 /// // d.text = "package P { part def NewPart; part def NewPart2; }" のとき
 /// run(d, AddNode { kind: "part def" })        → Ok(select = Some("NewPart3"))
-/// run(d, Rename { key: "Gone", name: "X" })   → Err("操作する要素「Gone」が見つかりません。…")
+/// run(d, Rename { key: "Gone", name: "X" })   → Err(edit.element-missing{key=Gone})
 /// ```
 pub(super) fn run(d: &Doc<'_>, intent: &Intent) -> Result<Change, Refusal> {
     match intent {
@@ -297,13 +285,11 @@ pub(super) struct Found {
 /// # 例
 ///
 /// ```text
-/// missing("Gone") → "操作する要素「Gone」が見つかりません。テキストが先に変わった可能性があります"
-/// missing("")     → "操作する要素「」が見つかりません。テキストが先に変わった可能性があります"
+/// missing("Gone") → edit.element-missing{key=Gone}
+/// missing("")     → edit.element-missing{key=}
 /// ```
 pub(crate) fn missing(key: &str) -> Refusal {
-    Message::verbatim(format!(
-        "操作する要素「{key}」が見つかりません。テキストが先に変わった可能性があります"
-    ))
+    Message::new("edit.element-missing").arg("key", key)
 }
 
 impl Doc<'_> {
@@ -331,12 +317,12 @@ impl Doc<'_> {
     /// find("u:e.x", Some("C")) → Ok(Found { entry: E の中の x の番号 })   // E に part x があるとき
     /// find("note:#1", None)   → Ok(Found { entry: 名前の無い 1 つ目のメモの番号 })   // メモが E を注釈するとき
     /// find("a:x", Some("A"))  → Ok(Found { entry: A の中のアクション x の番号 })   // action def A { action x; } のとき
-    /// find("a:start", Some("A")) → Err("開始と終了の記号は、順序の線から決まります。…")
+    /// find("a:start", Some("A")) → Err(edit.succession-marker-fixed{})
     /// find("s:on.low", Some("S")) → Ok(Found { entry: S の中の on の中の low の番号 })   // state def S { state on { state low; } } のとき
-    /// find("u:e", None)       → Err("操作する要素「」が見つかりません。…")   // 対象が無い
+    /// find("u:e", None)       → Err(edit.element-missing{key=})   // 対象が無い
     /// find("q:P::C::e", None) → Ok(Found { entry: C の中の e の番号 })   // 修飾名（図の対象は要らない）
-    /// find("q:P::Gone", None) → Err("操作する要素「P::Gone」が見つかりません。…")
-    /// find("Gone", None)      → Err("操作する要素「Gone」が見つかりません。…")
+    /// find("q:P::Gone", None) → Err(edit.element-missing{key=P::Gone})
+    /// find("Gone", None)      → Err(edit.element-missing{key=Gone})
     /// ```
     pub(super) fn find(&self, key: &str, ctx: Option<&str>) -> Result<Found, Refusal> {
         // 修飾名（`q:P::A`）は、画面の外から要素を指す形（ADR-0024 の 1）。表示中のファイルの宣言を先に探す（つないだ宣言の並びは、表示中のファイルが先）
@@ -414,7 +400,7 @@ impl Doc<'_> {
     /// ```text
     /// // d.text = "package P { part def C; }" のとき
     /// context("C")    → Ok(C の番号)
-    /// context("Gone") → Err("操作する要素「Gone」が見つかりません。…")
+    /// context("Gone") → Err(edit.element-missing{key=Gone})
     /// ```
     pub(super) fn context(&self, key: &str) -> Result<usize, Refusal> {
         self.m
@@ -584,7 +570,7 @@ pub(super) fn unique(base: &str, taken: impl Fn(&str) -> bool) -> String {
 /// add_node(Doc("// メモ\n/* @layout {} */\n"), "part def", None, Some("Model"))
 ///   → Ok(text = "// メモ\n\npackage Model {\n    part def NewPart {\n    }\n}\n\n/* @layout {} */\n")
 /// add_node(Doc("part def A;"), "part def", None, None)
-///   → Err("要素を配置するパッケージがありません")
+///   → Err(edit.element-no-package{})
 /// ```
 fn add_node(
     d: &Doc<'_>,
@@ -606,7 +592,7 @@ fn add_node(
             let (text, target) = append_package(d.text, name)?;
             (text, target, None)
         }
-        (None, None) => return Err(Message::verbatim("要素を配置するパッケージがありません")),
+        (None, None) => return Err(Message::new("edit.element-no-package")),
     };
     let names = d.names();
     let name = unique(lookup(NEW_NAME, kind).unwrap_or("NewElement"), |n| {
@@ -657,21 +643,19 @@ fn add_node(
 /// // d.text = "package P {\n    part def A;\n}\n" のとき
 /// add_element(d, "part def", "B", P)      → Ok(text = "package P {\n    part def A;\n    part def B;\n}\n")
 /// add_element(d, "attribute", "mass", A)  → Ok(text = "package P {\n    part def A {\n        attribute mass;\n    }\n}\n")
-/// add_element(d, "part def", "A", P)      → Err("「A」は既に使われています")
-/// add_element(d, "widget", "B", P)        → Err("「widget」は、追加できる要素の種類ではありません")
+/// add_element(d, "part def", "A", P)      → Err(edit.name-taken{name=A})
+/// add_element(d, "widget", "B", P)        → Err(edit.kind-not-addable{kind=widget})
 /// ```
 fn add_element(d: &Doc<'_>, kind: &str, name: &str, parent: &Found) -> Result<Change, Refusal> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(Message::verbatim("名前を入力してください"));
+        return Err(Message::new("edit.name-empty"));
     }
     if let Some(why) = bad_name_reason(name) {
         return Err(why);
     }
     if !crate::project::DECL_KINDS.contains(&kind) {
-        return Err(Message::verbatim(format!(
-            "「{kind}」は、追加できる要素の種類ではありません"
-        )));
+        return Err(Message::new("edit.kind-not-addable").arg("kind", kind));
     }
     let taken = d
         .e(parent.entry)
@@ -679,7 +663,7 @@ fn add_element(d: &Doc<'_>, kind: &str, name: &str, parent: &Found) -> Result<Ch
         .iter()
         .any(|&c| d.e(c).name == name);
     if taken {
-        return Err(Message::verbatim(format!("「{name}」は既に使われています")));
+        return Err(Message::new("edit.name-taken").arg("name", name));
     }
     let snippet = format!("{kind} {};", super::sysml_name(name));
     let (text, a, b) = insert_into(d.text, d.target(parent.entry), &snippet);
@@ -710,13 +694,11 @@ fn add_element(d: &Doc<'_>, kind: &str, name: &str, parent: &Found) -> Result<Ch
 /// append_package("part def A;", "M")
 ///   → Ok(("part def A;\n\npackage M {\n}\n", Target { start: 13, head_end: 23, close: Some(25) }))
 /// append_package("", "1x")
-///   → Err("パッケージ名は、英字か _ で始め、英字・数字・_ だけで付けてください")
+///   → Err(edit.package-name-invalid{})
 /// ```
 pub(super) fn append_package(text: &str, name: &str) -> Result<(String, Target), Refusal> {
     if !is_basic_name(name) {
-        return Err(Message::verbatim(
-            "パッケージ名は、英字か _ で始め、英字・数字・_ だけで付けてください",
-        ));
+        return Err(Message::new("edit.package-name-invalid"));
     }
     if let Some(why) = keyword_problem(name) {
         return Err(why);
@@ -793,7 +775,7 @@ fn layout_comment_start(text: &str) -> Option<usize> {
 /// add_usage(Doc("package P { part def E; part def C { part e : E; } }"), "C", "E")
 ///   → Ok(text = "package P { part def E; part def C { part e : E; part e2 : E; } }", select = Some("e2"))
 /// add_usage(Doc("package P { }"), "Gone", "E")
-///   → Err("操作する要素「Gone」が見つかりません。…")
+///   → Err(edit.element-missing{key=Gone})
 /// ```
 fn add_usage(d: &Doc<'_>, ctx: &str, ty: &str) -> Result<Change, Refusal> {
     let c = d.context(ctx)?;
@@ -858,13 +840,13 @@ pub(super) fn tokens(text: &str) -> Vec<(SyntaxKind, usize, &str)> {
 ///   → Ok(text = "package P { part def E { port e; } part def C { part g : E; part f : E; flow from g.e to f.e; } }")
 /// rename(Doc("package P { part def Kettle; part def C { part k : Kettle; } }"), Kettle, "電気 ケトル")
 ///   → Ok(text = "package P { part def '電気 ケトル'; part def C { part k : '電気 ケトル'; } }")
-/// rename(Doc("package P { part def A; part def B; }"), A, "B")  → Err("「B」は既に使われています")
-/// rename(Doc("package P { part def A; }"), A, "it's")           → Err(BAD_RENAME)
+/// rename(Doc("package P { part def A; part def B; }"), A, "B")  → Err(edit.name-taken{name=B})
+/// rename(Doc("package P { part def A; }"), A, "it's")           → Err(edit.name-bad-character{})
 /// ```
 fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
     let nn = nn.trim();
     if nn.is_empty() {
-        return Err(Message::verbatim("名前を入力してください"));
+        return Err(Message::new("edit.name-empty"));
     }
     if let Some(why) = bad_name_reason(nn) {
         return Err(why);
@@ -886,7 +868,7 @@ fn rename(d: &Doc<'_>, f: &Found, nn: &str) -> Result<Change, Refusal> {
             .enumerate()
             .any(|(i, x)| i != f.entry && x.pe == pe && x.name == nn);
     if taken {
-        return Err(Message::verbatim(format!("「{nn}」は既に使われています")));
+        return Err(Message::new("edit.name-taken").arg("name", nn));
     }
     Ok(rename_refs(d, f, nn))
 }
@@ -1264,7 +1246,7 @@ type Range = (usize, usize);
 /// delete(Doc("package P {\n    part def A;\n    part def C {\n        part def D;\n    }\n    part def B;\n}\n"), ["D", "C", "A"], None)
 ///   → Ok(text = "package P {\n    part def B;\n}\n")   // D は C と一緒に消える
 /// delete(Doc("package P { part def A; }"), ["u:x"], Some("Gone"))
-///   → Err("操作する要素「Gone」が見つかりません。…")
+///   → Err(edit.element-missing{key=Gone})
 /// ```
 fn delete(d: &Doc<'_>, keys: &[String], ctx: Option<&str>) -> Result<Change, Refusal> {
     let mut spans: Vec<(usize, usize)> = Vec::new();
@@ -1713,7 +1695,7 @@ impl Doc<'_> {
     /// ```text
     /// // d.text = "package P { part def E; part def C { part a : E; part b : E; flow from a to b; } }" のとき
     /// edge("flow|u:a|u:b|#1", Some("C")) → Ok(EdgeAt { src: flow の文の範囲, rel: Some(…) })
-    /// edge("x", None)                    → Err("操作する関係が見つかりません。テキストが先に変わった可能性があります")
+    /// edge("x", None)                    → Err(edit.relation-missing{})
     /// ```
     pub(super) fn edge(&self, id: &str, ctx: Option<&str>) -> Result<EdgeAt, Refusal> {
         let in_ctx = match ctx {
@@ -1730,11 +1712,7 @@ impl Doc<'_> {
                     rel: e.rel,
                 })
             })
-            .ok_or_else(|| {
-                Message::verbatim(
-                    "操作する関係が見つかりません。テキストが先に変わった可能性があります",
-                )
-            })
+            .ok_or_else(|| Message::new("edit.relation-missing"))
     }
 }
 
@@ -1755,7 +1733,7 @@ impl Doc<'_> {
 /// ```text
 /// delete_edge(Doc("package P {\n    part def A;\n    requirement def R;\n    satisfy R by A;\n}\n"), satisfy の線の ID, None)
 ///   → Ok(text = "package P {\n    part def A;\n    requirement def R;\n}\n")
-/// delete_edge(Doc("package P { }"), "x", None) → Err("操作する関係が見つかりません。…")
+/// delete_edge(Doc("package P { }"), "x", None) → Err(edit.relation-missing{})
 /// ```
 fn delete_edge(d: &Doc<'_>, id: &str, ctx: Option<&str>) -> Result<Change, Refusal> {
     let src = d.edge(id, ctx)?.src;
@@ -1795,8 +1773,8 @@ fn delete_edge(d: &Doc<'_>, id: &str, ctx: Option<&str>) -> Result<Change, Refus
 /// // R・A の名前が 'R one'・'A 1' のとき
 /// connect(d, "satisfy", A, R, None, None, None)  → Ok(text に "    satisfy 'R one' by 'A 1';\n}")
 /// // d.text = "package P { part def E; part def F; }" のとき
-/// connect(d, "flow", E, F, None, None, None)     → Err("2 つの部品を両方持つ部品定義がないため、流れを書けません")
-/// connect(d, "bogus", E, F, None, None, None)    → Err("関係の種類「bogus」は扱えません")
+/// connect(d, "flow", E, F, None, None, None)     → Err(edit.flow-no-common-owner{})
+/// connect(d, "bogus", E, F, None, None, None)    → Err(edit.relation-kind-unknown{kind=bogus})
 /// ```
 fn connect(
     d: &Doc<'_>,
@@ -1845,7 +1823,7 @@ fn connect(
         }
         "verify" => {
             if verifies(d, a.entry, b.entry) {
-                return Err(Message::verbatim(SAME_RELATION));
+                return Err(Message::new("edit.relation-exists"));
             }
             let has_objective =
                 d.p.rels
@@ -1892,9 +1870,8 @@ fn connect(
         "flow" => {
             let (parent, ua, ub) = match ctx {
                 Some(c) if !ea.is_def => (d.context(c)?, a.entry, b.entry),
-                _ => common_parent(d, &ea.name, &eb.name).ok_or_else(|| {
-                    Message::verbatim("2 つの部品を両方持つ部品定義がないため、流れを書けません")
-                })?,
+                _ => common_parent(d, &ea.name, &eb.name)
+                    .ok_or_else(|| Message::new("edit.flow-no-common-owner"))?,
             };
             // 内部ブロック図の入れ子の部品は、対象の中から `a.b` で指す
             let end = |u: usize, p: Option<&str>| {
@@ -1907,14 +1884,12 @@ fn connect(
             )
         }
         _ => {
-            return Err(Message::verbatim(format!(
-                "関係の種類「{rel}」は扱えません"
-            )));
+            return Err(Message::new("edit.relation-kind-unknown").arg("kind", rel));
         }
     };
     // package の直下に書く関係（満たす・導出）は、同じ文が既にあれば足さない（同じ関係が 2 行になるため。#244）
     if matches!(rel, "satisfy" | "derive") && has_statement(d.text, &snippet) {
-        return Err(Message::verbatim(SAME_RELATION));
+        return Err(Message::new("edit.relation-exists"));
     }
     let (text, a, b) = insert_into(d.text, host, &snippet);
     Ok(Change {
@@ -1923,9 +1898,6 @@ fn connect(
         flash: Some((a, b)),
     })
 }
-
-/// 同じ関係が既にあるときに、関係の追加を断る理由の文（画面にそのまま出す。ADR-0014）。
-const SAME_RELATION: &str = "同じ関係が既にあります";
 
 /// 検証 `v` の中に、要求 `r` を検証する文（`verify R;`）が既にあるか。参照は書いた場所から解決して比べる（`verify P::R;` も同じ関係）。
 ///
@@ -1992,10 +1964,10 @@ fn has_statement(text: &str, stmt: &str) -> bool {
 /// # 例
 ///
 /// ```text
-/// no_package() → "関係を追加するパッケージがありません"
+/// no_package() → edit.relation-no-package{}
 /// ```
 fn no_package() -> Refusal {
-    Message::verbatim("関係を追加するパッケージがありません")
+    Message::new("edit.relation-no-package")
 }
 
 /// a と b を部品として持つ最初の定義（flow を書く場所）と、その部品。部品は型の名前で探す（直下の `part` だけ）。

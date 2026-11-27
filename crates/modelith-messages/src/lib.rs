@@ -15,6 +15,7 @@ use unic_langid::LanguageIdentifier;
 const JA: &[(&str, &str)] = &[
     ("read-error", include_str!("../locales/ja/read-error.ftl")),
     ("syntax", include_str!("../locales/ja/syntax.ftl")),
+    ("edit", include_str!("../locales/ja/edit.ftl")),
 ];
 
 thread_local! {

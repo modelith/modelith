@@ -20,9 +20,9 @@ fn run(text: &str, json: &str) -> (String, Outcome) {
     (apply(text, &out.edits), out)
 }
 
-fn refused(text: &str, json: &str) -> String {
+fn refused(text: &str, json: &str) -> Message {
     let intent: Intent = serde_json::from_str(json).unwrap_or_else(|e| panic!("{json}: {e}"));
-    edit(text, &intent).expect_err(json).render()
+    edit(text, &intent).expect_err(json)
 }
 
 /// 光らせる範囲の文字列（編集後のテキストの UTF-16 の位置）。
@@ -44,7 +44,7 @@ fn edits_are_refused_while_braces_or_comments_are_open() {
         // Act
         let why = refused(text, r#"{"op":"addNode","kind":"requirement def"}"#);
         // Assert
-        assert_eq!(why, UNBALANCED, "{text}");
+        assert_eq!(why, Message::new("edit.unbalanced"), "{text}");
     }
 }
 
@@ -128,13 +128,16 @@ fn add_node_without_package_creates_one_before_layout_comment() {
 #[test]
 fn add_node_without_package_is_refused_unless_asked_to_create_one() {
     // 異常系：package が無く、作る名前も無い・作る名前が使えない
-    assert!(refused("part def A;", r#"{"op":"addNode","kind":"part def"}"#).contains("パッケージ"));
-    assert!(
+    assert_eq!(
+        refused("part def A;", r#"{"op":"addNode","kind":"part def"}"#),
+        Message::new("edit.element-no-package")
+    );
+    assert_eq!(
         refused(
             "",
             r#"{"op":"addNode","kind":"part def","newPackage":"1x"}"#
-        )
-        .contains("英字")
+        ),
+        Message::new("edit.package-name-invalid")
     );
 }
 
@@ -335,8 +338,9 @@ fn rename_allows_a_name_used_only_in_another_namespace() {
         after,
         "package P { part def inner { part inner; } part def B; }"
     );
-    assert!(
-        refused(text, r#"{"op":"rename","key":"A","name":"B"}"#).contains("既に使われています")
+    assert_eq!(
+        refused(text, r#"{"op":"rename","key":"A","name":"B"}"#),
+        Message::new("edit.name-taken").arg("name", "B")
     );
 }
 
@@ -362,11 +366,21 @@ fn rename_definition_leaves_the_same_name_in_other_packages() {
 fn rename_is_refused_for_bad_or_used_names_and_noop_for_same_name() {
     // 同値分割：使えない名前・既にある名前・同じ名前
     let text = "package P { part def A; part def B; }";
-    assert!(refused(text, r#"{"op":"rename","key":"A","name":"it's"}"#).contains("使えません"));
-    assert!(refused(text, r#"{"op":"rename","key":"A","name":"a\nb"}"#).contains("使えません"));
-    assert!(refused(text, r#"{"op":"rename","key":"A","name":"  "}"#).contains("名前を入力"));
-    assert!(
-        refused(text, r#"{"op":"rename","key":"A","name":"B"}"#).contains("既に使われています")
+    assert_eq!(
+        refused(text, r#"{"op":"rename","key":"A","name":"it's"}"#),
+        Message::new("edit.name-bad-character")
+    );
+    assert_eq!(
+        refused(text, r#"{"op":"rename","key":"A","name":"a\nb"}"#),
+        Message::new("edit.name-bad-character")
+    );
+    assert_eq!(
+        refused(text, r#"{"op":"rename","key":"A","name":"  "}"#),
+        Message::new("edit.name-empty")
+    );
+    assert_eq!(
+        refused(text, r#"{"op":"rename","key":"A","name":"B"}"#),
+        Message::new("edit.name-taken").arg("name", "B")
     );
     let (after, out) = run(text, r#"{"op":"rename","key":"A","name":"A"}"#);
     assert_eq!((after.as_str(), out.edits.len()), (text, 0));
@@ -376,8 +390,14 @@ fn rename_is_refused_for_bad_or_used_names_and_noop_for_same_name() {
 fn unknown_key_is_refused() {
     // 異常系：テキストが先に変わって、要素が無くなった
     let text = "package P { part def A; }";
-    assert!(refused(text, r#"{"op":"rename","key":"Gone","name":"X"}"#).contains("Gone"));
-    assert!(refused(text, r#"{"op":"delete","keys":["u:x"],"ctx":"Gone"}"#).contains("Gone"));
+    assert_eq!(
+        refused(text, r#"{"op":"rename","key":"Gone","name":"X"}"#),
+        Message::new("edit.element-missing").arg("key", "Gone")
+    );
+    assert_eq!(
+        refused(text, r#"{"op":"delete","keys":["u:x"],"ctx":"Gone"}"#),
+        Message::new("edit.element-missing").arg("key", "Gone")
+    );
 }
 
 // ---- 削除 ----
@@ -417,7 +437,10 @@ fn delete_unknown_note_is_refused() {
     // Act
     let msg = refused(text, r#"{"op":"delete","keys":["note:#1"]}"#);
     // Assert
-    assert!(msg.contains("note:#1"), "{msg}");
+    assert_eq!(
+        msg,
+        Message::new("edit.element-missing").arg("key", "note:#1")
+    );
 }
 
 #[test]
@@ -585,7 +608,10 @@ fn nested_part_and_junction_keys_are_found_in_the_context() {
     // Assert
     assert!(renamed.contains("part w : X;"), "{renamed}");
     assert!(!deleted.contains("connection k"), "{deleted}");
-    assert!(refused(text, r#"{"op":"delete","keys":["u:a.zz"],"ctx":"C"}"#).contains("u:a.zz"));
+    assert_eq!(
+        refused(text, r#"{"op":"delete","keys":["u:a.zz"],"ctx":"C"}"#),
+        Message::new("edit.element-missing").arg("key", "u:a.zz")
+    );
 }
 
 #[test]
@@ -709,7 +735,10 @@ fn delete_many_removes_the_trailing_ends_of_a_dependency_together() {
 
 #[test]
 fn delete_edge_with_unknown_id_is_refused() {
-    assert!(refused("package P { }", r#"{"op":"deleteEdge","id":"x"}"#).contains("関係"));
+    assert_eq!(
+        refused("package P { }", r#"{"op":"deleteEdge","id":"x"}"#),
+        Message::new("edit.relation-missing")
+    );
 }
 
 // ---- 関係の追加 ----
@@ -809,7 +838,11 @@ fn connect_refuses_a_relation_that_is_already_written() {
         r#"{"op":"connect","rel":"satisfy","from":"A","to":"R"}"#,
         r#"{"op":"connect","rel":"derive","from":"R","to":"S"}"#,
     ] {
-        assert_eq!(refused(text, json), "同じ関係が既にあります", "{json}");
+        assert_eq!(
+            refused(text, json),
+            Message::new("edit.relation-exists"),
+            "{json}"
+        );
     }
     // 向きが逆の導出は別の関係
     let (after, _) = run(
@@ -851,7 +884,7 @@ fn connect_verify_is_refused_when_the_same_requirement_is_already_verified() {
             r#"{"op":"connect","rel":"verify","from":"V","to":"R"}"#,
         );
         // Assert
-        assert_eq!(why, "同じ関係が既にあります", "{text}");
+        assert_eq!(why, Message::new("edit.relation-exists"), "{text}");
     }
 }
 
@@ -869,7 +902,7 @@ fn connect_verify_twice_from_an_empty_verification_writes_one_objective() {
         r#"{"op":"connect","rel":"verify","from":"V","to":"R"}"#,
     );
     // Assert
-    assert_eq!(why, "同じ関係が既にあります");
+    assert_eq!(why, Message::new("edit.relation-exists"));
     assert_eq!(once.matches("verify R;").count(), 1, "{once}");
 }
 
@@ -892,13 +925,16 @@ fn connect_flow_between_parts_and_ports() {
 fn connect_is_refused_when_flow_has_no_place_or_kind_is_unknown() {
     // 異常系
     let text = "package P { part def E; part def F; }";
-    assert!(refused(text, r#"{"op":"connect","rel":"flow","from":"E","to":"F"}"#).contains("流れ"));
-    assert!(
+    assert_eq!(
+        refused(text, r#"{"op":"connect","rel":"flow","from":"E","to":"F"}"#),
+        Message::new("edit.flow-no-common-owner")
+    );
+    assert_eq!(
         refused(
             text,
             r#"{"op":"connect","rel":"bogus","from":"E","to":"F"}"#
-        )
-        .contains("bogus")
+        ),
+        Message::new("edit.relation-kind-unknown").arg("kind", "bogus")
     );
 }
 
@@ -1092,12 +1128,12 @@ fn update_message_rewrites_name_and_type_keeping_then() {
         r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"沸かす","type":""}"#,
     );
     assert!(jp.contains("then message '沸かす' from b to a;"), "{jp}");
-    assert!(
+    assert_eq!(
         refused(
             SEQ,
             r#"{"op":"updateMessage","ctx":"S","id":"msg|1|m2","name":"it's","type":""}"#
-        )
-        .contains("「'」")
+        ),
+        Message::new("edit.name-bad-character")
     );
 }
 
@@ -1114,19 +1150,19 @@ fn move_message_swaps_statements_but_keeps_then_in_place() {
         "{after}"
     );
     // 境界値：先頭より上・末尾より下には動かせない
-    assert!(
+    assert_eq!(
         refused(
             SEQ,
             r#"{"op":"moveMessage","ctx":"S","id":"msg|0|m1","dir":-1}"#
-        )
-        .contains("動かせません")
+        ),
+        Message::new("edit.message-at-end")
     );
-    assert!(
+    assert_eq!(
         refused(
             SEQ,
             r#"{"op":"moveMessage","ctx":"S","id":"msg|1|m2","dir":1}"#
-        )
-        .contains("動かせません")
+        ),
+        Message::new("edit.message-at-end")
     );
 }
 
@@ -1172,8 +1208,14 @@ fn set_phase_empty_removes_own_block_but_not_inherited_one() {
     // Act・Assert（自分に書いた指定は外せる。継承しているものは外せない・同じ値は書かない）
     let (removed, _) = run(PH, r#"{"op":"setPhase","keys":["A"],"value":""}"#);
     assert!(removed.contains("part def A { }"), "{removed}");
-    assert!(refused(PH, r#"{"op":"setPhase","keys":["C"],"value":""}"#).contains("継承"));
-    assert!(refused(PH, r#"{"op":"setPhase","keys":["C"],"value":"b"}"#).contains("継承"));
+    assert_eq!(
+        refused(PH, r#"{"op":"setPhase","keys":["C"],"value":""}"#),
+        Message::new("edit.phase-inherited-cannot-clear")
+    );
+    assert_eq!(
+        refused(PH, r#"{"op":"setPhase","keys":["C"],"value":"b"}"#),
+        Message::new("edit.phase-already-inherited")
+    );
 }
 
 #[test]
@@ -1193,12 +1235,12 @@ fn set_phase_many_sets_each_definition() {
 
 #[test]
 fn set_phase_without_phase_definition_is_refused() {
-    assert!(
+    assert_eq!(
         refused(
             "package P { part def A; }",
             r#"{"op":"setPhase","keys":["A"],"value":"x"}"#
-        )
-        .contains("フェーズ")
+        ),
+        Message::new("edit.phase-undefined")
     );
 }
 
@@ -1215,7 +1257,10 @@ fn init_phases_adds_definitions_to_first_package_or_new_one() {
         assert_eq!(Doc::new(t).m.phases.map(|p| p.len()), Some(4), "{t}");
     }
     assert!(fresh.starts_with("package M {\n"), "{fresh}");
-    assert!(refused("package P;", r#"{"op":"initPhases"}"#).contains("{ }"));
+    assert_eq!(
+        refused("package P;", r#"{"op":"initPhases"}"#),
+        Message::new("edit.phase-package-without-body")
+    );
 }
 
 // ---- ポート ----
@@ -1261,26 +1306,28 @@ fn make_port_on_a_nested_part_keeps_the_whole_path() {
 
 #[test]
 fn make_port_is_refused_for_used_or_bad_names() {
-    assert!(
+    assert_eq!(
         refused(
             PORTS,
             r#"{"op":"makePort","key":"E","name":"o","dir":"in"}"#
-        )
-        .contains("既に使われています")
+        ),
+        Message::new("edit.port-name-taken")
+            .arg("name", "o")
+            .arg("owner", "E")
     );
-    assert!(
+    assert_eq!(
         refused(
             PORTS,
             r#"{"op":"makePort","key":"E","name":"x y","dir":"in"}"#
-        )
-        .contains("英字")
+        ),
+        Message::new("edit.port-name-invalid")
     );
-    assert!(
+    assert_eq!(
         refused(
             PORTS,
             r#"{"op":"makePort","key":"E","name":"x","dir":"up"}"#
-        )
-        .contains("up")
+        ),
+        Message::new("edit.port-direction-unknown").arg("direction", "up")
     );
 }
 
@@ -1369,46 +1416,47 @@ fn save_view_is_refused_without_name_targets_or_with_used_name() {
     for pkg in ["P", "Q"] {
         let json =
             format!(r#"{{"op":"saveView","name":"{pkg}","kind":"general","targets":["A"]}}"#);
-        assert!(
-            refused(&format!("{text}\npackage Q;"), &json).contains("パッケージの名前"),
+        assert_eq!(
+            refused(&format!("{text}\npackage Q;"), &json),
+            Message::new("edit.view-name-is-package").arg("name", pkg),
             "{pkg}"
         );
     }
     // 同じ package の直下の要素と同じ名前（#240）
-    assert!(
+    assert_eq!(
         refused(
             text,
             r#"{"op":"saveView","name":"A","kind":"general","targets":["A"]}"#
-        )
-        .contains("という名前の要素が既にあります")
+        ),
+        Message::new("edit.view-name-is-element").arg("name", "A")
     );
-    assert!(
+    assert_eq!(
         refused(
             text,
             r#"{"op":"saveView","name":" ","kind":"general","targets":["A"]}"#
-        )
-        .contains("名前")
+        ),
+        Message::new("edit.view-name-empty")
     );
-    assert!(
+    assert_eq!(
         refused(
             text,
             r#"{"op":"saveView","name":"v","kind":"general","targets":["A"]}"#
-        )
-        .contains("既にあります")
+        ),
+        Message::new("edit.view-exists").arg("name", "v")
     );
-    assert!(
+    assert_eq!(
         refused(
             text,
             r#"{"op":"saveView","name":"w","kind":"actionFlow","targets":[]}"#
-        )
-        .contains("対象を選んで")
+        ),
+        Message::new("edit.view-target-empty")
     );
-    assert!(
+    assert_eq!(
         refused(
             "part def A;",
             r#"{"op":"saveView","name":"w","kind":"general","targets":[]}"#
-        )
-        .contains("パッケージがありません")
+        ),
+        Message::new("edit.view-no-package")
     );
 }
 
@@ -1463,9 +1511,18 @@ fn rename_view_rewrites_only_the_view_name() {
 #[test]
 fn rename_view_is_refused_for_empty_used_or_missing_names() {
     let text = "package P { view v; view w; }";
-    assert!(refused(text, r#"{"op":"renameView","view":"v","name":"w"}"#).contains("既にあります"));
-    assert!(refused(text, r#"{"op":"renameView","view":"v","name":" "}"#).contains("名前を入力"));
-    assert!(refused(text, r#"{"op":"renameView","view":"gone","name":"x"}"#).contains("gone"));
+    assert_eq!(
+        refused(text, r#"{"op":"renameView","view":"v","name":"w"}"#),
+        Message::new("edit.view-exists").arg("name", "w")
+    );
+    assert_eq!(
+        refused(text, r#"{"op":"renameView","view":"v","name":" "}"#),
+        Message::new("edit.view-name-empty")
+    );
+    assert_eq!(
+        refused(text, r#"{"op":"renameView","view":"gone","name":"x"}"#),
+        Message::new("edit.view-missing").arg("name", "gone")
+    );
 }
 
 #[test]
@@ -1483,8 +1540,8 @@ fn view_names_follow_the_element_name_rule() {
             &format!(r#"{{"op":"renameView","view":"v","name":"{bad}"}}"#),
         );
         // Assert
-        assert_eq!(saved, super::ops::BAD_RENAME, "{bad}");
-        assert_eq!(renamed, super::ops::BAD_RENAME, "{bad}");
+        assert_eq!(saved, Message::new("edit.name-bad-character"), "{bad}");
+        assert_eq!(renamed, Message::new("edit.name-bad-character"), "{bad}");
     }
     let (after, _) = run(
         text,
@@ -1501,7 +1558,10 @@ fn delete_view_keeps_the_exposed_elements() {
     let (after, _) = run(text, r#"{"op":"deleteView","view":"v"}"#);
     // Assert
     assert_eq!(after, "package P {\n    part def A;\n}\n");
-    assert!(refused(text, r#"{"op":"deleteView","view":"gone"}"#).contains("gone"));
+    assert_eq!(
+        refused(text, r#"{"op":"deleteView","view":"gone"}"#),
+        Message::new("edit.view-missing").arg("name", "gone")
+    );
 }
 
 #[test]
@@ -1517,9 +1577,18 @@ fn add_to_and_remove_from_view() {
         "{added}"
     );
     assert!(removed.contains("    view v {\n    }"), "{removed}");
-    assert!(refused(text, r#"{"op":"addToView","view":"v","key":"A"}"#).contains("既に"));
-    assert!(refused(text, r#"{"op":"removeFromView","view":"v","key":"B"}"#).contains("まとめて"));
-    assert!(refused(text, r#"{"op":"addToView","view":"gone","key":"B"}"#).contains("gone"));
+    assert_eq!(
+        refused(text, r#"{"op":"addToView","view":"v","key":"A"}"#),
+        Message::new("edit.view-already-shows").arg("name", "A")
+    );
+    assert_eq!(
+        refused(text, r#"{"op":"removeFromView","view":"v","key":"B"}"#),
+        Message::new("edit.view-shown-together").arg("name", "B")
+    );
+    assert_eq!(
+        refused(text, r#"{"op":"addToView","view":"gone","key":"B"}"#),
+        Message::new("edit.view-missing").arg("name", "gone")
+    );
 }
 
 // ---- アクションの流れの図（ActionFlowView、8.2.3.17） ----
@@ -1573,7 +1642,7 @@ fn start_and_done_cannot_be_deleted_on_their_own() {
     // Act
     let why = refused(FLOW, del);
     // Assert
-    assert!(why.contains("開始と終了の記号"), "{why}");
+    assert_eq!(why, Message::new("edit.succession-marker-fixed"));
 }
 
 #[test]
@@ -1582,8 +1651,11 @@ fn unknown_flow_line_or_element_is_refused() {
     let line = r#"{"op":"deleteEdge","id":"succession|a:x|a:y|#1","ctx":"A"}"#;
     let node = r#"{"op":"delete","keys":["a:x"],"ctx":"A"}"#;
     // Act / Assert
-    assert!(refused(FLOW, line).contains("関係"));
-    assert!(refused(FLOW, node).contains("a:x"));
+    assert_eq!(refused(FLOW, line), Message::new("edit.relation-missing"));
+    assert_eq!(
+        refused(FLOW, node),
+        Message::new("edit.element-missing").arg("key", "a:x")
+    );
 }
 
 #[test]
@@ -1612,9 +1684,18 @@ fn connect_succession_refuses_start_targets_and_unnamed_elements() {
     let from_done = r#"{"op":"connect","rel":"succession","from":"a:done","to":"a:b","ctx":"A"}"#;
     let unnamed = r#"{"op":"connect","rel":"succession","from":"a:a","to":"a:#1","ctx":"A"}"#;
     // Act / Assert
-    assert!(refused(FLOW, into_start).contains("開始の記号"));
-    assert!(refused(FLOW, from_done).contains("終了の記号"));
-    assert!(refused(text, unnamed).contains("名前の無い要素"));
+    assert_eq!(
+        refused(FLOW, into_start),
+        Message::new("edit.succession-into-start")
+    );
+    assert_eq!(
+        refused(FLOW, from_done),
+        Message::new("edit.succession-from-done")
+    );
+    assert_eq!(
+        refused(text, unnamed),
+        Message::new("edit.succession-unnamed")
+    );
 }
 
 #[test]
@@ -1631,7 +1712,10 @@ fn connect_succession_inside_a_nested_body_writes_into_that_body() {
         after.contains("            action wait;\n            first heat then wait;\n        }"),
         "{after}"
     );
-    assert!(refused(text, across).contains("同じアクションの中"));
+    assert_eq!(
+        refused(text, across),
+        Message::new("edit.succession-across-actions")
+    );
 }
 
 #[test]
@@ -1665,13 +1749,13 @@ fn connect_succession_twice_is_refused_instead_of_writing_the_same_line() {
     let (after_guarded, _) = run(FLOW, guarded);
     let (after_reverse, _) = run(FLOW, reverse);
     // Assert
-    assert_eq!(reason, "同じ順序の線が既にあります");
+    assert_eq!(reason, Message::new("edit.succession-exists"));
     assert!(after_guarded.contains("first d then b;"), "{after_guarded}");
     assert!(after_reverse.contains("first b then d;"), "{after_reverse}");
     // 足した線をもう一度足すと断る
     assert_eq!(
         refused(&after_reverse, reverse),
-        "同じ順序の線が既にあります"
+        Message::new("edit.succession-exists")
     );
 }
 
@@ -1720,7 +1804,7 @@ fn start_symbol_of_a_state_machine_cannot_be_deleted() {
     // Act
     let why = refused(STATES, del);
     // Assert
-    assert!(why.contains("開始と終了の記号"), "{why}");
+    assert_eq!(why, Message::new("edit.state-marker-fixed"));
 }
 
 #[test]
@@ -1729,8 +1813,11 @@ fn unknown_transition_or_state_is_refused() {
     let line = r#"{"op":"deleteEdge","id":"transition|s:x|s:y|#1","ctx":"S"}"#;
     let node = r#"{"op":"delete","keys":["s:x"],"ctx":"S"}"#;
     // Act / Assert
-    assert!(refused(STATES, line).contains("関係"));
-    assert!(refused(STATES, node).contains("s:x"));
+    assert_eq!(refused(STATES, line), Message::new("edit.relation-missing"));
+    assert_eq!(
+        refused(STATES, node),
+        Message::new("edit.element-missing").arg("key", "s:x")
+    );
 }
 
 #[test]
@@ -1744,7 +1831,7 @@ fn connect_transition_twice_is_refused_instead_of_writing_the_same_line() {
     let (with_reverse, _) = run(&once, reverse);
     // Assert
     assert_eq!(once.matches("transition first off then on;").count(), 1);
-    assert!(reason.starts_with("同じ遷移が既にあります"), "{reason}");
+    assert_eq!(reason, Message::new("edit.transition-exists"));
     assert!(
         with_reverse.contains("transition first on then off;"),
         "{with_reverse}"
@@ -1802,10 +1889,22 @@ fn connect_transition_refuses_start_and_done_misuse_and_unnamed_states() {
         r#"{"op":"connect","rel":"transition","from":"s:a","to":"s:b#done","ctx":"S"}"#;
     let unnamed = r#"{"op":"connect","rel":"transition","from":"s:a","to":"s:#1","ctx":"S"}"#;
     // Act / Assert
-    assert!(refused(STATES, into_start).contains("開始の記号へ"));
-    assert!(refused(STATES, from_start).contains("開始の記号から"));
-    assert!(refused(text, other_done).contains("終了の記号へは"));
-    assert!(refused(text, unnamed).contains("名前の無い状態"));
+    assert_eq!(
+        refused(STATES, into_start),
+        Message::new("edit.transition-into-start")
+    );
+    assert_eq!(
+        refused(STATES, from_start),
+        Message::new("edit.transition-second-entry")
+    );
+    assert_eq!(
+        refused(text, other_done),
+        Message::new("edit.transition-done-outside")
+    );
+    assert_eq!(
+        refused(text, unnamed),
+        Message::new("edit.transition-unnamed-state")
+    );
 }
 
 // ---- 説明（doc）の編集（F-EDIT-12） ----
@@ -2053,41 +2152,44 @@ fn rename_feature_stops_on_a_usage_that_redefines_its_own_general() {
 fn set_attribute_is_refused_for_bad_or_used_names_and_stray_characters() {
     // 同値分割：空の名前・既にある名前・型や値に ; { } 改行・見つからない属性・本体のある属性
     let text = "package P { part def A { attribute m; attribute n; attribute b { } } }";
-    assert!(refused(text, r#"{"op":"setAttribute","key":"A","name":" "}"#).contains("名前を入力"));
-    assert!(
+    assert_eq!(
+        refused(text, r#"{"op":"setAttribute","key":"A","name":" "}"#),
+        Message::new("edit.attribute-name-empty")
+    );
+    assert_eq!(
         refused(
             text,
             r#"{"op":"setAttribute","key":"A","attr":"m","name":"n"}"#
-        )
-        .contains("既にあります")
+        ),
+        Message::new("edit.attribute-exists").arg("name", "n")
     );
-    assert!(
+    assert_eq!(
         refused(
             text,
             r#"{"op":"setAttribute","key":"A","name":"x","value":"1; part q"}"#
-        )
-        .contains("書けません")
+        ),
+        Message::new("edit.attribute-text-invalid")
     );
-    assert!(
+    assert_eq!(
         refused(
             text,
             r#"{"op":"setAttribute","key":"A","name":"x","type":"T = 1"}"#
-        )
-        .contains("書けません")
+        ),
+        Message::new("edit.attribute-text-invalid")
     );
-    assert!(
+    assert_eq!(
         refused(
             text,
             r#"{"op":"setAttribute","key":"A","attr":"gone","name":"x"}"#
-        )
-        .contains("見つかりません")
+        ),
+        Message::new("edit.attribute-missing").arg("name", "gone")
     );
-    assert!(
+    assert_eq!(
         refused(
             text,
             r#"{"op":"setAttribute","key":"A","attr":"b","name":"b2"}"#
-        )
-        .contains("テキストで直して")
+        ),
+        Message::new("edit.attribute-has-body")
     );
 }
 
@@ -2102,9 +2204,9 @@ fn remove_attribute_removes_the_line() {
         after,
         "package P {\n    part def A {\n        attribute n;\n    }\n}\n"
     );
-    assert!(
-        refused(text, r#"{"op":"removeAttribute","key":"A","attr":"gone"}"#)
-            .contains("見つかりません")
+    assert_eq!(
+        refused(text, r#"{"op":"removeAttribute","key":"A","attr":"gone"}"#),
+        Message::new("edit.attribute-missing").arg("name", "gone")
     );
 }
 
@@ -2133,7 +2235,7 @@ fn element_of_another_file_is_not_rewritten() {
         assert_eq!(
             got,
             Err(Refused {
-                reason: Message::verbatim(IN_OTHER_FILE),
+                reason: Message::new("edit.in-other-file"),
                 file: Some(1),
                 shown_in: None
             }),
@@ -2312,7 +2414,7 @@ fn package_of_another_file_is_not_chosen_when_the_open_file_has_none() {
     assert_eq!(
         none,
         Err(Refused {
-            reason: Message::verbatim("要素を配置するパッケージがありません"),
+            reason: Message::new("edit.element-no-package"),
             file: None,
             shown_in: None
         })
@@ -2320,9 +2422,7 @@ fn package_of_another_file_is_not_chosen_when_the_open_file_has_none() {
     assert_eq!(
         view,
         Err(Refused {
-            reason: Message::verbatim(
-                "図を置くパッケージがありません。先にパッケージを作ってください"
-            ),
+            reason: Message::new("edit.view-no-package"),
             file: None,
             shown_in: None
         })
@@ -2377,7 +2477,7 @@ fn element_of_another_file_is_still_not_rewritten_when_the_open_file_has_the_sam
         assert_eq!(
             got,
             Err(Refused {
-                reason: Message::verbatim(IN_OTHER_FILE),
+                reason: Message::new("edit.in-other-file"),
                 file: Some(1),
                 shown_in: None
             }),
@@ -2541,7 +2641,7 @@ fn names_with_double_colon_are_refused_with_the_reason() {
             // Act
             let why = refused(text, &json);
             // Assert
-            assert_eq!(why, super::ops::BAD_NAME_SEPARATOR, "{json}");
+            assert_eq!(why, Message::new("edit.name-has-separator"), "{json}");
         }
     }
 }
@@ -2576,7 +2676,7 @@ fn deleting_an_element_that_a_view_of_another_file_shows_is_refused_with_the_rea
         assert_eq!(
             got,
             Err(Refused {
-                reason: Message::verbatim(SHOWN_IN_OTHER_FILE),
+                reason: Message::new("edit.shown-in-other-file"),
                 file: None,
                 shown_in: Some(1)
             }),
@@ -2596,7 +2696,7 @@ fn deleting_an_element_of_another_file_is_still_refused_as_an_element_of_that_fi
     assert_eq!(
         got,
         Err(Refused {
-            reason: Message::verbatim(IN_OTHER_FILE),
+            reason: Message::new("edit.in-other-file"),
             file: Some(1),
             shown_in: None
         })
@@ -2695,9 +2795,9 @@ fn qualified_name_key_that_names_nothing_is_refused_with_the_name() {
     assert_eq!(
         got,
         [
-            "操作する要素「Shop::Nope」が見つかりません。テキストが先に変わった可能性があります",
-            "操作する要素「Cart」が見つかりません。テキストが先に変わった可能性があります",
-            "操作する要素「」が見つかりません。テキストが先に変わった可能性があります",
+            Message::new("edit.element-missing").arg("key", "Shop::Nope"),
+            Message::new("edit.element-missing").arg("key", "Cart"),
+            Message::new("edit.element-missing").arg("key", ""),
         ]
     );
 }
@@ -2712,7 +2812,7 @@ fn qualified_name_key_of_another_file_is_not_rewritten() {
     // Assert
     assert_eq!(
         (got.reason, got.file),
-        (Message::verbatim(IN_OTHER_FILE), Some(1))
+        (Message::new("edit.in-other-file"), Some(1))
     );
 }
 
@@ -2779,11 +2879,11 @@ fn add_element_refuses_bad_names_kinds_parents_and_duplicates() {
     assert_eq!(
         got,
         [
-            "名前を入力してください",
-            super::ops::BAD_NAME_SEPARATOR,
-            "「widget」は、追加できる要素の種類ではありません",
-            "「A」は既に使われています",
-            "操作する要素「Nope」が見つかりません。テキストが先に変わった可能性があります",
+            Message::new("edit.name-empty"),
+            Message::new("edit.name-has-separator"),
+            Message::new("edit.kind-not-addable").arg("kind", "widget"),
+            Message::new("edit.name-taken").arg("name", "A"),
+            Message::new("edit.element-missing").arg("key", "Nope"),
         ]
     );
 }
@@ -2798,6 +2898,6 @@ fn add_element_into_an_element_of_another_file_is_refused() {
     // Assert
     assert_eq!(
         (got.reason, got.file),
-        (Message::verbatim(IN_OTHER_FILE), Some(1))
+        (Message::new("edit.in-other-file"), Some(1))
     );
 }

@@ -51,13 +51,15 @@ pub(super) fn machine_of<'d>(d: &'d Doc<'_>, c: usize) -> Option<&'d StateMachin
 /// // d.text = "package P { state def S { entry; then a; state a; } }" のとき
 /// entry_of(d, S の番号, "s:a")      → Ok(Some(a の番号))
 /// entry_of(d, S の番号, "s:x")      → Ok(None)
-/// entry_of(d, S の番号, "s:#start") → Err("開始と終了の記号は、遷移から決まります。…")
+/// entry_of(d, S の番号, "s:#start") → Err(edit.state-marker-fixed{})
 /// ```
 pub(super) fn entry_of(d: &Doc<'_>, c: usize, key: &str) -> Result<Option<usize>, Refusal> {
     let Some(n) = machine_of(d, c).and_then(|f| f.nodes.iter().find(|n| n.key == key)) else {
         return Ok(None);
     };
-    n.entry.map(Some).ok_or_else(|| Message::verbatim("開始と終了の記号は、遷移から決まります。記号を消すときは、つながる遷移を削除してください"))
+    n.entry
+        .map(Some)
+        .ok_or_else(|| Message::new("edit.state-marker-fixed"))
 }
 
 /// 状態遷移の図の線（遷移）の ID と、消す範囲（遷移の文）。
@@ -117,9 +119,9 @@ pub(super) fn edges(d: &Doc<'_>, c: usize) -> Vec<(String, EdgeAt)> {
 /// // d.text = "package P {\n    state def S {\n        state a;\n        state b;\n    }\n}\n" のとき
 /// add_transition(d, "s:a", "s:b", Some("S"))
 ///   → Ok(text に "        state b;\n        transition first a then b;\n    }")
-/// add_transition(d, "s:a", "s:#start", Some("S")) → Err("開始の記号へ向かう遷移は引けません")
+/// add_transition(d, "s:a", "s:#start", Some("S")) → Err(edit.transition-into-start{})
 /// // 足した後のテキストにもう一度
-/// add_transition(d, "s:a", "s:b", Some("S")) → Err("同じ遷移が既にあります。…")
+/// add_transition(d, "s:a", "s:b", Some("S")) → Err(edit.transition-exists{})
 /// ```
 pub(super) fn add_transition(
     d: &Doc<'_>,
@@ -138,21 +140,17 @@ pub(super) fn add_transition(
     };
     let (a, b) = (node(from)?, node(to)?);
     if b.kind == "start" {
-        return Err(Message::verbatim("開始の記号へ向かう遷移は引けません"));
+        return Err(Message::new("edit.transition-into-start"));
     }
     if a.kind == "done" {
-        return Err(Message::verbatim("終了の記号から始まる遷移は引けません"));
+        return Err(Message::new("edit.transition-from-done"));
     }
     if a.kind == "start" {
-        return Err(Message::verbatim(
-            "開始の記号からの遷移は、本体ごとに 1 つです。行き先を変えるときは、テキストの「entry; then …;」を書き換えてください",
-        ));
+        return Err(Message::new("edit.transition-second-entry"));
     }
     let same_body = a.container == b.container;
     if b.kind == "done" && !same_body {
-        return Err(Message::verbatim(
-            "終了の記号へは、同じ状態の中の状態からだけ遷移を引けます",
-        ));
+        return Err(Message::new("edit.transition-done-outside"));
     }
     let (body, source, target) = if same_body {
         let body = match &a.container {
@@ -169,9 +167,7 @@ pub(super) fn add_transition(
         .iter()
         .any(|e| e.from == from && e.to == to && e.label.is_empty())
     {
-        return Err(Message::verbatim(
-            "同じ遷移が既にあります。もう 1 つ足すときは、先にテキストで、いまの遷移にきっかけや条件を書いてください",
-        ));
+        return Err(Message::new("edit.transition-exists"));
     }
     let snippet = format!("transition first {source} then {target};");
     let (text, start, end) = insert_into(d.text, d.target(body), &snippet);
@@ -199,7 +195,7 @@ pub(super) fn add_transition(
 /// reference(s:on.low, true)  → Ok("on.low")
 /// reference(s:on.low, false) → Ok("low")
 /// reference(s:#done, false)  → Ok("done")
-/// reference(s:#1, false)     → Err("名前の無い状態は、図から遷移でつなげません。…")
+/// reference(s:#1, false)     → Err(edit.transition-unnamed-state{})
 /// ```
 fn reference(n: &StateNode, path: bool) -> Result<String, Refusal> {
     if n.kind == "done" {
@@ -207,9 +203,7 @@ fn reference(n: &StateNode, path: bool) -> Result<String, Refusal> {
     }
     let walk = n.key.strip_prefix("s:").unwrap_or(&n.key);
     if n.name.is_empty() || walk.contains('#') {
-        return Err(Message::verbatim(
-            "名前の無い状態は、図から遷移でつなげません。テキストで名前を付けてから線を引いてください",
-        ));
+        return Err(Message::new("edit.transition-unnamed-state"));
     }
     if !path {
         return Ok(sysml_name(&n.name));

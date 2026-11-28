@@ -22,4 +22,14 @@ describe("renamedMessage（F-EDIT-3。#266）", () => {
     // Assert
     expect(msg).toBe("「A」を「Lamp」に変更しました");
   });
+  it("ほかのファイルの参照も変えたときは、そのファイルの名前と、未保存であることを示す（ADR-0021）", () => {
+    // Act
+    const one = renamedMessage("Cart", "Basket", "part def Cart;", "part def Basket;", ["app.sysml"]);
+    const many = renamedMessage("Cart", "Basket", "part def Cart;", "part def Basket;", ["a.sysml", "b.sysml", "c.sysml", "d.sysml"]);
+    // Assert（境界値：1 つ・上限を超える数）
+    expect(one).toBe("「Cart」を「Basket」に変更しました。「app.sysml」で使っている箇所も変えました。「app.sysml」は未保存です");
+    expect(many).toBe(
+      "「Cart」を「Basket」に変更しました。「a.sysml」「b.sysml」「c.sysml」ほか 1 件で使っている箇所も変えました。「a.sysml」「b.sysml」「c.sysml」ほか 1 件は未保存です",
+    );
+  });
 });

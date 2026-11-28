@@ -1,7 +1,7 @@
 // ファイル操作の UI（ADR-0010）：エクスプローラー・ファイルメニュー・ショートカット・未保存の警告・外部での変更の読み直し。
 // 判断はワークスペース（web/src/workspace）に任せ、ここは操作を受けて結果を画面に出すだけ。
 
-import { readLayout, removeLayoutComment, type ProjectFileResult } from "../core";
+import { readLayout, removeLayoutComment, type ProjectFileResult, type RewrittenFile } from "../core";
 import { BrowserFileProvider, type PickedFile } from "../files/browser-file";
 import { handleStoreTooNew, idbHandleStore } from "../files/idb-handle-store";
 import { hasFsAccess, LocalFolderProvider, MAX_TREE_FILES, type FsApi } from "../files/local-folder";
@@ -20,7 +20,7 @@ import { globalShortcut } from "./keyboard";
 import { modalOpen } from "./modal";
 import { flushEdit } from "./editor";
 import { download } from "./export";
-import { dropHistory, recordHistory, useHistory } from "./history";
+import { dropHistory, recordHistory, seedHistory, useHistory } from "./history";
 import { layoutFromJson, type Layout } from "../render/layout";
 import { isEmptyLayout, keepExtras, layoutNotSavedNote, parseLayoutFile, serializeLayout, writeLock } from "../render/layout-file";
 import { clearSel, S } from "./state";
@@ -39,7 +39,7 @@ import { scrollEditorTo } from "./render";
 import { editStartText, externalNotice } from "./external-change";
 import { saveErrorText } from "./error-text";
 import { opsIdle } from "./intent";
-import { onOpenProjectFile } from "./other-file";
+import { onOpenProjectFile, onRewriteProjectFiles } from "./other-file";
 
 const AUTOSAVE_KEY = "modelith-autosave";
 const SIDE_KEY = "modelith-side";
@@ -634,6 +634,24 @@ function openInFolder(path: string, at?: number): void {
     },
     (err: unknown) => toastFailure(t("app-files-open-failed"), err),
   );
+}
+
+/**
+ * プロジェクトのほかのファイルを、書き換えた後のテキストにする（名前の変更で、ほかのファイルの参照を変えるとき。ADR-0021、F-EDIT-3）。
+ * ファイルは開いて未保存の変更として持つ（ディスクには書かない）。書き換える前の版を履歴に残し、自動保存が有効なら保存を予約する。
+ *
+ * @param files ファイルのパスと、書き換えた後のテキスト
+ * @returns 書き換えたファイルの名前。どれかを読めない・他のアプリで変わっていたら、どれも書き換えずに例外（Error）で拒否する
+ * @example
+ * await rewriteOthers([{ path: "app.sysml", text: "package App { part c : Shop::Basket; }" }]) // → ["app.sysml"]（app.sysml が開いて未保存になる）
+ */
+async function rewriteOthers(files: readonly RewrittenFile[]): Promise<string[]> {
+  const done = await ws.rewriteInFolder(files);
+  for (const { doc, before } of done) {
+    seedHistory(doc.key, before, doc.layout);
+    auto.notify(doc.key);
+  }
+  return done.map(({ doc }) => doc.name);
 }
 
 /**
@@ -1873,6 +1891,7 @@ export async function initFiles(sample: Sample, opts: { samples?: SampleChoice[]
   });
   // 設定ファイルの読み取りの状態を先に変えてから描く
   onOpenProjectFile((path) => openInFolder(path));
+  onRewriteProjectFiles(rewriteOthers);
   onAnalyzedProject(scheduleProjectProblems);
   $("#problems").addEventListener("click", (ev) => {
     // ほかのファイルの行は、そのファイルを開いてその行へ移る（ADR-0021 §6）

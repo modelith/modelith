@@ -1,6 +1,6 @@
 // 図の操作を意図としてコアに渡す（ADR-0016）。コアが返したテキストの編集を当て、画面への反映は呼び出し側が setText で行う。
 
-import { applyTextEdits, STALE_EDIT, type Intent } from "../core";
+import { applyTextEdits, STALE_EDIT, type Intent, type RewrittenFile } from "../core";
 import { guideToFile, guideToShowingFile } from "./other-file";
 import { S } from "./state";
 import { coreClient, toast } from "./sync";
@@ -11,6 +11,8 @@ export interface Performed {
   at: number;
   select?: string;
   flash?: [number, number];
+  /** 名前の変更で、ほかのファイルに書いた参照も変わるとき、そのファイルの書き換えた後のテキスト（ADR-0021）。 */
+  elsewhere?: RewrittenFile[];
 }
 
 /** コアの返事を待っている図の操作。 */
@@ -59,5 +61,5 @@ export async function perform(intent: Intent): Promise<Performed | null> {
     else toast(r.refused);
     return null;
   }
-  return { text: applyTextEdits(base, r.edits), at: r.edits[0]?.start ?? 0, select: r.select, flash: r.flash };
+  return { text: applyTextEdits(base, r.edits), at: r.edits[0]?.start ?? 0, select: r.select, flash: r.flash, elsewhere: r.elsewhere };
 }

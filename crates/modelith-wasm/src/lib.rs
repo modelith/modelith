@@ -294,6 +294,8 @@ pub fn check_plugin_message(text: &str, message: &str, permissions: &str) -> Str
 thread_local! {
     /// プロジェクトのファイルごとの解析結果（ADR-0021 §3）。Worker が 1 つ持ち、解析と編集でつなぐ。
     static FILES: RefCell<Files> = RefCell::new(Files::default());
+    /// プロジェクトのファイルごとのテキスト（名前の変更で、ほかのファイルの参照を書き換えるのに使う。ADR-0021）。
+    static TEXTS: RefCell<BTreeMap<String, String>> = const { RefCell::new(BTreeMap::new()) };
     /// 表示中のファイルのパス（プロジェクトのフォルダからの）。フォルダの外のファイルなら None。
     static FOCUS: RefCell<Option<String>> = const { RefCell::new(None) };
     /// プロジェクトの設定で選んだ知らせの重さ（F-EDIT-11）。プロジェクトが無ければ空（既定の重さ）。
@@ -316,6 +318,7 @@ thread_local! {
 #[wasm_bindgen(js_name = setProjectFile)]
 pub fn set_project_file(path: &str, text: &str) {
     FILES.with(|f| f.borrow_mut().set(path, text));
+    TEXTS.with(|t| t.borrow_mut().insert(path.to_owned(), text.to_owned()));
 }
 
 /// プロジェクトのファイルを忘れる（消した・名前を変えたとき）。
@@ -332,6 +335,7 @@ pub fn set_project_file(path: &str, text: &str) {
 #[wasm_bindgen(js_name = removeProjectFile)]
 pub fn remove_project_file(path: &str) {
     FILES.with(|f| f.borrow_mut().remove(path));
+    TEXTS.with(|t| t.borrow_mut().remove(path));
 }
 
 /// プロジェクトのファイルをすべて忘れる（フォルダを閉じた・別のフォルダを開いたとき）。
@@ -344,6 +348,7 @@ pub fn remove_project_file(path: &str) {
 #[wasm_bindgen(js_name = clearProjectFiles)]
 pub fn clear_project_files() {
     FILES.with(|f| f.borrow_mut().clear());
+    TEXTS.with(|t| t.borrow_mut().clear());
 }
 
 /// 表示中のファイルのパスを決める（そのパスの覚えたファイルは、ほかのファイルとしてつながない）。
@@ -881,7 +886,7 @@ fn refused_json(reason: &Message) -> String {
 /// ```
 fn edit_json(text: &str, intent: &str) -> String {
     let (paths, parsed) = others();
-    edit_json_in(text, &paths, parsed, intent)
+    TEXTS.with(|t| edit_json_in(text, &paths, parsed, &t.borrow(), intent))
 }
 
 /// `edit_json` の本体。ほかのファイルとつないだモデルで意図を当て、ほかのファイルの要素を書き換えようとしたら、
@@ -892,11 +897,13 @@ fn edit_json(text: &str, intent: &str) -> String {
 /// - `text`：表示中のファイルの今のテキスト全体
 /// - `paths`：ほかのファイルのパス（`parsed` と同じ順）
 /// - `parsed`：ほかのファイルの解析結果
+/// - `texts`：プロジェクトのファイルのテキスト（パス → テキスト）
 /// - `intent`：図の操作の意図の JSON
 ///
 /// # 戻り値
 ///
-/// 編集の結果の JSON。断るときは `{"refused":"…"}`、ほかのファイルの要素なら `{"refused":"…","file":"parts.sysml"}`、
+/// 編集の結果の JSON。名前の変更で、ほかのファイルに書いた参照も変わるときは、そのファイルの書き換えた後のテキストを
+/// `"elsewhere":[{"path":"app.sysml","text":"…"}]` として添える（何も書かない。どう持つかは画面が決める。ADR-0021）。断るときは `{"refused":"…"}`、ほかのファイルの要素なら `{"refused":"…","file":"parts.sysml"}`、
 /// 表示中のファイルの要素をほかのファイルの図が出しているので削除できないなら `{"refused":"…","shownIn":"views.sysml"}`。
 ///
 /// # 例
@@ -905,14 +912,27 @@ fn edit_json(text: &str, intent: &str) -> String {
 /// edit_json_in("package App { part c : Parts::Car; }", ["parts.sysml"], [parts], r#"{"op":"rename","key":"Car","name":"Bus"}"#)
 ///   → r#"{"refused":"この要素はほかのファイルにあります。…","file":"parts.sysml"}"#
 /// ```
-fn edit_json_in(text: &str, paths: &[String], parsed: Vec<ParseResult>, intent: &str) -> String {
+fn edit_json_in(
+    text: &str,
+    paths: &[String],
+    parsed: Vec<ParseResult>,
+    texts: &BTreeMap<String, String>,
+    intent: &str,
+) -> String {
     install_renderer();
     let intent = match serde_json::from_str::<modelith_core::edit::Intent>(intent) {
         Ok(i) => i,
         Err(e) => return refused_json(&unreadable("wasm.intent-unreadable", &e)),
     };
     let json = match modelith_core::edit::edit_in(text, parsed, &intent) {
-        Ok(out) => serde_json::to_string(&out),
+        Ok(out) => {
+            let elsewhere = if out.edits.is_empty() {
+                Vec::new()
+            } else {
+                renamed_elsewhere(text, paths, texts, &intent)
+            };
+            serde_json::to_string(&Edited { out, elsewhere })
+        }
         Err(r) => {
             let path_of = |file: Option<usize>| file.and_then(|f| paths.get(f.checked_sub(1)?));
             Ok(match (path_of(r.file), path_of(r.shown_in)) {
@@ -927,6 +947,62 @@ fn edit_json_in(text: &str, paths: &[String], parsed: Vec<ParseResult>, intent: 
         }
     };
     json.unwrap_or_else(|e| refused_json(&Message::verbatim(e.to_string())))
+}
+
+/// 編集の結果に、ほかのファイルの書き換えた後のテキストを添えたもの（`edit_json_in` の返事）。
+#[derive(Serialize)]
+struct Edited {
+    #[serde(flatten)]
+    out: modelith_core::edit::Outcome,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    elsewhere: Vec<Rewritten>,
+}
+
+/// ほかのファイルの、書き換えた後のテキスト（名前の変更で参照が変わったファイル）。
+#[derive(Serialize)]
+struct Rewritten {
+    path: String,
+    text: String,
+}
+
+/// 名前の変更に合わせて、覚えたほかのファイルに書いた参照を書き換えた後のテキストを作る（`edit_json_in` の一部。ADR-0021）。
+///
+/// # 引数
+///
+/// - `text`：表示中のファイルの今のテキスト（名前を変える前のもの）
+/// - `paths`：ほかのファイルのパス
+/// - `texts`：プロジェクトのファイルのテキスト（パス → テキスト。無いパスは飛ばす）
+/// - `intent`：図の操作の意図
+///
+/// # 戻り値
+///
+/// 参照の変わったファイルのパスと、書き換えた後のテキスト。意図が名前の変更でない・参照が無ければ空。
+///
+/// # 例
+///
+/// ```text
+/// // text = "package P { part def A; }"、app.sysml「package Q { part x : P::A; }」
+/// renamed_elsewhere(text, ["app.sysml"], texts, Rename { key: "A", name: "B" })
+///   → [Rewritten { path: "app.sysml", text: "package Q { part x : P::B; }" }]
+/// ```
+fn renamed_elsewhere(
+    text: &str,
+    paths: &[String],
+    texts: &BTreeMap<String, String>,
+    intent: &modelith_core::edit::Intent,
+) -> Vec<Rewritten> {
+    let sources: Vec<modelith_core::read::SourceFile<'_>> = paths
+        .iter()
+        .filter_map(|path| {
+            texts
+                .get(path)
+                .map(|text| modelith_core::read::SourceFile { path, text })
+        })
+        .collect();
+    modelith_core::write::rename_references(text, &sources, intent)
+        .into_iter()
+        .map(|(path, text)| Rewritten { path, text })
+        .collect()
 }
 
 #[derive(Serialize)]
@@ -1313,6 +1389,7 @@ mod tests {
             "package App { part c : Parts::Car; }",
             &paths,
             parsed,
+            &BTreeMap::new(),
             r#"{"op":"rename","key":"Car","name":"Bus"}"#,
         );
         // Assert
@@ -1322,6 +1399,54 @@ mod tests {
             v["refused"],
             "この要素はほかのファイルにあります。そのファイルを開いて編集してください"
         );
+    }
+
+    #[test]
+    fn rename_returns_the_rewritten_text_of_other_files_that_refer_to_the_element() {
+        // Arrange（app.sysml は P::A を指す。plain.sysml は指さない）
+        let app = "package Q { part x : P::A; }";
+        let texts = BTreeMap::from([
+            ("app.sysml".to_owned(), app.to_owned()),
+            ("plain.sysml".to_owned(), "package R;".to_owned()),
+        ]);
+        let paths = vec!["app.sysml".to_owned(), "plain.sysml".to_owned()];
+        let parsed = || {
+            vec![
+                modelith_core::project::merge::parse_file(app).expect("短い"),
+                modelith_core::project::merge::parse_file("package R;").expect("短い"),
+            ]
+        };
+        let text = "package P { part def A; part def C; }";
+        // Act（正常系：参照がある。境界値：参照が無い・名前が変わらない）
+        let used = edit_json_in(
+            text,
+            &paths,
+            parsed(),
+            &texts,
+            r#"{"op":"rename","key":"A","name":"B"}"#,
+        );
+        let unused = edit_json_in(
+            text,
+            &paths,
+            parsed(),
+            &texts,
+            r#"{"op":"rename","key":"C","name":"D"}"#,
+        );
+        let same = edit_json_in(
+            text,
+            &paths,
+            parsed(),
+            &texts,
+            r#"{"op":"rename","key":"A","name":"A"}"#,
+        );
+        // Assert
+        let v = |json: &str| serde_json::from_str::<serde_json::Value>(json).expect("valid JSON");
+        assert_eq!(
+            v(&used)["elsewhere"],
+            serde_json::json!([{ "path": "app.sysml", "text": "package Q { part x : P::B; }" }])
+        );
+        assert_eq!(v(&unused)["elsewhere"], serde_json::Value::Null);
+        assert_eq!(v(&same)["elsewhere"], serde_json::Value::Null);
     }
 
     #[test]
@@ -1335,6 +1460,7 @@ mod tests {
             "package A { part def X; }",
             &["views.sysml".to_owned()],
             vec![views],
+            &BTreeMap::new(),
             r#"{"op":"delete","keys":["X"]}"#,
         );
         // Assert（要素のあるファイル（file）ではなく、図のあるファイル（shownIn）を返す）

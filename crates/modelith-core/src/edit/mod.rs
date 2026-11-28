@@ -302,6 +302,38 @@ pub fn edit_in(text: &str, others: Vec<ParseResult>, intent: &Intent) -> Result<
         })
 }
 
+/// 名前の変更の意図が指す要素の、宣言の位置を返す（ほかのファイルの参照を書き換えるときに、要素を指すのに使う。ADR-0021）。
+///
+/// # 引数
+///
+/// - `text`：表示中のファイルの今のテキスト（名前を変える前のもの）
+/// - `others`：ほかのファイルの解析結果（`merge::Files::others` の順）
+/// - `intent`：図の操作の意図
+///
+/// # 戻り値
+///
+/// 表示中のファイルの中の、宣言の位置（UTF-16 のオフセット）。意図が名前の変更でない・要素が見つからない・
+/// 要素がほかのファイルにある・括弧が閉じていないときは None。
+///
+/// # 例
+///
+/// ```text
+/// rename_target("package P { part def A; }", [], Rename { key: "A", name: "B" })    → Some(12)
+/// rename_target("package P { part def A; }", [], Rename { key: "Gone", name: "B" }) → None
+/// rename_target("package P { part def A; }", [], Delete { keys: ["A"] })            → None
+/// ```
+pub fn rename_target(text: &str, others: Vec<ParseResult>, intent: &Intent) -> Option<usize> {
+    let Intent::Rename { key, ctx, .. } = intent else {
+        return None;
+    };
+    if !balanced(text) {
+        return None;
+    }
+    let doc = Doc::with(text, project::merge::join(text, others));
+    let start = doc.e(doc.find(key, ctx.as_deref()).ok()?.entry).start;
+    (start < project::merge::FILE_STRIDE).then_some(start)
+}
+
 /// ほかのファイルの要素の名前を変えたときに、このファイルに書いた、その要素を指す名前を新しい名前に書き換える（ADR-0021）。
 ///
 /// # 引数

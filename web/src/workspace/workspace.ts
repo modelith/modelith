@@ -288,6 +288,50 @@ export class Workspace {
     }
   }
 
+  /**
+   * 開いているフォルダの中のファイルを、書き換えた後のテキストにする（名前の変更で、ほかのファイルの参照を変えるとき。ADR-0021）。
+   * 開いていないファイルは開き（表示中にはしない。仮に開くのでもない）、テキストを未保存の変更として持つ。ディスクには書かない。
+   * どれかを読めない、または開いていないファイルが最後に読んだ後に他のアプリで変わっていたら、どれも書き換えない。
+   *
+   * @param changes ファイルのパス（フォルダからの）と、書き換えた後のテキスト
+   * @returns 書き換えた文書と、書き換える前のテキスト（changes の順）。フォルダを開いていない・読めない・他のアプリで変わっていたら例外（Error）で拒否する
+   * @example
+   * await ws.rewriteInFolder([{ path: "app.sysml", text: "package App { part c : Shop::Basket; }" }])
+   * // → [{ doc: app.sysml の文書（ws.isDirty(doc) が true）, before: "package App { part c : Shop::Cart; }" }]
+   * await ws.rewriteInFolder([{ path: "gone.sysml", text: "" }]) // → Error「「gone.sysml」を読めないため…」
+   */
+  async rewriteInFolder(changes: readonly { path: string; text: string }[]): Promise<{ doc: Doc; before: string }[]> {
+    if (!this.folderState) throw new Error(t("workspace-no-folder"));
+    const opened: Doc[] = [];
+    const targets: Doc[] = [];
+    const fail = (key: string, path: string): never => {
+      // 途中まで開いたファイルは、開かなかったことにする
+      for (const d of opened) this.docs.splice(this.docs.indexOf(d), 1);
+      throw new Error(t(key, { path }));
+    };
+    for (const { path } of changes) {
+      const open = this.docs.find((d) => this.folderPath(d.key) === path);
+      if (open) {
+        targets.push(open);
+        continue;
+      }
+      const doc = await this.loadInFolder(path);
+      if (!doc) return fail("workspace-rewrite-unreadable", path);
+      opened.push(doc);
+      // コアが書き換えたのは最後に読んだテキスト。今のファイルがそれと違えば、他のアプリでの変更を消してしまう
+      if (doc.text !== this.disk.get(path)) return fail("workspace-rewrite-changed", path);
+      targets.push(doc);
+    }
+    const done = targets.map((doc, i) => {
+      const before = doc.text;
+      delete doc.preview;
+      doc.text = changes[i]?.text ?? before;
+      return { doc, before };
+    });
+    this.changed();
+    return done;
+  }
+
   /* ---- 文書 ---- */
 
   /**

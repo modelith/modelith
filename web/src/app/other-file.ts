@@ -2,6 +2,7 @@
 // ほかのファイルの要素を書き換えようとしたら、どのファイルにあるかを知らせ、そのファイルを開けるようにする。
 // 表示中のファイルの要素でも、ほかのファイルの図に出しているものは削除できないので、その図のあるファイルを知らせる（#297）。
 
+import type { RewrittenFile } from "../core";
 import { t } from "../l10n";
 import { ask } from "./dialog";
 
@@ -25,6 +26,30 @@ export function onOpenProjectFile(fn: (path: string) => void): void {
  */
 export function openProjectFile(path: string): void {
   opener(path);
+}
+
+let rewriter: (files: readonly RewrittenFile[]) => Promise<string[]> = () => Promise.reject(new Error(t("workspace-no-folder")));
+
+/**
+ * プロジェクトのほかのファイルを書き換える処理を登録する（ファイルの画面が登録する）。前に登録した処理は置き換える。
+ *
+ * @param fn 書き換えた後のテキストを受け取り、そのファイルを開いて未保存の変更として持たせ、書き換えたファイルの名前を返す処理
+ */
+export function onRewriteProjectFiles(fn: (files: readonly RewrittenFile[]) => Promise<string[]>): void {
+  rewriter = fn;
+}
+
+/**
+ * プロジェクトのほかのファイルを、書き換えた後のテキストにする（名前の変更で、ほかのファイルの参照を変えるとき。ADR-0021）。
+ * ファイルは開いて未保存の変更として持つだけで、ディスクには書かない。登録した処理に任せる。
+ *
+ * @param files ファイルのパスと、書き換えた後のテキスト
+ * @returns 書き換えたファイルの名前（files の順）。どれかを読めない・他のアプリで変わっていたら、どれも書き換えずに例外（Error）で拒否する
+ * @example
+ * await rewriteProjectFiles([{ path: "app.sysml", text: "package App { part c : Shop::Basket; }" }]) // → ["app.sysml"]
+ */
+export function rewriteProjectFiles(files: readonly RewrittenFile[]): Promise<string[]> {
+  return rewriter(files);
 }
 
 /**

@@ -13,3 +13,5 @@ workspace-folder-cannot-remove-entries = このフォルダでは削除できま
 workspace-folder-cannot-write-settings = このフォルダには設定ファイルを書けません
 workspace-folder-cannot-create-folder = このフォルダにはフォルダを作れません
 workspace-folder-cannot-rename = このフォルダでは名前を変えられません
+workspace-rewrite-unreadable = 「{ $path }」を読めないため、ほかのファイルの参照を書き換えられません
+workspace-rewrite-changed = 「{ $path }」が他のアプリで変更されています。フォルダの一覧を更新してから、もう一度お試しください

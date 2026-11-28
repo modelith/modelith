@@ -5,6 +5,7 @@ import { LocalFolderProvider } from "../files/local-folder";
 import { ProviderRegistry, type DirEntry, type FileRef } from "../files/types";
 import { AutoSaver, failureReason, type AutoSaveOutcome, type Timer } from "./autosave";
 import { kvDraftStore } from "./drafts";
+import { modelFiles } from "./project-files";
 import { kvSessionStore } from "./session";
 import { PROJECT_FILE, Workspace, suggestName } from "./workspace";
 
@@ -307,7 +308,7 @@ describe("Workspace: 未保存の変更と競合（F-FILE-5・7・8）", () => {
     // Act
     const found = await s.ws.checkExternal();
     // Assert
-    expect(found).toEqual({ reloaded: [a.key], stale: [b.key] });
+    expect(found).toEqual({ reloaded: [a.key], stale: [b.key], removed: [] });
     expect(a.text).toBe("A theirs");
     expect(b.text).toBe("B edited");
     expect(b.stale).toBe(true);
@@ -323,7 +324,7 @@ describe("Workspace: 未保存の変更と競合（F-FILE-5・7・8）", () => {
     // Act
     const found = await s.ws.checkExternal();
     // Assert
-    expect(found).toEqual({ reloaded: [], stale: [] });
+    expect(found).toEqual({ reloaded: [], stale: [], removed: [] });
     expect(doc.stale).toBe(true);
   });
 
@@ -336,8 +337,96 @@ describe("Workspace: 未保存の変更と競合（F-FILE-5・7・8）", () => {
     // Act
     const found = await s.ws.checkExternal();
     // Assert
-    expect(found).toEqual({ reloaded: [], stale: [] });
+    expect(found).toEqual({ reloaded: [], stale: [], removed: [] });
     expect(notified).toBe(0);
+  });
+
+  it("他のアプリで消されたファイルの文書は、内容と配置を残して保存先の無い文書にし、下書きにも残す（F-FILE-8）", async () => {
+    // Arrange
+    const s = setup();
+    const { doc } = await openA(s);
+    s.ws.setLayout(doc.key, "L");
+    await s.root.removeEntry("a.sysml");
+    // Act
+    const found = await s.ws.checkExternal();
+    // Assert
+    expect(found).toEqual({ reloaded: [], stale: [], removed: [doc.key] });
+    expect(doc).toMatchObject({ ref: null, name: "a.sysml", text: "package A;", layout: "L", layoutHome: "none", version: null, stale: false });
+    expect(s.ws.isDirty(doc)).toBe(true);
+    expect(s.drafts.load().drafts).toEqual([{ name: "a.sysml", text: "package A;", layout: "L" }]);
+    expect(s.ws.folder()!.entries).toEqual([]);
+  });
+
+  it("消されたファイルの文書は、もう一度確かめても知らせない。未保存の変更も残す（境界値: 2 回目）", async () => {
+    // Arrange
+    const s = setup();
+    const { doc } = await openA(s);
+    s.ws.setText(doc.key, "A edited");
+    await s.root.removeEntry("a.sysml");
+    await s.ws.checkExternal();
+    // Act
+    const found = await s.ws.checkExternal();
+    // Assert
+    expect(found).toEqual({ reloaded: [], stale: [], removed: [] });
+    expect(doc.text).toBe("A edited");
+  });
+
+  it("仮に開いていた文書のファイルが消されたら、開いたままにする（次のファイルと置き換えない）", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("a.sysml", "package A;");
+    s.root.put("b.sysml", "package B;");
+    await s.ws.openFolder(s.local);
+    const a = await s.ws.openRef(fileIn(s.ws.folder()!.entries, "a.sysml"), { preview: true });
+    await s.root.removeEntry("a.sysml");
+    // Act
+    await s.ws.checkExternal();
+    await s.ws.openRef(fileIn(s.ws.folder()!.entries, "b.sysml"), { preview: true });
+    // Assert
+    expect(s.ws.list().map((d) => d.name)).toEqual(["a.sysml", "b.sysml"]);
+    expect(a.preview).toBeUndefined();
+  });
+
+  it("消されたのではなく、読めないだけのファイルは、そのままにする（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    const { file, doc } = await openA(s);
+    file.getFile = async () => {
+      throw new DOMException("denied", "NotAllowedError");
+    };
+    // Act
+    const found = await s.ws.checkExternal();
+    // Assert
+    expect(found).toEqual({ reloaded: [], stale: [], removed: [] });
+    expect(doc.ref).not.toBeNull();
+  });
+
+  it("他のアプリで足された・消されたファイルとフォルダを、一覧とモデルに反映して知らせる（F-FILE-8）", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("old.sysml", "package Old;");
+    await openA(s);
+    let notified = 0;
+    s.ws.subscribe(() => notified++);
+    // Act
+    s.root.put("lib/new.sysml", "package New;");
+    await s.root.removeEntry("old.sysml");
+    await s.ws.checkExternal();
+    // Assert
+    expect(modelFiles(s.ws.folder()!.entries).map((r) => r.path).sort()).toEqual(["a.sysml", "lib/new.sysml"]);
+    expect([...s.ws.projectTexts().keys()].sort()).toEqual(["a.sysml", "lib/new.sysml"]);
+    expect(notified).toBe(1);
+  });
+
+  it("フォルダごと消えていたら、一覧は前のままにする（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    await openA(s);
+    s.root.removed = true;
+    // Act
+    await s.ws.checkExternal();
+    // Assert
+    expect(modelFiles(s.ws.folder()!.entries).map((r) => r.path)).toEqual(["a.sysml"]);
   });
 
   it("編集し始めたときに確かめ、他のアプリで変わっていれば印を付けて知らせる（F-FILE-18、正常系）", async () => {

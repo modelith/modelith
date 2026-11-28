@@ -70,3 +70,19 @@ test("F-FILE-8: 画面に戻ったとき、表示中でないファイルが他�
   );
   expect(await editorText(page)).toBe(B + "// mine\n");
 });
+
+test("F-FILE-8: 画面に戻ったとき、他のアプリで消されたファイルは内容を残して知らせ、足された・消されたファイルを一覧に反映する", async ({ page }) => {
+  // Arrange（表示中は b.sysml。他のアプリで a.sysml を消し、c.sysml を足す）
+  await openBoth(page);
+  await page.evaluate(async () => (await (await navigator.storage.getDirectory()).getDirectoryHandle("project")).removeEntry("a.sysml"));
+  await putFiles(page, { "c.sysml": "package C;\n" });
+  // Act
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  // Assert
+  await expect(page.locator("#toast")).toHaveText("「a.sysml」は他のアプリで削除されたか、移動されました。内容は画面に残しています。残すには保存してください");
+  await expect(page.locator('#explorer [data-file][title="c.sysml"]')).toBeVisible();
+  await expect(page.locator('#explorer [data-file][title="a.sysml"]')).toHaveCount(0);
+  await page.locator("#explorer [data-doc] .nm", { hasText: "a.sysml" }).click();
+  await expect(page.locator("#docName")).toContainText("●");
+  expect(await editorText(page)).toBe(A);
+});

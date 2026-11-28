@@ -1721,15 +1721,18 @@ function onEdited(key: string): void {
   auto.notify(key);
 }
 
-/** 画面に戻ったとき、他のアプリでの変更を確かめ、表示中のファイルに限らず、変わったファイルをまとめて知らせる（F-FILE-8）。 */
+/**
+ * 画面に戻ったとき、他のアプリでの変更を確かめ、表示中のファイルに限らず、変わった・消されたファイルをまとめて知らせる（F-FILE-8）。
+ * 足された・消されたファイルは、フォルダの一覧にも反映される（Workspace が変更を知らせ、一覧を描き直す）。
+ */
 async function checkExternal(): Promise<void> {
   // 反映待ちの入力を先に書き込み、未保存の変更として数える（入力したばかりの文書を読み直して入力を失わないため）
   flushQuiet();
-  const { reloaded, stale } = await ws.checkExternal();
+  const { reloaded, stale, removed } = await ws.checkExternal();
   const active = shownKey ? ws.get(shownKey) : undefined;
   if (active && reloaded.includes(active.key)) setText(active.text, { fromText: true });
   const names = (keys: string[]) => keys.map((k) => ws.get(k)?.name ?? "").filter((n) => n);
-  const notice = externalNotice(names(reloaded), names(stale));
+  const notice = externalNotice(names(reloaded), names(stale), names(removed));
   if (notice) toast(notice);
 }
 

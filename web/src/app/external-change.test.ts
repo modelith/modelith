@@ -19,24 +19,37 @@ describe("nameList（ファイル名を並べる）", () => {
 describe("externalNotice（画面に戻ったときの知らせ、F-FILE-8）", () => {
   it("読み直したファイルの名前を示す", () => {
     // Assert
-    expect(externalNotice(["a.sysml", "b.sysml"], [])).toBe("他のアプリで変更された「a.sysml」「b.sysml」を読み直しました");
+    expect(externalNotice(["a.sysml", "b.sysml"], [], [])).toBe("他のアプリで変更された「a.sysml」「b.sysml」を読み直しました");
   });
 
   it("印を付けたファイルは、読み直していないことと、保存するときに選べることを示す", () => {
     // Assert
-    expect(externalNotice([], ["c.sysml"])).toBe("「c.sysml」は他のアプリで変更されています。未保存の変更があるため読み直していません。保存するときに選べます");
+    expect(externalNotice([], ["c.sysml"], [])).toBe("「c.sysml」は他のアプリで変更されています。未保存の変更があるため読み直していません。保存するときに選べます");
   });
 
   it("両方あれば 1 つの知らせにまとめる", () => {
     // Assert
-    expect(externalNotice(["a.sysml"], ["c.sysml"])).toBe(
+    expect(externalNotice(["a.sysml"], ["c.sysml"], [])).toBe(
       "他のアプリで変更された「a.sysml」を読み直しました。「c.sysml」は他のアプリで変更されています。未保存の変更があるため読み直していません。保存するときに選べます",
     );
   });
 
-  it("どちらも無ければ知らせない（境界値: 0 件）", () => {
+  it("消されたファイルは、内容を残していることと、残すには保存することを示す", () => {
     // Assert
-    expect(externalNotice([], [])).toBeNull();
+    expect(externalNotice([], [], ["d.sysml"])).toBe("「d.sysml」は他のアプリで削除されたか、移動されました。内容は画面に残しています。残すには保存してください");
+  });
+
+  it("3 つともあれば、読み直した・印を付けた・消されたの順に 1 つの知らせにまとめる", () => {
+    // Assert
+    expect(externalNotice(["a.sysml"], ["c.sysml"], ["d.sysml"])).toBe(
+      "他のアプリで変更された「a.sysml」を読み直しました。「c.sysml」は他のアプリで変更されています。未保存の変更があるため読み直していません。保存するときに選べます。" +
+        "「d.sysml」は他のアプリで削除されたか、移動されました。内容は画面に残しています。残すには保存してください",
+    );
+  });
+
+  it("どれも無ければ知らせない（境界値: 0 件）", () => {
+    // Assert
+    expect(externalNotice([], [], [])).toBeNull();
   });
 });
 

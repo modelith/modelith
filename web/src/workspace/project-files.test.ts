@@ -1,7 +1,7 @@
 // プロジェクトのファイルの計算（ADR-0021、F-FILE-15）。
 import { describe, expect, it } from "vitest";
 import type { DirEntry, FileRef } from "../files/types";
-import { filesChange, modelFiles, projectTexts } from "./project-files";
+import { entryPaths, filesChange, modelFiles, projectTexts } from "./project-files";
 
 const ref = (path: string): FileRef => ({ provider: "local", id: `dir:1/${path}`, name: path.split("/").pop() ?? path, path });
 
@@ -17,6 +17,18 @@ describe("project-files（F-FILE-15）", () => {
     const got = modelFiles(entries).map((r) => r.path);
     // Assert
     expect(got).toEqual(["a.sysml", "lib/b.KERML"]);
+  });
+
+  it("entryPaths はファイルとフォルダのパスを並べ、フォルダには \"/\" を付ける（境界値: 空のフォルダ・中身なし）", () => {
+    // Arrange
+    const entries: DirEntry[] = [
+      { kind: "file", ref: ref("a.sysml") },
+      { kind: "dir", name: "lib", path: "lib", children: [{ kind: "file", ref: ref("lib/b.sysml") }] },
+      { kind: "dir", name: "empty", path: "empty", children: [] },
+    ];
+    // Act・Assert
+    expect(entryPaths(entries)).toEqual(["a.sysml", "lib/", "lib/b.sysml", "empty/"]);
+    expect(entryPaths([])).toEqual([]);
   });
 
   it("projectTexts は開いている文書のテキストを優先し、読めなかったファイルは入れない", () => {

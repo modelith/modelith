@@ -55,18 +55,19 @@ export function sizeClass(bytes: number): SizeClass {
 }
 
 /**
- * 画面の幅を区分にする。
+ * 画面の幅を区分にする。境目は契約（plugin-sdk の usage の ScreenClass）に合わせる（760 はアプリの狭い画面の境目）。
  *
  * @param width 画面（ウィンドウ）の幅（CSS ピクセル）
- * @returns スマホ（600 未満）・タブレット（600〜1023）・パソコン（1024 以上）
+ * @returns スマホ（760 以下）・タブレット（760 より広く 1024 以下）・パソコン（1024 より広い）
  * @example
- * screenClass(390)  // → "phone"
- * screenClass(600)  // → "tablet"
- * screenClass(1024) // → "desktop"
+ * screenClass(760)  // → "phone"
+ * screenClass(761)  // → "tablet"
+ * screenClass(1024) // → "tablet"
+ * screenClass(1025) // → "desktop"
  */
 export function screenClass(width: number): ScreenClass {
-  if (width < 600) return "phone";
-  return width < 1024 ? "tablet" : "desktop";
+  if (width <= 760) return "phone";
+  return width <= 1024 ? "tablet" : "desktop";
 }
 
 /**

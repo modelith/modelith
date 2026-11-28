@@ -1453,6 +1453,78 @@ describe("Workspace: フォルダのファイルを 1 つのモデルにする�
     expect(s.ws.projectTexts().get("parts.sysml")).toBe("package Parts { part def Car; }");
   });
 
+  it("ほかのファイルの書き換え：開いていないファイルは開いて未保存にし、表示中の文書は変えない（ADR-0021）", async () => {
+    // Arrange
+    const s = setup();
+    const parts = s.root.put("parts.sysml", "package Parts;");
+    const { doc: a } = await openA(s);
+    // Act
+    const done = await s.ws.rewriteInFolder([{ path: "parts.sysml", text: "package Parts2;" }]);
+    // Assert（ディスクには書かない）
+    const doc = done[0]!.doc;
+    expect(done.map((d) => d.before)).toEqual(["package Parts;"]);
+    expect(doc).toMatchObject({ name: "parts.sysml", text: "package Parts2;", savedText: "package Parts;" });
+    expect(s.ws.isDirty(doc)).toBe(true);
+    expect(doc.preview).toBeUndefined();
+    expect(s.ws.active()?.key).toBe(a.key);
+    expect(parts.content).toBe("package Parts;");
+    expect(s.ws.projectTexts().get("parts.sysml")).toBe("package Parts2;");
+  });
+
+  it("ほかのファイルの書き換え：開いている文書は、未保存の変更を残したまま今のテキストを置き換え、仮に開いた印を外す", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("parts.sysml", "package Parts;");
+    await openA(s);
+    const parts = await s.ws.openRef(fileIn(s.ws.folder()!.entries, "parts.sysml"), { preview: true });
+    // Act
+    const done = await s.ws.rewriteInFolder([{ path: "parts.sysml", text: "package Parts2;" }]);
+    // Assert
+    expect(done).toEqual([{ doc: parts, before: "package Parts;" }]);
+    expect(parts.text).toBe("package Parts2;");
+    expect(parts.preview).toBeUndefined();
+    expect(s.ws.list()).toHaveLength(2);
+  });
+
+  it("ほかのファイルの書き換え：読めないファイルがあれば、どれも書き換えず、開いたファイルも残さない（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    s.root.put("parts.sysml", "package Parts;");
+    await openA(s);
+    // Act
+    const act = s.ws.rewriteInFolder([{ path: "parts.sysml", text: "package Parts2;" }, { path: "gone.sysml", text: "x" }]);
+    // Assert
+    await expect(act).rejects.toThrow("「gone.sysml」を読めないため、ほかのファイルの参照を書き換えられません");
+    expect(s.ws.list().map((d) => d.name)).toEqual(["a.sysml"]);
+    expect(s.ws.projectTexts().get("parts.sysml")).toBe("package Parts;");
+  });
+
+  it("ほかのファイルの書き換え：開いていないファイルが他のアプリで変わっていたら、書き換えない（異常系）", async () => {
+    // Arrange
+    const s = setup();
+    const parts = s.root.put("parts.sysml", "package Parts;");
+    await openA(s);
+    parts.externalWrite("package Theirs;");
+    // Act
+    const act = s.ws.rewriteInFolder([{ path: "parts.sysml", text: "package Parts2;" }]);
+    // Assert
+    await expect(act).rejects.toThrow("「parts.sysml」が他のアプリで変更されています。フォルダの一覧を更新してから、もう一度お試しください");
+    expect(s.ws.list().map((d) => d.name)).toEqual(["a.sysml"]);
+  });
+
+  it("ほかのファイルの書き換え：フォルダを開いていなければ断る。書き換えるものが無ければ何も変えない（境界値）", async () => {
+    // Arrange
+    const closed = setup();
+    const s = setup();
+    await openA(s);
+    // Act
+    const act = closed.ws.rewriteInFolder([{ path: "a.sysml", text: "x" }]);
+    const none = await s.ws.rewriteInFolder([]);
+    // Assert
+    await expect(act).rejects.toThrow("フォルダが開かれていません");
+    expect(none).toEqual([]);
+  });
+
   it("保存した文書は、閉じた後も保存した中身をモデルに入れる", async () => {
     // Arrange
     const s = setup();

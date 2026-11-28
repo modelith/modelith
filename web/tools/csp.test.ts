@@ -1,6 +1,6 @@
 // C-9 Content-Security-Policy の中身と差し込み（CspTest）
 import { describe, expect, it } from "vitest";
-import { contentSecurityPolicy, injectCsp } from "./csp";
+import { contentSecurityPolicy, injectCsp, usageOrigin } from "./csp";
 
 describe("contentSecurityPolicy", () => {
   const directives = new Map(contentSecurityPolicy().split("; ").map((d) => {
@@ -38,6 +38,24 @@ describe("contentSecurityPolicy", () => {
     // Assert
     expect(directives.has("frame-ancestors")).toBe(false);
   });
+});
+
+describe("利用状況の受け口（ADR-0026）", () => {
+  it("ほかの配信元の受け口は、その配信元だけを connect-src に足す（パスは足さない）", () => {
+    // Act
+    const policy = contentSecurityPolicy("https://telemetry.example.org/v1/events");
+    // Assert
+    expect(policy).toContain("connect-src 'self' https://telemetry.example.org;");
+    expect(policy).not.toContain("/v1/events");
+    expect(policy).toContain("default-src 'self';");
+  });
+
+  it.each([[undefined], [""], ["/__usage"], ["http://telemetry.example.org/"], ["https://"], ["javascript:alert(1)"]])(
+    "受け口が無い・同じ配信元・https でない・読めない（%s）なら、何も足さない（異常系・境界値）", (endpoint) => {
+      // Act・Assert
+      expect(usageOrigin(endpoint)).toBeNull();
+      expect(contentSecurityPolicy(endpoint)).toBe(contentSecurityPolicy());
+    });
 });
 
 describe("injectCsp", () => {

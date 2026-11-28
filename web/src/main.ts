@@ -35,6 +35,7 @@ import { S } from "./app/state";
 import { DEFS } from "./render/svg";
 import { attachCore, coreHooks, onAnalyzed, relayout, settled, toast } from "./app/sync";
 import { installUnexpectedErrorHandlers } from "./app/unexpected";
+import { initUsage, usage } from "./app/usage";
 import { CC } from "./app/views";
 import { superviseCore } from "./core";
 import CoreWorker from "./core/worker?worker";
@@ -227,9 +228,17 @@ document.addEventListener("input", (ev) => {
 // 解析と図の操作に使う Rust のコア（wasm）を Worker で動かし、使える状態になってから画面を組み立てる（ADR-0015・ADR-0016）。
 // コアが止まった・返事をしないときは作り直す（Q-7）。待つ間に読み込みの始まったフォントも待ち、図を画面に合わせる計算を毎回同じ文字の幅で行う。
 // 待つ間は「読み込み中…」（index.html の #loading）を示し、時間がかかれば案内に切り替えて待ち続ける（Q-5）
+// コアを作り直した回数を、利用状況に数える（ADR-0026）
+const countedHooks: typeof coreHooks = {
+  ...coreHooks,
+  onDown: (...args) => {
+    usage().count("workerRestarts");
+    coreHooks.onDown(...args);
+  },
+};
 const loaded = watchLoading(loadingView(document.querySelector<HTMLElement>("#loading")));
 try {
-  const [core] = await Promise.all([superviseCore(() => new CoreWorker(), new URL(CORE_WASM, location.href).href, onAnalyzed, coreHooks), document.fonts.ready]);
+  const [core] = await Promise.all([superviseCore(() => new CoreWorker(), new URL(CORE_WASM, location.href).href, onAnalyzed, countedHooks), document.fonts.ready]);
   loaded();
   attachCore(core);
 } catch (e) {
@@ -270,6 +279,8 @@ try {
   await settled();
   applyPanes();
   initTabs();
+  // 利用状況の送信（ADR-0026）。最初の知らせは、画面が使えるようになってから出す
+  void initUsage(performance.now());
 } catch (e) {
   console.error("startup failed:", e);
   const box = showStartupBox(recoveryHtml(e));

@@ -52,6 +52,7 @@ shell-help-test-results = このバージョンのテスト結果
 shell-help-source = ソースコード
 shell-help-license = ライセンス（AGPL-3.0＋プラグイン例外）
 shell-help-notices = 同梱ソフトウェアのライセンス
+shell-help-usage = 利用状況の送信…
 shell-no-warranty = 無保証です。
 shell-redistribute = 上のライセンスの条件で再配布・改変できます。
 shell-trademarks = SysML®・OMG® は Object Management Group, Inc. の登録商標、KerML™ は同社の商標です。Modelith は OMG と関係がなく、その認定・推奨も受けていません。

@@ -85,8 +85,10 @@ export default defineConfig({
     __APP_COMMIT__: JSON.stringify(commitSha()),
     // 公開の系列（stable・rc・preview）。保存領域の名前を系列ごとに分ける（ADR-0020・ADR-0022）。CI が MODELITH_CHANNEL で渡す
     __APP_CHANNEL__: JSON.stringify(process.env.MODELITH_CHANNEL ?? "stable"),
+    // 利用状況の受け口（ADR-0026）。渡さないビルド（手元のビルドなど）は、何も送らない
+    __USAGE_ENDPOINT__: JSON.stringify(process.env.MODELITH_USAGE_ENDPOINT ?? ""),
   },
-  plugins: [bundledLicenses(), l10nHtml(), cspPlugin()],
+  plugins: [bundledLicenses(), l10nHtml(), cspPlugin(process.env.MODELITH_USAGE_ENDPOINT)],
   server: { fs: { allow: [".."] } },
   // e2e（e2e/*.spec.ts）は Playwright で動かすので、Vitest は src と tools の単体・結合テストだけを拾う
   test: { include: ["src/**/*.test.ts", "tools/**/*.test.ts"], setupFiles: ["src/l10n/setup.ts", "src/core/testing/setup.ts"] },

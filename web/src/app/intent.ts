@@ -4,6 +4,7 @@ import { applyTextEdits, STALE_EDIT, type Intent, type RewrittenFile } from "../
 import { guideToFile, guideToShowingFile } from "./other-file";
 import { S } from "./state";
 import { coreClient, toast } from "./sync";
+import { usage } from "./usage";
 
 /** 図の操作の結果（編集を当てたテキストと、変わり始めの位置）。 */
 export interface Performed {
@@ -61,5 +62,8 @@ export async function perform(intent: Intent): Promise<Performed | null> {
     else toast(r.refused);
     return null;
   }
+  // 利用状況（ADR-0026）：編集の意図の種類ごとの回数と、使い始めの段階。中身（名前など）は数えない
+  usage().count(`edits.${intent.op}`);
+  usage().step(intent.op === "saveView" ? "viewCreated" : "edited");
   return { text: applyTextEdits(base, r.edits), at: r.edits[0]?.start ?? 0, select: r.select, flash: r.flash, elsewhere: r.elsewhere };
 }

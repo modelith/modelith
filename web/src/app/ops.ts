@@ -4,6 +4,7 @@ import { inOpenFile, type Entry, type ModelEdge, type ModelNode } from "../core"
 import { renameEdgeKeys } from "./edge-shape";
 import { ask } from "./dialog";
 import { perform } from "./intent";
+import { rewriteProjectFiles } from "./other-file";
 import { flowName } from "../render/action-flow";
 import { renamedStateKeys, stateName } from "../render/state-machine";
 import { docChangedMessage, kindLabel } from "../render/labels";
@@ -238,6 +239,14 @@ export const OPS = {
     }
     const r = await perform({ op: "rename", key: n.key, name: nn, ctx: ctxKey() });
     if (!r) return false;
+    // ほかのファイルに書いた参照も変える（開いて未保存にする。ADR-0021）。できなければ、表示中のファイルも変えない
+    let others: string[] = [];
+    try {
+      if (r.elsewhere?.length) others = await rewriteProjectFiles(r.elsewhere);
+    } catch (e) {
+      toast(t("app-inspect-rename-across-failed", { reason: e instanceof Error ? e.message : String(e) }));
+      return false;
+    }
     // 図の要素のキーも名前に合わせて変える（内部ブロック図の部品・ライフラインは u:・l: を付けたまま。状態は中の要素のキーも変える）
     const nk = (/^[ul]:/.exec(n.key)?.[0] ?? "") + nn;
     const moves = n.state ? renamedStateKeys(n.key, nn, CC().nodes.map((x) => x.key)) : [[n.key, nk] as [string, string]];
@@ -263,7 +272,7 @@ export const OPS = {
     const before = S.text;
     setText(r.text, { changeAt: r.at, flash: r.flash });
     commitLayout();
-    toast(renamedMessage(n.name, nn, before, r.text));
+    toast(renamedMessage(n.name, nn, before, r.text, others));
     return true;
   },
 

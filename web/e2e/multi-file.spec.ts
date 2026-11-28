@@ -1,5 +1,5 @@
 // 複数のファイルにまたがるモデル（ADR-0021、F-FILE-15）。ローカルフォルダの代わりに OPFS を使う。
-import { editorText, expect, openApp, putFiles, test } from "./fixtures";
+import { editorText, expect, openApp, putFiles, readFile, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 const PARTS = "package Parts {\n    part def Car;\n    part def Bus;\n}\n";
@@ -141,4 +141,30 @@ test("F-EDIT-2・F-FILE-15: ほかのファイルに同じ種類の定義があ�
   // Assert（断らずに、表示中のファイルの package に置く）
   await expect(page.locator('#gNodes .node[data-key="NewPart"]')).toBeVisible();
   expect(await editorText(page)).toBe("package A {\n    part def X;\n    part def NewPart {\n    }\n}\n");
+});
+
+test("F-EDIT-3・F-FILE-15: 名前を変えると、ほかのファイルに書いた参照も変え、そのファイルを開いて未保存にする（ADR-0021）", async ({ page }) => {
+  // Arrange（parts.sysml を表示する。app.sysml は開いていない）
+  await openApp(page);
+  await putFiles(page, { "parts.sysml": PARTS, "app.sysml": APP });
+  await page.locator('[data-cmd="openFolder"]').click();
+  await page.locator('#explorer [data-file][title="parts.sysml"]').dblclick();
+  await expect(page.locator("#docName")).toHaveText("parts.sysml");
+  // Act
+  await page.locator('#gNodes .node[data-key="Car"]').click();
+  await page.locator('[data-act="rename"]').click();
+  await page.locator("#renameIn").fill("Truck");
+  await page.locator("#renameIn").press("Enter");
+  // Assert（知らせ・表示中のファイル・開いて未保存になったほかのファイル。ディスクは変えない）
+  await expect(page.locator("#toast")).toHaveText("「Car」を「Truck」に変更しました。「app.sysml」で使っている箇所も変えました。「app.sysml」は未保存です");
+  expect(await editorText(page)).toBe(PARTS.replace("Car", "Truck"));
+  expect(await readFile(page, "app.sysml")).toBe(APP);
+  await page.locator("#explorer [data-doc] .nm", { hasText: "app.sysml" }).click();
+  await expect(page.locator("#docName")).toContainText("●");
+  expect(await editorText(page)).toBe(APP.replace("part c : Car;", "part c : Truck;"));
+  await expect(page.locator("#problems")).not.toContainText("見つかりません");
+  // Act（ほかのファイルでも、元に戻すで書き換える前に戻れる）
+  await page.locator("#btnUndo").click();
+  // Assert
+  expect(await editorText(page)).toBe(APP);
 });

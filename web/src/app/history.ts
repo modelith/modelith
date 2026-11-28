@@ -70,6 +70,20 @@ export function useHistory(key: string | null): void {
 }
 
 /**
+ * 表示していない文書を書き換える前の版を、その文書の履歴に残す（名前の変更で、ほかのファイルの参照を変えるとき。ADR-0021）。
+ * その文書を表示したときに、書き換える前へ元に戻せるようにする。履歴が既にあれば何もしない（表示したことのある文書は、最後の版が書き換える前の版）。
+ *
+ * @param key 文書のキー
+ * @param text 書き換える前のテキスト
+ * @param layout 書き換える前の配置（配置ファイルの文字列）
+ * @example
+ * seedHistory("doc:2", "package App { part c : Shop::Cart; }", "") // → doc:2 を表示すると、元に戻すでこのテキストに戻れる
+ */
+export function seedHistory(key: string, text: string, layout: string): void {
+  if (!histories.has(key)) histories.set(key, { list: [{ text, layout }], i: 0, timer: undefined });
+}
+
+/**
  * 閉じた文書の履歴を捨てる。
  *
  * @param key 文書のキー

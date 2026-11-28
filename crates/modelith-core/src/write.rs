@@ -189,13 +189,87 @@ fn renamed_elsewhere(
     else {
         return Vec::new();
     };
-    (0..files.len())
+    let texts: Vec<&str> = files.iter().map(|f| f.text).collect();
+    references_elsewhere(&texts, parsed, at, start, name)
+}
+
+/// 宣言の位置で指した要素を指す、ほかのファイルの名前を書き換える（`renamed_elsewhere` と `rename_references` の本体）。
+///
+/// # 引数
+///
+/// - `texts`：プロジェクトのモデルのファイルのテキスト
+/// - `parsed`：ファイルごとの解析結果（名前を変える前のもの。`texts` と同じ順）
+/// - `at`：名前を変える要素のあるファイルの番号
+/// - `start`：名前を変える要素の宣言の位置（そのファイルの中の UTF-16 のオフセット）
+/// - `name`：新しい名前
+///
+/// # 戻り値
+///
+/// 参照を書き換えたファイルの番号と、新しいテキスト。その要素を指すファイルが無ければ空。
+///
+/// # 例
+///
+/// ```text
+/// // 0 番「package P { part def A; }」（A の位置は 12）、1 番「package Q { import P::*; part x : A; }」
+/// references_elsewhere(texts, parsed, 0, 12, "B") → [(1, "package Q { import P::*; part x : B; }")]
+/// ```
+fn references_elsewhere(
+    texts: &[&str],
+    parsed: &[Option<ParseResult>],
+    at: usize,
+    start: usize,
+    name: &str,
+) -> Vec<(usize, String)> {
+    (0..texts.len())
         .filter(|&j| j != at && parsed[j].is_some())
         .filter_map(|j| {
             // 名前を変える要素のあるファイルを、ほかのファイルの 1 番にする
             let others = others_of(parsed, j, Some(at));
-            edit::rename_elsewhere(files[j].text, others, 1, start, name).map(|text| (j, text))
+            edit::rename_elsewhere(texts[j], others, 1, start, name).map(|text| (j, text))
         })
+        .collect()
+}
+
+/// 画面の名前の変更（表示中のファイルの要素）に合わせて、ほかのファイルに書いた、その要素を指す名前を書き換える（ADR-0021 の 2026-11-28 の改訂。F-EDIT-3）。
+/// 何も書かない。書き換えた後のテキストを返すだけで、どう持つか（開いて未保存にする）は呼ぶ側が決める。
+///
+/// # 引数
+///
+/// - `text`：表示中のファイルの今のテキスト（名前を変える前のもの）
+/// - `others`：プロジェクトのほかのファイル（パスとテキスト）
+/// - `intent`：図の操作の意図
+///
+/// # 戻り値
+///
+/// 参照を書き換えたファイルのパスと、新しいテキスト（`others` の順）。意図が名前の変更でない・要素が見つからない・
+/// その要素を指すファイルが無ければ空。
+///
+/// # 例
+///
+/// ```text
+/// // text = "package P { part def A; }"、others = [b.sysml「package Q { import P::*; part x : A; }」, c.sysml「package R;」]
+/// rename_references(text, others, Rename { key: "A", name: "B" })
+///   → [("b.sysml", "package Q { import P::*; part x : B; }")]
+/// rename_references(text, others, Delete { keys: ["A"] }) → []
+/// ```
+pub fn rename_references(
+    text: &str,
+    others: &[SourceFile<'_>],
+    intent: &Intent,
+) -> Vec<(String, String)> {
+    let Intent::Rename { name, .. } = intent else {
+        return Vec::new();
+    };
+    let texts: Vec<&str> = std::iter::once(text)
+        .chain(others.iter().map(|f| f.text))
+        .collect();
+    let parsed: Vec<Option<ParseResult>> = texts.iter().map(|t| parse_file(t)).collect();
+    let Some(start) = edit::rename_target(text, others_of(&parsed, 0, None), intent) else {
+        return Vec::new();
+    };
+    references_elsewhere(&texts, &parsed, 0, start, name)
+        .into_iter()
+        .map(|(j, new_text)| (others[j - 1].path.to_owned(), new_text))
         .collect()
 }
 
@@ -543,6 +617,105 @@ mod tests {
             "package Bike {\n    import Lib::*;\n    part def Big :> Tire;\n    part f : Tire;\n}\n"
         );
         assert_eq!(messages(&got), Vec::<&str>::new());
+    }
+
+    /// 画面の意図（キーで指す）での名前の変更に合わせて、ほかのファイルの参照を書き換える。
+    fn screen_rename(
+        text: &str,
+        others: &[(&str, &str)],
+        key: &str,
+        name: &str,
+    ) -> Vec<(String, String)> {
+        let others: Vec<SourceFile<'_>> = others
+            .iter()
+            .map(|&(path, text)| SourceFile { path, text })
+            .collect();
+        let intent = Intent::Rename {
+            key: key.to_owned(),
+            name: name.to_owned(),
+            ctx: None,
+        };
+        rename_references(text, &others, &intent)
+    }
+
+    #[test]
+    fn screen_rename_rewrites_references_in_other_files_only_where_they_point_to_it() {
+        // Arrange（app は Shop::Cart を指し、other は自分の Cart を指す。plain は参照を持たない）
+        let others = [
+            ("app.sysml", APP),
+            (
+                "other.sysml",
+                "package Other {\n    part def Cart;\n    part c : Cart;\n}\n",
+            ),
+            ("plain.sysml", "package Plain;\n"),
+        ];
+        // Act
+        let got = screen_rename(SHOP, &others, "Cart", "Basket");
+        // Assert
+        assert_eq!(
+            got,
+            vec![(
+                "app.sysml".to_owned(),
+                "package App {\n    part c : Shop::Basket;\n    part x : Shop::Nope;\n}\n"
+                    .to_owned()
+            )]
+        );
+    }
+
+    #[test]
+    fn screen_rename_returns_nothing_when_no_file_refers_to_the_element() {
+        // Act（境界値：参照が無い・ほかのファイルが無い）
+        let unused = screen_rename(SHOP, &[("app.sysml", APP)], "Fast", "Quick");
+        let alone = screen_rename(SHOP, &[], "Cart", "Basket");
+        // Assert
+        assert_eq!(unused, vec![]);
+        assert_eq!(alone, vec![]);
+    }
+
+    #[test]
+    fn screen_rename_returns_nothing_for_a_missing_element_another_intent_or_broken_text() {
+        // Arrange
+        let others = [("app.sysml", APP)];
+        let delete = Intent::Delete {
+            keys: vec!["Cart".to_owned()],
+            ctx: None,
+        };
+        let sources = [SourceFile {
+            path: "app.sysml",
+            text: APP,
+        }];
+        // Act（異常系：要素が無い・名前の変更でない・括弧が閉じていない）
+        let missing = screen_rename(SHOP, &others, "Gone", "Basket");
+        let other_intent = rename_references(SHOP, &sources, &delete);
+        let broken = screen_rename(
+            "package Shop {\n    part def Cart;\n",
+            &others,
+            "Cart",
+            "Basket",
+        );
+        // Assert
+        assert_eq!(missing, vec![]);
+        assert_eq!(other_intent, vec![]);
+        assert_eq!(broken, vec![]);
+    }
+
+    #[test]
+    fn screen_rename_skips_a_file_that_cannot_be_rewritten() {
+        // Arrange（括弧の閉じていないファイルは書き換えない。ほかのファイルは書き換える）
+        let others = [
+            (
+                "broken.sysml",
+                "package Broken {\n    part c : Shop::Cart;\n",
+            ),
+            ("app.sysml", APP),
+        ];
+        // Act
+        let got = screen_rename(SHOP, &others, "Cart", "Basket");
+        // Assert
+        assert_eq!(
+            got.iter().map(|(p, _)| p.as_str()).collect::<Vec<_>>(),
+            vec!["app.sysml"]
+        );
     }
 
     #[test]

@@ -362,6 +362,15 @@ export interface EditResult {
   edits: TextEdit[];
   select?: string;
   flash?: [number, number];
+  /** 名前の変更で、ほかのファイルに書いた参照も変わるとき、そのファイルの書き換えた後のテキスト（ADR-0021。コアは何も書かない。画面が開いて未保存にする）。 */
+  elsewhere?: RewrittenFile[];
+}
+
+/** プロジェクトのほかのファイルの、書き換えた後のテキスト。 */
+export interface RewrittenFile {
+  /** フォルダからのパス。 */
+  path: string;
+  text: string;
 }
 
 /** 操作できなかったとき、その理由（画面にそのまま出す文）。 */

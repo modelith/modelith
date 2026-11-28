@@ -18,7 +18,7 @@ describe("区分（境界値）", () => {
       expect(sizeClass(bytes)).toBe(expected);
     });
 
-  it.each([[390, "phone"], [599, "phone"], [600, "tablet"], [1023, "tablet"], [1024, "desktop"]] as const)("screenClass(%d) は %s", (width, expected) => {
+  it.each([[390, "phone"], [760, "phone"], [761, "tablet"], [1024, "tablet"], [1025, "desktop"]] as const)("screenClass(%d) は %s", (width, expected) => {
     expect(screenClass(width)).toBe(expected);
   });
 

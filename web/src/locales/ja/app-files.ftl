@@ -129,7 +129,8 @@ app-files-reload-failed = 読み込めませんでした
 app-files-names-and-more = { $names }ほか { $count } 件
 app-files-external-reloaded = 他のアプリで変更された{ $names }を読み直しました
 app-files-external-stale = { $names }は他のアプリで変更されています。未保存の変更があるため読み直していません。保存するときに選べます
-app-files-external-both = { $reloaded }。{ $stale }
+app-files-external-removed = { $names }は他のアプリで削除されたか、移動されました。内容は画面に残しています。残すには保存してください
+app-files-external-joined = { $first }。{ $next }
 
 # ---- 閉じる ----
 app-files-close-title = 閉じる前に

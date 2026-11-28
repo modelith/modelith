@@ -22,21 +22,25 @@ export function nameList(names: readonly string[], max = MAX_NAMES): string {
 }
 
 /**
- * 画面に戻ったときに、他のアプリで変わったファイルをまとめて知らせる文（F-FILE-8）。表示中のファイルに限らず、開いているファイルすべてが対象。
+ * 画面に戻ったときに、他のアプリで変わった・消されたファイルをまとめて知らせる文（F-FILE-8）。表示中のファイルに限らず、開いているファイルすべてが対象。
  *
  * @param reloaded 読み直したファイルの名前（未保存の変更が無かったもの）
  * @param stale 今回初めて印を付けたファイルの名前（未保存の変更があり、読み直していないもの）
- * @returns 知らせる文。どちらも無ければ null
+ * @param removed 消されていたファイルの名前（内容を残して、保存先の無いファイルにしたもの）
+ * @returns 知らせる文（読み直した・印を付けた・消されたの順に「。」でつなぐ）。どれも無ければ null
  * @example
- * externalNotice(["a.sysml"], [])  // → "他のアプリで変更された「a.sysml」を読み直しました"
- * externalNotice([], ["b.sysml"])  // → "「b.sysml」は他のアプリで変更されています。未保存の変更があるため読み直していません。保存するときに選べます"
- * externalNotice([], [])           // → null
+ * externalNotice(["a.sysml"], [], [])  // → "他のアプリで変更された「a.sysml」を読み直しました"
+ * externalNotice([], ["b.sysml"], [])  // → "「b.sysml」は他のアプリで変更されています。未保存の変更があるため読み直していません。保存するときに選べます"
+ * externalNotice([], [], ["c.sysml"])  // → "「c.sysml」は他のアプリで削除されたか、移動されました。内容は画面に残しています。残すには保存してください"
+ * externalNotice([], [], [])           // → null
  */
-export function externalNotice(reloaded: readonly string[], stale: readonly string[]): string | null {
-  const reloadedText = reloaded.length ? t("app-files-external-reloaded", { names: nameList(reloaded) }) : null;
-  const staleText = stale.length ? t("app-files-external-stale", { names: nameList(stale) }) : null;
-  if (reloadedText !== null && staleText !== null) return t("app-files-external-both", { reloaded: reloadedText, stale: staleText });
-  return reloadedText ?? staleText;
+export function externalNotice(reloaded: readonly string[], stale: readonly string[], removed: readonly string[]): string | null {
+  const parts = [
+    reloaded.length ? t("app-files-external-reloaded", { names: nameList(reloaded) }) : null,
+    stale.length ? t("app-files-external-stale", { names: nameList(stale) }) : null,
+    removed.length ? t("app-files-external-removed", { names: nameList(removed) }) : null,
+  ].filter((p) => p !== null);
+  return parts.length ? parts.reduce((first, next) => t("app-files-external-joined", { first, next })) : null;
 }
 
 /**

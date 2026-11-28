@@ -10,6 +10,7 @@ import type { Plugin } from "vite";
  * - style-src：同梱の CSS と、要素の style 属性（図やエクスプローラーが style="--d:0" のような値を書く）
  * - img-src：favicon は data: の SVG
  * - font-src：同梱フォントのうち小さなファイルは、Vite が CSS に data: として埋め込む（assetsInlineLimit）
+ * - connect-src：配信元だけ。利用状況の受け口（ADR-0026）がほかの配信元にあるビルドでは、その配信元だけを足す（contentSecurityPolicy）
  * - worker-src：コアの Worker は配信元のファイル
  * - object-src 'none'・base-uri 'none'・form-action 'none'：使わないものは閉じる
  */
@@ -28,14 +29,37 @@ const DIRECTIVES: ReadonlyArray<readonly [string, string]> = [
 ];
 
 /**
+ * 利用状況の受け口の URL から、connect-src に足す配信元を決める。
+ *
+ * @param endpoint 受け口の URL（無ければ undefined か空）
+ * @returns https の絶対 URL ならその配信元（`https://host`）。無い・同じ配信元のパス・https でない・読めない URL なら null
+ * @example
+ * usageOrigin("https://telemetry.example.org/v1/events") // → "https://telemetry.example.org"
+ * usageOrigin("/__usage")                                // → null（同じ配信元。'self' に含まれる）
+ * usageOrigin("http://telemetry.example.org/")           // → null（暗号化しない送り先は許さない）
+ * usageOrigin(undefined)                                 // → null
+ */
+export function usageOrigin(endpoint: string | undefined): string | null {
+  if (!endpoint || !/^https:\/\//.test(endpoint)) return null;
+  try {
+    return new URL(endpoint).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Content-Security-Policy の値を組み立てる。
  *
+ * @param usageEndpoint 利用状況の受け口の URL（ADR-0026）。ほかの配信元なら、その配信元だけを connect-src に足す。無ければ足さない
  * @returns `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; …` の形の 1 行
  * @example
  * contentSecurityPolicy() // → "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; …"
+ * contentSecurityPolicy("https://telemetry.example.org/v1/events") // → "…; connect-src 'self' https://telemetry.example.org; …"
  */
-export function contentSecurityPolicy(): string {
-  return DIRECTIVES.map(([name, value]) => `${name} ${value}`).join("; ");
+export function contentSecurityPolicy(usageEndpoint?: string): string {
+  const origin = usageOrigin(usageEndpoint);
+  return DIRECTIVES.map(([name, value]) => `${name} ${name === "connect-src" && origin ? `${value} ${origin}` : value}`).join("; ");
 }
 
 /**
@@ -59,17 +83,18 @@ export function injectCsp(html: string, policy: string = contentSecurityPolicy()
 /**
  * ビルドのときだけ index.html に CSP を差し込む Vite プラグイン（vite dev には付けない。HMR の WebSocket が CSP に引っかかるため）。
  *
+ * @param usageEndpoint 利用状況の受け口の URL（ほかの配信元なら、その配信元との通信だけを許す）
  * @returns Vite プラグイン
  * @example
- * defineConfig({ plugins: [cspPlugin()] })
+ * defineConfig({ plugins: [cspPlugin(process.env.MODELITH_USAGE_ENDPOINT)] })
  */
-export function cspPlugin(): Plugin {
+export function cspPlugin(usageEndpoint?: string): Plugin {
   return {
     name: "modelith-csp",
     apply: "build",
     transformIndexHtml: {
       order: "post",
-      handler: (html) => injectCsp(html),
+      handler: (html) => injectCsp(html, contentSecurityPolicy(usageEndpoint)),
     },
   };
 }

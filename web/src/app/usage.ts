@@ -1,5 +1,5 @@
 // 利用状況の送信（ADR-0026、F-TEL-1）を画面につなぐ。最初の知らせ、「ヘルプ」の設定、送る中身の表示、エラーの受け口。
-// 受け口の URL（__USAGE_ENDPOINT__）が埋め込まれていないビルド（手元のビルドなど）では、何も送らず、知らせも設定も出さない。
+// 受け口の URL（__USAGE_ENDPOINT__）が空のビルド（送らない設定で組み立てたもの・開発用の画面）では、何も送らず、知らせも設定も出さない。
 // ほかの画面の部品は、usage() で回数を足す（送信が無いビルドでは何もしない）。
 
 import { hasFsAccess } from "../files/local-folder";
@@ -41,14 +41,14 @@ export function usage(): UsageCounter {
 /**
  * ビルドに埋め込まれた系列の名前を、契約の系列にする。
  *
- * @param channel 系列の名前（`__APP_CHANNEL__`）
- * @returns rc・preview はそのまま、ほかは stable
+ * @param channel 系列の名前（`__USAGE_CHANNEL__`）
+ * @returns stable・rc・preview はそのまま、ほか（公式に公開したもの以外のビルド）は other
  * @example
  * channelOf("preview") // → "preview"
- * channelOf("")        // → "stable"
+ * channelOf("")        // → "other"
  */
 export function channelOf(channel: string): Channel {
-  return channel === "rc" || channel === "preview" ? channel : "stable";
+  return channel === "stable" || channel === "rc" || channel === "preview" ? channel : "other";
 }
 
 /**
@@ -68,7 +68,7 @@ export async function initUsage(startupMs: number, endpoint: string = __USAGE_EN
     send: (report) => postReport(endpoint, report, (url, init) => fetch(url, init)),
     now: () => new Date(),
     env: () => environment(navigator.userAgent, window.innerWidth, document.documentElement.lang, hasFsAccess(window)),
-    sender: { appVersion: __APP_VERSION__, channel: channelOf(__APP_CHANNEL__) },
+    sender: { appVersion: __APP_VERSION__, channel: channelOf(__USAGE_CHANNEL__) },
     base: new URL(import.meta.env.BASE_URL, location.href).href,
   });
   const r = reporter;

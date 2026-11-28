@@ -86,7 +86,7 @@ export function injectCsp(html: string, policy: string = contentSecurityPolicy()
  * @param usageEndpoint 利用状況の受け口の URL（ほかの配信元なら、その配信元との通信だけを許す）
  * @returns Vite プラグイン
  * @example
- * defineConfig({ plugins: [cspPlugin(process.env.MODELITH_USAGE_ENDPOINT)] })
+ * defineConfig({ plugins: [cspPlugin("https://telemetry.example.org/v1/events")] })
  */
 export function cspPlugin(usageEndpoint?: string): Plugin {
   return {

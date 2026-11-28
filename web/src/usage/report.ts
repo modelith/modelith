@@ -69,6 +69,8 @@ export function dailyReport(state: UsageState, env: Environment, sender: SenderI
     ...env,
     onboarding: state.onboarding,
     ...state.counts,
+    // プラグインの ID ごとの回数は、まだ送らない（登録簿の索引を取りに行く処理を足すまで空。ADR-0026）
+    pluginUsesById: [],
     weeksUsed: weeksClass(state.weeks),
     firstQuarter: state.firstQuarter,
     client: "web",

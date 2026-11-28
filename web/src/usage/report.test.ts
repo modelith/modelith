@@ -29,7 +29,7 @@ describe("報告を作る", () => {
     expect(got).toEqual({
       kind: "daily", schemaVersion: 1,
       browser: "chrome", os: "windows", screen: "desktop", language: "ja", folderAccess: true,
-      onboarding: ["saved"], ...counts, weeksUsed: "5to12", firstQuarter: "2026-Q4",
+      onboarding: ["saved"], ...counts, pluginUsesById: [], weeksUsed: "5to12", firstQuarter: "2026-Q4",
       client: "web", appVersion: "0.3.0-alpha.4", channel: "preview",
     });
   });

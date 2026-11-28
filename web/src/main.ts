@@ -8,8 +8,7 @@ import "@fontsource/ibm-plex-sans-jp/700.css";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./style.css";
-import SAMPLE from "./samples/electric-kettle.sysml?raw";
-import SAMPLE_LAYOUT from "./samples/electric-kettle.layout.json?raw";
+import { START_SAMPLE, sampleChoices } from "./app/sample-catalog";
 import { initCanvas, fit } from "./app/canvas";
 import { stageLabel } from "./app/stage";
 import { initCtxMenu } from "./app/ctxmenu";
@@ -266,7 +265,7 @@ try {
   initLevelsDialog();
   initMenus();
   initToolbar();
-  await initFiles({ name: "electric-kettle.sysml", text: SAMPLE, layout: SAMPLE_LAYOUT }, { onResumed: resumeTabs });
+  await initFiles(START_SAMPLE, { samples: sampleChoices(), onResumed: resumeTabs });
   // タブの対象を選び、図を画面に合わせるのは、最初の解析結果が届いてから
   await settled();
   applyPanes();

@@ -199,3 +199,19 @@ app-files-startup-failed = Modelith を起動できませんでした
 app-files-startup-wasm-failed = テキストの解析に必要なモジュール（WebAssembly）を読み込めませんでした。ページを再読み込みしてください。解決しないときは、新しいブラウザ（Chrome・Edge・Firefox・Safari の最新版）で開いてください。
 app-files-startup-screen-failed = 画面を組み立てる途中で問題が起きました。保存した設定（パネルの配置・図のタブ）が壊れている可能性があります。設定を初期化して読み直すと、直ることがあります。下書き・前回の続き・プラグインの許可は消えません。
 app-files-startup-reset = 保存した設定を初期化して読み直す
+
+# ---- サンプル集（F-FILE-20） ----
+app-files-samples-title = サンプルを開く
+app-files-samples-text = 開くサンプルを選んでください。サンプルは新しいファイルとして開き、保存するまで自分のフォルダには入りません。
+app-files-samples-pick-label = サンプル
+app-files-samples-open = 開く
+app-files-samples-intro-requirements-title = 入門：要求のトレース（自転車のライト）
+app-files-samples-intro-requirements-note = 利用者の望みから要求を導き、満たす部品と確かめる試験につなぎます。「トレース」の図で確かめられます
+app-files-samples-intro-structure-title = 入門：構造と接続（卓上扇風機）
+app-files-samples-intro-structure-note = 部品・ポート・インタフェースを書き、部品どうしをつなぎます。内部ブロック図で確かめられます
+app-files-samples-intro-behavior-title = 入門：振る舞い（自動ドア）
+app-files-samples-intro-behavior-note = 状態と遷移、アクションの流れ、部品の間のやり取りを書きます。状態遷移図・アクティビティ図・シーケンス図で確かめられます
+app-files-samples-electric-kettle-title = 家電：電気ケトル
+app-files-samples-electric-kettle-note = 要求・構造・制御・振る舞い・検証を 1 つのモデルにまとめた、いちばん大きなサンプルです
+app-files-samples-delivery-drone-title = モビリティ：配送ドローン
+app-files-samples-delivery-drone-note = 要求・構造・振る舞い・検証を、電気ケトルより小さくまとめたモデルです

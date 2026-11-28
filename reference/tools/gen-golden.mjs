@@ -55,11 +55,12 @@ function simplify(v, seen = new Set()) {
 }
 
 // モック内蔵の SAMPLE は非公開のため使わない。公開してよい入力だけを cases/ に置く
-// アプリに同梱する公開サンプル（web/src/samples/）もケースとして使う
+// アプリに同梱する公開サンプルのうち、電気ケトル（web/src/samples/electric-kettle.sysml）もケースとして使う。
+// サンプル集のほかのサンプル（F-FILE-20）はモックと比べず、エラー無しで読めることを web/src/app/sample-catalog.test.ts で確かめる
 const cases = [];
-for (const dir of [join(root, "golden/cases"), join(root, "../web/src/samples")])
-  for (const f of readdirSync(dir).filter((f) => f.endsWith(".sysml")).sort())
-    cases.push([basename(f, ".sysml"), readFileSync(join(dir, f), "utf8")]);
+for (const f of readdirSync(join(root, "golden/cases")).filter((f) => f.endsWith(".sysml")).sort())
+  cases.push([basename(f, ".sysml"), readFileSync(join(root, "golden/cases", f), "utf8")]);
+cases.push(["electric-kettle", readFileSync(join(root, "../web/src/samples/electric-kettle.sysml"), "utf8")]);
 
 const check = process.argv.includes("--check");
 let stale = 0;

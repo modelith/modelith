@@ -40,6 +40,7 @@ import { editStartText, externalNotice } from "./external-change";
 import { saveErrorText } from "./error-text";
 import { opsIdle } from "./intent";
 import { onOpenProjectFile, onRewriteProjectFiles } from "./other-file";
+import { usage } from "./usage";
 
 const AUTOSAVE_KEY = "modelith-autosave";
 const SIDE_KEY = "modelith-side";
@@ -292,6 +293,7 @@ async function forgetRecent(id: string): Promise<void> {
  * 表示中のファイルが、新しいフォルダの中のファイルかどうかをコアに伝え直す。
  */
 function folderChanged(): void {
+  if (ws.folder()) usage().step("folderOpened");
   endResumeAsk();
   collapsed.clear();
   showSide("files");
@@ -408,6 +410,7 @@ function newUntitled(): void {
  * @param sample サンプルの文書（名前・テキスト・配置ファイルの文字列）
  */
 function openSample(sample: Sample): void {
+  usage().step("sampleOpened");
   showDoc(ws.newUntitled(sample.name, sample.text, sample.layout).key);
 }
 
@@ -482,6 +485,8 @@ async function save(key: string, as = false): Promise<void> {
     if (outcome !== "saved") return;
     const note = layoutNotSavedNote(doc.savedLayout);
     toast((ws.canWriteInPlace(doc) ? t("app-files-saved", { name: doc.name }) : t("app-files-saved-by-download", { name: doc.name })) + note);
+    usage().count(ws.canWriteInPlace(doc) ? "saves.folder" : "saves.download");
+    usage().step("saved");
     if (ws.layoutUnsaved(doc)) await offerFolderForLayout(key);
   } catch (e) {
     // 他のアプリに消されたファイルは、「名前を付けて保存」で保存し直せることも伝える（F-FILE-2、#243）
@@ -513,6 +518,8 @@ async function saveIntoFolder(key: string): Promise<void> {
   if (!isModelPath(path)) return;
   await ws.saveToFolder(key, path);
   toast(t("app-files-saved", { name: doc.name }));
+  usage().count("saves.folder");
+  usage().step("saved");
 }
 
 /**

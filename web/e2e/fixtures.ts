@@ -62,9 +62,25 @@ function exposeWorkers(): void {
   };
 }
 
-export const test = base.extend<{ fsAccess: boolean }>({
+/**
+ * 利用状況の送信（F-TEL-1）を、最初の知らせを見せた・送らない、という設定にしておく（まだ何も残っていないときだけ）。
+ * どのテストにも最初の知らせが出ないようにする。知らせや送信を確かめるテストは、`usageNotice: true` でこれを外す。
+ */
+function silenceUsage(): void {
+  try {
+    if (localStorage.getItem("modelith-usage-notice") !== null) return;
+    localStorage.setItem("modelith-usage-notice", "1");
+    localStorage.setItem("modelith-usage-level", "off");
+  } catch {
+    // プラグインのサンドボックスでは localStorage を使えない
+  }
+}
+
+export const test = base.extend<{ fsAccess: boolean; usageNotice: boolean }>({
   fsAccess: [true, { option: true }],
-  page: async ({ page, fsAccess }, use) => {
+  usageNotice: [false, { option: true }],
+  page: async ({ page, fsAccess, usageNotice }, use) => {
+    if (!usageNotice) await page.addInitScript(silenceUsage);
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     // ファイルの選択の画面（filechooser）の横取りを、最初の読み込みより前に有効にしておく。

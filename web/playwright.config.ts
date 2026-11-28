@@ -53,7 +53,9 @@ export default defineConfig({
     })),
   ],
   webServer: {
-    command: `npm run build && npx vite preview --port ${PORT} --strictPort`,
+    // 利用状況の送信（F-TEL-1）を確かめられるよう、受け口を同じ配信元のパスにしてビルドする（外へは何も送らない。
+    // 最初の知らせは、fixtures.ts が既定で「見せた・送らない」にして出さない）
+    command: `MODELITH_USAGE_ENDPOINT=/__usage npm run build && npx vite preview --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}/`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

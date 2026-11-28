@@ -4,6 +4,8 @@
 
 import { t } from "../l10n";
 import { $, esc } from "./dom";
+import type { Counter } from "../usage/state";
+import { usage } from "./usage";
 import { copyFailureText, copyImage, drawioXml, download, rasterize, svgExport, type DiagramImage } from "./export";
 import { EXPORT_FORMATS, EXPORT_SCALES, exportFileName, exportFormat, rasterScale, type ExportFormat } from "./export-file";
 import { openModal } from "./modal";
@@ -130,6 +132,7 @@ async function exportFile(): Promise<void> {
   }
   hideExportDialog();
   toast(t("app-files-export-downloaded", { name }) + note);
+  usage().count(`exports.${format.id}` as Counter);
 }
 
 /**
@@ -150,6 +153,7 @@ async function copyToClipboard(): Promise<void> {
   }
   hideExportDialog();
   toast(t("app-files-export-copied") + reducedNote(scale));
+  usage().count("exports.clipboard");
 }
 
 /**

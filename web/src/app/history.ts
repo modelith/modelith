@@ -10,6 +10,7 @@ import { pushVersion } from "./history-list";
 import { S } from "./state";
 import { committedLayout, loadLayout, notifyLayoutChange, setText, toast } from "./sync";
 import { t } from "../l10n";
+import { usage } from "./usage";
 
 /** 元に戻せる回数（F-EDIT-4）。履歴は今の版を含めて、この数より 1 つ多く持つ（#244）。 */
 const UNDO_STEPS = 200;
@@ -156,11 +157,17 @@ function updateUndoUI(): void {
 /**
  * 元に戻す（1 版戻る。F-EDIT-4）。
  */
-export const undo = (): void => goHistory(-1);
+export const undo = (): void => {
+  usage().count("edits.undo");
+  goHistory(-1);
+};
 /**
  * やり直す（1 版進む。F-EDIT-4）。
  */
-export const redo = (): void => goHistory(1);
+export const redo = (): void => {
+  usage().count("edits.redo");
+  goHistory(1);
+};
 
 /**
  * 元に戻す・やり直すのボタンと編集のメニューの項目に操作をつなぐ。起動時に 1 回呼ぶ。

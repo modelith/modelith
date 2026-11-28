@@ -33,7 +33,8 @@ test("F-TEL-1: 初めて使うときに一度だけ知らせ、閉じるまで�
   // Assert（版・系列・起動の時間の区分だけ）
   await expect.poll(() => sent.length).toBe(1);
   expect(Object.keys(sent[0] ?? {}).sort()).toEqual(["appVersion", "channel", "client", "kind", "schemaVersion", "startupTime"]);
-  expect(sent[0]).toMatchObject({ kind: "startup", client: "web", schemaVersion: 1 });
+  // 系列を渡さずに組み立てたビルド（公式のページのビルドではない）は「そのほか」を名乗る
+  expect(sent[0]).toMatchObject({ kind: "startup", client: "web", schemaVersion: 1, channel: "other" });
   // Act（読み込み直しても、知らせは出ない）
   await page.reload();
   await page.locator("#gNodes .node").first().waitFor();

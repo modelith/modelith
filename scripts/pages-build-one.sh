@@ -15,6 +15,9 @@ base=${3:?base（/modelith/ など）を渡してください}
 out=${4:?出力先の .tar.gz を渡してください}
 case $out in /*) ;; *) out="$PWD/$out" ;; esac
 failed_results="$PWD/pages-test-results/$channel"
+# 利用状況の受け口（ADR-0026）。公開のページのビルドにだけ埋め込む（手元のビルドは何も送らない）。
+# 受け口の URL を読まない古い版のタグでは、渡しても何も起きない
+usage_endpoint=https://telemetry.modelith-studio.org/v1/events
 
 # 今の作業ツリー（版のタグ）の .nvmrc にある Node.js を、PATH の先頭に置く。版ごとに、その版を出したときと同じ
 # Node.js でテストして組み立てる（古い版のテストの道具が、新しい Node.js では動かないことがあるため）。
@@ -54,7 +57,7 @@ rm -rf "$failed_results"
   fi
   # 画面に出すコミットと「ソースコード」のリンク（AGPL 第 13 条）は、その版のタグのコミットにする。
   # ワークフローの GITHUB_SHA は、公開の手順を動かした dev のコミットで、版の中身のコミットではない
-  GITHUB_SHA=$(git rev-parse HEAD) MODELITH_BASE=$base MODELITH_CHANNEL=$channel npm run build --prefix web
+  GITHUB_SHA=$(git rev-parse HEAD) MODELITH_BASE=$base MODELITH_CHANNEL=$channel MODELITH_USAGE_ENDPOINT=$usage_endpoint npm run build --prefix web
   cp -r web/reports web/dist/reports
   # reports/e2e/ の画面は Playwright（Apache-2.0）の配布物なので、LICENSE と NOTICE を添える（C-5）
   cp web/node_modules/playwright-core/{LICENSE,NOTICE,ThirdPartyNotices.txt} web/dist/reports/e2e/
